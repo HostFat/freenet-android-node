@@ -42,6 +42,17 @@ quiet banner and a silent notification whose tap opens the GitHub release page
 in the browser. If core is newer but this fork has not published an APK yet,
 only the in-app banner appears.
 
+## Pull request CI
+
+Pull requests never publish an APK. They also skip the Docker/NDK compile unless
+the diff touches native code, the Dockerfile, build scripts, Gradle/NDK config,
+`AndroidManifest.xml`, or `.github/workflows/ci.yml`. Kotlin/UI-only PRs run
+Gradle unit tests on the runner instead. Docs-only PRs skip compilation.
+
+Pushes to `main` and signed `workflow_dispatch` releases still always compile
+native. The release concurrency policy is unchanged: a PR cannot cancel an
+in-progress signed APK job.
+
 ## Notifications
 
 Watch this repository's **Releases** on GitHub to get an email when an APK is

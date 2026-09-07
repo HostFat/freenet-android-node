@@ -21,7 +21,7 @@ import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
 
-data class UpdateUiState(
+internal data class UpdateUiState(
     val checking: Boolean = false,
     val kind: UpdateKind = UpdateKind.None,
     val message: String? = null,
@@ -29,7 +29,7 @@ data class UpdateUiState(
     val lastError: String? = null,
 )
 
-object UpdateCheckRepository {
+internal object UpdateCheckRepository {
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(UpdateUiState())
     private val mutableInterval = MutableStateFlow(UpdateCheckInterval.Default)

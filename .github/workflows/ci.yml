@@ -29,9 +29,79 @@ env:
   DOCKER_IMAGE: freenet-android-node-dev
 
 jobs:
+  changes:
+    name: Classify changes
+    runs-on: ubuntu-latest
+    timeout-minutes: 5
+    outputs:
+      native: ${{ steps.result.outputs.native }}
+      android: ${{ steps.result.outputs.android }}
+    steps:
+      - name: Checkout
+        if: github.event_name == 'pull_request'
+        uses: actions/checkout@v4
+
+      - name: Filter paths
+        if: github.event_name == 'pull_request'
+        id: filter
+        uses: dorny/paths-filter@v3
+        with:
+          filters: |
+            native:
+              - 'native/**'
+              - 'Dockerfile'
+              - 'compose.yaml'
+              - 'scripts/build-debug.sh'
+              - 'scripts/build-native.sh'
+              - 'scripts/build-release.sh'
+              - 'scripts/check.sh'
+              - 'scripts/check-freenet-baseline.sh'
+              - 'scripts/bump-core-version.py'
+              - 'scripts/cut-release.sh'
+              - 'scripts/prepare-contract-fixture.sh'
+              - '.github/workflows/ci.yml'
+              - 'android/app/src/main/jniLibs/**'
+              - 'android/**/*.gradle.kts'
+              - 'android/**/*.gradle'
+              - 'android/gradle/**'
+              - 'android/gradlew'
+              - 'android/gradlew.bat'
+              - 'android/gradle.properties'
+              - 'android/app/src/main/AndroidManifest.xml'
+            android:
+              - 'android/**'
+
+      - name: Set outputs
+        id: result
+        run: |
+          set -euo pipefail
+          if [[ "${{ github.event_name }}" != "pull_request" ]]; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "android=false" >> "$GITHUB_OUTPUT"
+            echo "Non-PR event: full native CI"
+            exit 0
+          fi
+          native="${{ steps.filter.outputs.native }}"
+          android="${{ steps.filter.outputs.android }}"
+          if [[ "${native}" == "true" ]]; then
+            echo "native=true" >> "$GITHUB_OUTPUT"
+            echo "android=false" >> "$GITHUB_OUTPUT"
+            echo "PR touches native/NDK paths: full Docker+NDK CI"
+          elif [[ "${android}" == "true" ]]; then
+            echo "native=false" >> "$GITHUB_OUTPUT"
+            echo "android=true" >> "$GITHUB_OUTPUT"
+            echo "PR is Android/Kotlin only: Gradle unit tests, skip NDK"
+          else
+            echo "native=false" >> "$GITHUB_OUTPUT"
+            echo "android=false" >> "$GITHUB_OUTPUT"
+            echo "PR does not touch buildable paths: skip compile"
+          fi
+
   setup:
     name: Setup & Build Docker
     runs-on: ubuntu-latest
+    needs: changes
+    if: needs.changes.outputs.native == 'true'
     timeout-minutes: 30
     outputs:
       lock: ${{ steps.hash.outputs.lock }}
@@ -101,8 +171,10 @@ jobs:
   lint:
     name: Lint & Test Rust
     runs-on: ubuntu-latest
-    needs: setup
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_prechecks != 'true'
+    needs: [changes, setup]
+    if: >
+      needs.changes.outputs.native == 'true' &&
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_prechecks != 'true')
     timeout-minutes: 90
     steps:
       - name: Free disk space on runner
@@ -221,8 +293,10 @@ jobs:
   build:
     name: Build APK
     runs-on: ubuntu-latest
-    needs: setup
-    if: github.event_name != 'workflow_dispatch' || github.event.inputs.skip_prechecks != 'true'
+    needs: [changes, setup]
+    if: >
+      needs.changes.outputs.native == 'true' &&
+      (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_prechecks != 'true')
     timeout-minutes: 60
     steps:
       - name: Free disk space on runner
@@ -373,6 +447,78 @@ jobs:
             freenet-android-node/android/app/src/main/jniLibs/
           if-no-files-found: error
           retention-days: 14
+
+  android-unit:
+    name: Android unit tests
+    runs-on: ubuntu-latest
+    needs: changes
+    if: github.event_name == 'pull_request' && needs.changes.outputs.android == 'true'
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up JDK 17
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: "17"
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+
+      - name: Install Android platform
+        run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-unit-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-unit-
+
+      - name: Gradle unit tests
+        working-directory: android
+        run: ./gradlew --no-daemon :app:testDebugUnitTest
+
+  pr-gate:
+    name: PR checks
+    runs-on: ubuntu-latest
+    needs: [changes, setup, lint, build, android-unit]
+    if: always() && !cancelled() && github.event_name == 'pull_request'
+    timeout-minutes: 5
+    steps:
+      - name: Require the jobs this PR selected
+        run: |
+          set -euo pipefail
+          fail=0
+          if [[ "${{ needs.changes.result }}" != "success" ]]; then
+            echo "changes: ${{ needs.changes.result }}"
+            fail=1
+          fi
+          if [[ "${{ needs.changes.outputs.native }}" == "true" ]]; then
+            for pair in "setup:${{ needs.setup.result }}" "lint:${{ needs.lint.result }}" "build:${{ needs.build.result }}"; do
+              job="${pair%%:*}"
+              result="${pair#*:}"
+              if [[ "${result}" != "success" ]]; then
+                echo "${job}: ${result}"
+                fail=1
+              fi
+            done
+          fi
+          if [[ "${{ needs.changes.outputs.android }}" == "true" ]]; then
+            if [[ "${{ needs.android-unit.result }}" != "success" ]]; then
+              echo "android-unit: ${{ needs.android-unit.result }}"
+              fail=1
+            fi
+          fi
+          if [[ "${fail}" -ne 0 ]]; then
+            exit 1
+          fi
+          echo "PR checks passed (native=${{ needs.changes.outputs.native }} android=${{ needs.changes.outputs.android }})"
 
   release:
     name: Build & Publish Release APK
@@ -531,6 +677,7 @@ jobs:
 
       - name: Open an issue if the release build failed
         if: failure()
+        continue-on-error: true
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
