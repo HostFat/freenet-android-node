@@ -1,0 +1,153 @@
+name: Auto bump Freenet core
+
+on:
+  schedule:
+    # Every 6 hours; GitHub may delay cron a bit.
+    - cron: "17 */6 * * *"
+  workflow_dispatch:
+
+concurrency:
+  group: auto-bump-freenet-core
+  cancel-in-progress: false
+
+permissions:
+  contents: write
+  actions: write
+  issues: write
+
+jobs:
+  bump:
+    name: Detect core release and dispatch APK build
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+        with:
+          path: freenet-android-node
+
+      - name: Resolve latest freenet-core release
+        id: core
+        run: |
+          set -euo pipefail
+          tag="$(gh api repos/freenet/freenet-core/releases/latest --jq .tag_name)"
+          if [[ ! "${tag}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
+            echo "Unexpected freenet-core tag '${tag}'" >&2
+            exit 1
+          fi
+          echo "tag=${tag}" >> "$GITHUB_OUTPUT"
+          echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
+          echo "Latest freenet-core release: ${tag}"
+
+      - name: Skip if this APK version is already published
+        id: skip
+        working-directory: freenet-android-node
+        run: |
+          set -euo pipefail
+          tag="${{ steps.core.outputs.tag }}"
+          if gh release view "${tag}" >/dev/null 2>&1; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "Release ${tag} already exists on this repo; nothing to do."
+          else
+            echo "already=false" >> "$GITHUB_OUTPUT"
+            echo "No ${tag} APK release yet; will bump and build."
+          fi
+
+      - name: Checkout matching freenet-core
+        if: steps.skip.outputs.already != 'true'
+        uses: actions/checkout@v4
+        with:
+          repository: freenet/freenet-core
+          ref: ${{ steps.core.outputs.tag }}
+          path: freenet-core
+
+      - name: Record core commit
+        if: steps.skip.outputs.already != 'true'
+        id: pin
+        run: |
+          set -euo pipefail
+          commit="$(git -C freenet-core rev-parse HEAD)"
+          echo "commit=${commit}" >> "$GITHUB_OUTPUT"
+          echo "freenet-core ${{ steps.core.outputs.tag }} is ${commit}"
+
+      - name: Install Rust (lockfile refresh only)
+        if: steps.skip.outputs.already != 'true'
+        uses: dtolnay/rust-toolchain@master
+        with:
+          toolchain: "1.94.0"
+
+      - name: Refresh native Cargo.lock against the new core
+        if: steps.skip.outputs.already != 'true'
+        working-directory: freenet-android-node/native
+        run: cargo update
+
+      - name: Rewrite version pins
+        if: steps.skip.outputs.already != 'true'
+        working-directory: freenet-android-node
+        run: |
+          python3 scripts/bump-core-version.py \
+            "${{ steps.core.outputs.tag }}" \
+            "${{ steps.pin.outputs.commit }}"
+
+      - name: Commit and push pin updates
+        if: steps.skip.outputs.already != 'true'
+        working-directory: freenet-android-node
+        run: |
+          set -euo pipefail
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add \
+            .github/workflows/ci.yml \
+            README.md \
+            docs/BASELINE.md \
+            docs/RELEASING.md \
+            scripts/cut-release.sh \
+            native/Cargo.lock
+          if git diff --cached --quiet; then
+            echo "Pins already matched ${{ steps.core.outputs.tag }}; dispatching build anyway."
+          else
+            git commit -m "$(cat <<EOF
+          chore: bump freenet-core to ${{ steps.core.outputs.tag }} [skip ci]
+
+          Automatic pin + lockfile refresh so the next APK build can compile
+          against the new core without a stale Cargo.lock.
+          EOF
+          )"
+            git push origin HEAD:main
+          fi
+
+      - name: Dispatch signed APK release
+        if: steps.skip.outputs.already != 'true'
+        working-directory: freenet-android-node
+        run: |
+          gh workflow run ci.yml \
+            --ref main \
+            -f freenet_core_version="${{ steps.core.outputs.tag }}" \
+            -f release_version="${{ steps.core.outputs.version }}" \
+            -f skip_prechecks=true
+          echo "Dispatched CI release for ${{ steps.core.outputs.tag }}"
+
+      - name: Open an issue if the bump failed
+        if: failure()
+        working-directory: freenet-android-node
+        run: |
+          set -euo pipefail
+          title="Auto-bump failed for ${{ steps.core.outputs.tag || 'unknown core' }}"
+          existing="$(gh issue list --state open --search "in:title ${title}" --json number --jq '.[0].number' || true)"
+          body="$(cat <<EOF
+          The scheduled auto-bump for Freenet core failed.
+
+          - Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Target core: ${{ steps.core.outputs.tag || 'could not resolve' }}
+
+          This usually means the lockfile could not be refreshed, git could not
+          push, or workflow dispatch failed. The APK was **not** published.
+          EOF
+          )"
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --body "${body}"
+          else
+            gh issue create --title "${title}" --body "${body}" --assignee HostFat
+          fi

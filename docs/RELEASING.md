@@ -39,6 +39,13 @@ Actions → New repository secret):
 Once the secrets are set, delete the local `release.keystore` copy from wherever you
 ran `keytool`, keeping only the backup.
 
+## Automatic releases
+
+New Freenet core tags are picked up by a scheduled workflow and published as
+APKs on this repository's Releases page. See [`AUTOMATION.md`](AUTOMATION.md).
+Manual dispatch below is the override when you want lint + debug APK as well,
+or when you need to rebuild a specific core ref.
+
 ## Cutting a release
 
 Trigger the `CI` workflow manually with two inputs:

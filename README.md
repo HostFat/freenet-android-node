@@ -115,4 +115,6 @@ unofficial app.
 Build instructions, checks, architecture notes, and the manual/automated
 device proofs used during development live in
 [`docs/DEVELOPING.md`](docs/DEVELOPING.md). Cutting a signed release is
-covered in [`docs/RELEASING.md`](docs/RELEASING.md).
+covered in [`docs/RELEASING.md`](docs/RELEASING.md). New Freenet core
+releases are picked up automatically and published as APKs; see
+[`docs/AUTOMATION.md`](docs/AUTOMATION.md).

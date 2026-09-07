@@ -317,3 +317,5 @@ The gate results are in [`docs/PHASE_0_1_REPORT.md`](PHASE_0_1_REPORT.md),
 [`docs/PHASE_4_REPORT.md`](PHASE_4_REPORT.md).
 
 Cutting a signed release is covered in [`RELEASING.md`](RELEASING.md).
+Automatic rebuilds when Freenet core ships a new tag are described in
+[`AUTOMATION.md`](AUTOMATION.md).

@@ -315,6 +315,23 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     ) {
                         Text("For nerds")
                     }
+                    val context = LocalContext.current
+                    OutlinedButton(
+                        onClick = {
+                            context.startActivity(
+                                Intent(
+                                    Intent.ACTION_VIEW,
+                                    Uri.parse(
+                                        "https://github.com/HostFat/freenet-android-node/releases/latest",
+                                    ),
+                                ),
+                            )
+                            closeDrawer()
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("Latest APK")
+                    }
                 }
             }
         },
