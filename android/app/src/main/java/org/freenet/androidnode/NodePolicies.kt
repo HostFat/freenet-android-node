@@ -17,15 +17,28 @@ enum class NetworkDataPolicy(val displayName: String) {
 }
 
 internal object ConnectionLimits {
-    const val Floor = 10
-    const val Ceiling = 25
+    const val Floor = 1
+    const val Ceiling = 200
     const val DefaultMin = 10
     const val DefaultMax = 25
-    val Choices = listOf(10, 15, 20, 25)
 
-    fun clampPair(min: Int, max: Int): Pair<Int, Int> {
-        val lo = min.coerceIn(Floor, Ceiling)
-        val hi = max.coerceIn(Floor, Ceiling)
+    fun coerce(value: Int): Int = value.coerceIn(Floor, Ceiling)
+
+    fun clampLoaded(min: Int, max: Int): Pair<Int, Int> {
+        val lo = coerce(min)
+        val hi = coerce(max)
+        return if (lo <= hi) lo to hi else lo to lo
+    }
+
+    fun clampMin(min: Int, max: Int): Pair<Int, Int> {
+        val lo = coerce(min)
+        val hi = coerce(max)
+        return if (lo <= hi) lo to hi else lo to lo
+    }
+
+    fun clampMax(min: Int, max: Int): Pair<Int, Int> {
+        val lo = coerce(min)
+        val hi = coerce(max)
         return if (lo <= hi) lo to hi else hi to hi
     }
 }
@@ -76,7 +89,7 @@ object NodePolicyRepository {
             PREFERENCES_NAME,
             Context.MODE_PRIVATE,
         )
-        val (minConnections, maxConnections) = ConnectionLimits.clampPair(
+        val (minConnections, maxConnections) = ConnectionLimits.clampLoaded(
             preferences.getInt(MIN_CONNECTIONS_KEY, ConnectionLimits.DefaultMin),
             preferences.getInt(MAX_CONNECTIONS_KEY, ConnectionLimits.DefaultMax),
         )
@@ -107,14 +120,14 @@ object NodePolicyRepository {
     fun setMinConnections(context: Context, minConnections: Int) {
         initialize(context)
         val current = mutableState.value
-        val (min, max) = ConnectionLimits.clampPair(minConnections, current.maxConnections)
+        val (min, max) = ConnectionLimits.clampMin(minConnections, current.maxConnections)
         persist(context, current.copy(minConnections = min, maxConnections = max))
     }
 
     fun setMaxConnections(context: Context, maxConnections: Int) {
         initialize(context)
         val current = mutableState.value
-        val (min, max) = ConnectionLimits.clampPair(current.minConnections, maxConnections)
+        val (min, max) = ConnectionLimits.clampMax(current.minConnections, maxConnections)
         persist(context, current.copy(minConnections = min, maxConnections = max))
     }
 

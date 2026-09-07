@@ -38,6 +38,7 @@
     <string name="min_connections">Minimum</string>
     <string name="max_connections">Maximum</string>
     <string name="connection_limits_apply_next_start">Takes effect the next time the network node starts.</string>
+    <string name="connection_limits_range">Integers from 1 to 200 (Freenet’s default maximum).</string>
     <string name="connection_limits_desktop_note">A typical desktop Freenet node defaults to a minimum of 25 and a maximum of 200 peer connections. This unofficial Android build uses a smaller range. Freenet is still experimental.</string>
     <string name="restart_node_title">Restart the node?</string>
     <string name="restart_node_message">The network node is already running. Restart it now to apply a minimum of %1$d and a maximum of %2$d peer connections?</string>

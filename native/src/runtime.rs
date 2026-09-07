@@ -20,15 +20,17 @@ use crate::contract_proof::{
 };
 
 const LOG_CAPACITY: usize = 256;
-const ANDROID_CONNECTION_FLOOR: usize = 10;
-const ANDROID_CONNECTION_CEILING: usize = 25;
+const ANDROID_CONNECTION_FLOOR: usize = 1;
+const ANDROID_CONNECTION_CEILING: usize = 200;
+const ANDROID_DEFAULT_MIN_CONNECTIONS: usize = 10;
+const ANDROID_DEFAULT_MAX_CONNECTIONS: usize = 25;
 
 fn default_min_connections() -> usize {
-    ANDROID_CONNECTION_FLOOR
+    ANDROID_DEFAULT_MIN_CONNECTIONS
 }
 
 fn default_max_connections() -> usize {
-    ANDROID_CONNECTION_CEILING
+    ANDROID_DEFAULT_MAX_CONNECTIONS
 }
 const STARTUP_PROBE_INTERVAL: Duration = Duration::from_millis(50);
 const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
@@ -1851,7 +1853,7 @@ mod tests {
     }
 
     #[test]
-    fn connection_limits_must_stay_in_the_phone_range() {
+    fn connection_limits_must_stay_in_freenet_bounds() {
         let mut json: serde_json::Value =
             serde_json::from_str(&valid_config_json()).expect("valid base JSON");
         json["minConnections"] = serde_json::json!(20);
@@ -1862,8 +1864,16 @@ mod tests {
 
         json["minConnections"] = serde_json::json!(10);
         json["maxConnections"] = serde_json::json!(200);
+        AndroidNodeConfig::parse(&json.to_string()).expect("Freenet default max is allowed");
+
+        json["maxConnections"] = serde_json::json!(201);
         let error = AndroidNodeConfig::parse(&json.to_string())
-            .expect_err("desktop-scale max must fail on Android");
+            .expect_err("above Freenet default max must fail");
+        assert_eq!(error.code, "INVALID_CONNECTION_LIMITS");
+
+        json["minConnections"] = serde_json::json!(0);
+        json["maxConnections"] = serde_json::json!(25);
+        let error = AndroidNodeConfig::parse(&json.to_string()).expect_err("zero min must fail");
         assert_eq!(error.code, "INVALID_CONNECTION_LIMITS");
     }
 

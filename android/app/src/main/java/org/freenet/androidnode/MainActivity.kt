@@ -39,6 +39,8 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
+import androidx.compose.foundation.text.KeyboardActions
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -55,6 +57,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
+import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -72,13 +75,17 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
+import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
@@ -624,15 +631,15 @@ private fun PolicyControls(
             style = MaterialTheme.typography.bodySmall,
         )
         Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)
-        Text(stringResource(R.string.min_connections), style = MaterialTheme.typography.bodyMedium)
-        ConnectionLimitChips(
-            selected = policies.minConnections,
-            onSelect = onMinConnections,
+        ConnectionLimitField(
+            value = policies.minConnections,
+            label = stringResource(R.string.min_connections),
+            onCommit = onMinConnections,
         )
-        Text(stringResource(R.string.max_connections), style = MaterialTheme.typography.bodyMedium)
-        ConnectionLimitChips(
-            selected = policies.maxConnections,
-            onSelect = onMaxConnections,
+        ConnectionLimitField(
+            value = policies.maxConnections,
+            label = stringResource(R.string.max_connections),
+            onCommit = onMaxConnections,
         )
         Text(
             stringResource(R.string.connection_limits_apply_next_start),
@@ -646,22 +653,60 @@ private fun PolicyControls(
 }
 
 @Composable
-private fun ConnectionLimitChips(
-    selected: Int,
-    onSelect: (Int) -> Unit,
+private fun ConnectionLimitField(
+    value: Int,
+    label: String,
+    onCommit: (Int) -> Unit,
 ) {
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        ConnectionLimits.Choices.forEach { value ->
-            FilterChip(
-                selected = selected == value,
-                onClick = { onSelect(value) },
-                label = { Text(value.toString()) },
-            )
+    var text by remember(value) { mutableStateOf(value.toString()) }
+    var focused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+
+    fun commit() {
+        val parsed = text.toIntOrNull()
+        val next = ConnectionLimits.coerce(parsed ?: value)
+        text = next.toString()
+        if (next != value) {
+            onCommit(next)
         }
     }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { incoming ->
+            val digits = incoming.filter { it.isDigit() }
+            if (digits.isEmpty()) {
+                text = ""
+                return@OutlinedTextField
+            }
+            val parsed = digits.toLongOrNull() ?: return@OutlinedTextField
+            if (parsed <= ConnectionLimits.Ceiling) {
+                text = digits
+            }
+        },
+        label = { Text(label) },
+        supportingText = { Text(stringResource(R.string.connection_limits_range)) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                commit()
+                focusManager.clearFocus()
+            },
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focusState ->
+                val nowFocused = focusState.isFocused
+                if (focused && !nowFocused) {
+                    commit()
+                }
+                focused = nowFocused
+            },
+    )
 }
 
 @Composable

@@ -14,11 +14,15 @@ class ConnectionLimitsTest {
     }
 
     @Test
-    fun clampKeepsMinAtOrBelowMaxInsideThePhoneRange() {
-        assertEquals(Pair(10, 25), ConnectionLimits.clampPair(10, 25))
-        assertEquals(Pair(20, 20), ConnectionLimits.clampPair(20, 15))
-        assertEquals(Pair(10, 10), ConnectionLimits.clampPair(1, 5))
-        assertEquals(Pair(25, 25), ConnectionLimits.clampPair(40, 80))
+    fun clampKeepsValuesInsideFreenetBoundsAndMinAtOrBelowMax() {
+        assertEquals(1, ConnectionLimits.Floor)
+        assertEquals(200, ConnectionLimits.Ceiling)
+        assertEquals(1, ConnectionLimits.coerce(0))
+        assertEquals(200, ConnectionLimits.coerce(201))
+        assertEquals(Pair(10, 25), ConnectionLimits.clampLoaded(10, 25))
+        assertEquals(Pair(50, 50), ConnectionLimits.clampMin(50, 25))
+        assertEquals(Pair(10, 10), ConnectionLimits.clampMax(25, 10))
+        assertEquals(Pair(1, 200), ConnectionLimits.clampLoaded(0, 500))
     }
 
     @Test
