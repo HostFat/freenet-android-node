@@ -20,6 +20,16 @@ use crate::contract_proof::{
 };
 
 const LOG_CAPACITY: usize = 256;
+const ANDROID_CONNECTION_FLOOR: usize = 10;
+const ANDROID_CONNECTION_CEILING: usize = 25;
+
+fn default_min_connections() -> usize {
+    ANDROID_CONNECTION_FLOOR
+}
+
+fn default_max_connections() -> usize {
+    ANDROID_CONNECTION_CEILING
+}
 const STARTUP_PROBE_INTERVAL: Duration = Duration::from_millis(50);
 const RUNTIME_SHUTDOWN_TIMEOUT: Duration = Duration::from_secs(5);
 
@@ -43,6 +53,10 @@ struct AndroidNodeConfig {
     identity_directory: PathBuf,
     temporary_directory: PathBuf,
     websocket_port: u16,
+    #[serde(default = "default_min_connections")]
+    min_connections: usize,
+    #[serde(default = "default_max_connections")]
+    max_connections: usize,
     #[serde(default)]
     network: Option<NetworkModeConfig>,
 }
@@ -146,6 +160,19 @@ impl AndroidNodeConfig {
             return Err(NodeError::new(
                 "INVALID_PORT",
                 "websocketPort must be between 1 and 65535",
+            ));
+        }
+        if !(ANDROID_CONNECTION_FLOOR..=ANDROID_CONNECTION_CEILING).contains(&self.min_connections)
+            || !(ANDROID_CONNECTION_FLOOR..=ANDROID_CONNECTION_CEILING)
+                .contains(&self.max_connections)
+            || self.min_connections > self.max_connections
+        {
+            return Err(NodeError::new(
+                "INVALID_CONNECTION_LIMITS",
+                format!(
+                    "minConnections ({}) and maxConnections ({}) must be between {ANDROID_CONNECTION_FLOOR} and {ANDROID_CONNECTION_CEILING}, with min <= max",
+                    self.min_connections, self.max_connections
+                ),
             ));
         }
         Ok(())
@@ -1636,6 +1663,8 @@ async fn prepare_network_node(
     args.ws_api.ws_api_port = Some(android_config.websocket_port);
     args.network_api.address = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     args.network_api.skip_load_from_network = false;
+    args.network_api.min_connections = Some(android_config.min_connections);
+    args.network_api.max_connections = Some(android_config.max_connections);
     args.secrets.transport_keypair = Some(android_config.transport_keypair_path());
     args.secrets.cipher = Some(android_config.delegate_cipher_path());
 
@@ -1817,6 +1846,25 @@ mod tests {
             config.database_directory.to_string_lossy(),
             "/data/user/0/org.freenet.androidnode/files/freenet/database/local"
         );
+        assert_eq!(config.min_connections, 10);
+        assert_eq!(config.max_connections, 25);
+    }
+
+    #[test]
+    fn connection_limits_must_stay_in_the_phone_range() {
+        let mut json: serde_json::Value =
+            serde_json::from_str(&valid_config_json()).expect("valid base JSON");
+        json["minConnections"] = serde_json::json!(20);
+        json["maxConnections"] = serde_json::json!(10);
+        let error = AndroidNodeConfig::parse(&json.to_string())
+            .expect_err("min greater than max must fail");
+        assert_eq!(error.code, "INVALID_CONNECTION_LIMITS");
+
+        json["minConnections"] = serde_json::json!(10);
+        json["maxConnections"] = serde_json::json!(200);
+        let error = AndroidNodeConfig::parse(&json.to_string())
+            .expect_err("desktop-scale max must fail on Android");
+        assert_eq!(error.code, "INVALID_CONNECTION_LIMITS");
     }
 
     #[test]

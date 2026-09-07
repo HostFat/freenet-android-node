@@ -40,4 +40,12 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
     fun setNetworkDataPolicy(policy: NetworkDataPolicy) {
         NodeRepository.setNetworkDataPolicy(getApplication(), policy)
     }
+
+    fun setMinConnections(minConnections: Int) {
+        NodeRepository.setMinConnections(getApplication(), minConnections)
+    }
+
+    fun setMaxConnections(maxConnections: Int) {
+        NodeRepository.setMaxConnections(getApplication(), maxConnections)
+    }
 }

@@ -133,6 +133,14 @@ object NodeRepository {
         }
     }
 
+    fun setMinConnections(context: Context, minConnections: Int) {
+        NodePolicyRepository.setMinConnections(context.applicationContext, minConnections)
+    }
+
+    fun setMaxConnections(context: Context, maxConnections: Int) {
+        NodePolicyRepository.setMaxConnections(context.applicationContext, maxConnections)
+    }
+
     fun reportNotificationPermissionRequired() {
         mutableState.value = mutableState.value.copy(
             detail = "Notification permission is required before starting the node",
@@ -383,6 +391,8 @@ internal fun androidNodeConfigJson(
     context: Context,
     connectivity: ConnectivitySnapshot? = null,
     networkDataPolicy: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
+    minConnections: Int = ConnectionLimits.DefaultMin,
+    maxConnections: Int = ConnectionLimits.DefaultMax,
 ): String {
     val persistentRoot = File(context.filesDir, "freenet")
     val config = JSONObject()
@@ -403,6 +413,8 @@ internal fun androidNodeConfigJson(
         )
         .put("temporaryDirectory", File(context.cacheDir, "freenet/temporary").absolutePath)
         .put("websocketPort", 7509)
+        .put("minConnections", minConnections)
+        .put("maxConnections", maxConnections)
     if (connectivity != null) {
         config.put(
             "network",

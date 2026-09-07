@@ -284,6 +284,8 @@ class NodeService : Service() {
                 this@NodeService,
                 connectivity.takeIf { networkMode },
                 policy.networkData,
+                policy.minConnections,
+                policy.maxConnections,
             )
             val result = if (networkMode) {
                 NativeBridge.startNetworkNode(configJson)

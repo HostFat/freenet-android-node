@@ -34,4 +34,9 @@
     <string name="xiaomi_autostart_disabled">Xiaomi Autostart: off (unreliable)</string>
     <string name="xiaomi_autostart_unknown">Xiaomi Autostart: unknown (unreliable)</string>
     <string name="xiaomi_autostart_disclaimer">Xiaomi Autostart detection is only a hint. It can be wrong, and other Xiaomi limits (battery saver, Recents lock, HyperOS background autostart) are not visible to this app.</string>
+    <string name="peer_connections">Peer connections</string>
+    <string name="min_connections">Minimum</string>
+    <string name="max_connections">Maximum</string>
+    <string name="connection_limits_apply_next_start">Takes effect the next time the network node starts.</string>
+    <string name="connection_limits_desktop_note">A typical desktop Freenet node defaults to a minimum of 25 and a maximum of 200 peer connections. This unofficial Android build uses a smaller range. Freenet is still experimental.</string>
 </resources>

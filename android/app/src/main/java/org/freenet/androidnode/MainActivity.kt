@@ -326,6 +326,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             }
                         },
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
+                        onMinConnections = nodeViewModel::setMinConnections,
+                        onMaxConnections = nodeViewModel::setMaxConnections,
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -539,6 +541,8 @@ private fun PolicyControls(
     policies: NodePolicyState,
     onPowerPolicy: (NodePowerPolicy) -> Unit,
     onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
+    onMinConnections: (Int) -> Unit,
+    onMaxConnections: (Int) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text("Node runs when", style = MaterialTheme.typography.titleMedium)
@@ -567,6 +571,44 @@ private fun PolicyControls(
             "Uses Android's validated and metered network status, regardless of Wi-Fi, cellular, Ethernet, or VPN.",
             style = MaterialTheme.typography.bodySmall,
         )
+        Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)
+        Text(stringResource(R.string.min_connections), style = MaterialTheme.typography.bodyMedium)
+        ConnectionLimitChips(
+            selected = policies.minConnections,
+            onSelect = onMinConnections,
+        )
+        Text(stringResource(R.string.max_connections), style = MaterialTheme.typography.bodyMedium)
+        ConnectionLimitChips(
+            selected = policies.maxConnections,
+            onSelect = onMaxConnections,
+        )
+        Text(
+            stringResource(R.string.connection_limits_apply_next_start),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(R.string.connection_limits_desktop_note),
+            style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun ConnectionLimitChips(
+    selected: Int,
+    onSelect: (Int) -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        ConnectionLimits.Choices.forEach { value ->
+            FilterChip(
+                selected = selected == value,
+                onClick = { onSelect(value) },
+                label = { Text(value.toString()) },
+            )
+        }
     }
 }
 

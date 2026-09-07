@@ -16,10 +16,26 @@ enum class NetworkDataPolicy(val displayName: String) {
     AnyValidated("Any validated network"),
 }
 
+internal object ConnectionLimits {
+    const val Floor = 10
+    const val Ceiling = 25
+    const val DefaultMin = 10
+    const val DefaultMax = 25
+    val Choices = listOf(10, 15, 20, 25)
+
+    fun clampPair(min: Int, max: Int): Pair<Int, Int> {
+        val lo = min.coerceIn(Floor, Ceiling)
+        val hi = max.coerceIn(Floor, Ceiling)
+        return if (lo <= hi) lo to hi else hi to hi
+    }
+}
+
 data class NodePolicyState(
     val power: NodePowerPolicy = NodePowerPolicy.Manual,
     val networkData: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
     val suspendedByUser: Boolean = false,
+    val minConnections: Int = ConnectionLimits.DefaultMin,
+    val maxConnections: Int = ConnectionLimits.DefaultMax,
 ) {
     val automatic: Boolean
         get() = power != NodePowerPolicy.Manual
@@ -41,6 +57,8 @@ object NodePolicyRepository {
     private const val POWER_KEY = "power_policy"
     private const val NETWORK_DATA_KEY = "network_data_policy"
     private const val SUSPENDED_KEY = "suspended_by_user"
+    private const val MIN_CONNECTIONS_KEY = "min_connections"
+    private const val MAX_CONNECTIONS_KEY = "max_connections"
 
     private val mutableState = MutableStateFlow(NodePolicyState())
     val state: StateFlow<NodePolicyState> = mutableState.asStateFlow()
@@ -55,6 +73,10 @@ object NodePolicyRepository {
             PREFERENCES_NAME,
             Context.MODE_PRIVATE,
         )
+        val (minConnections, maxConnections) = ConnectionLimits.clampPair(
+            preferences.getInt(MIN_CONNECTIONS_KEY, ConnectionLimits.DefaultMin),
+            preferences.getInt(MAX_CONNECTIONS_KEY, ConnectionLimits.DefaultMax),
+        )
         mutableState.value = NodePolicyState(
             power = preferences.getString(POWER_KEY, null)
                 ?.let { stored -> enumValues<NodePowerPolicy>().find { it.name == stored } }
@@ -63,6 +85,8 @@ object NodePolicyRepository {
                 ?.let { stored -> enumValues<NetworkDataPolicy>().find { it.name == stored } }
                 ?: NetworkDataPolicy.UnmeteredOnly,
             suspendedByUser = preferences.getBoolean(SUSPENDED_KEY, false),
+            minConnections = minConnections,
+            maxConnections = maxConnections,
         )
         initialized = true
     }
@@ -75,6 +99,20 @@ object NodePolicyRepository {
     fun setNetworkData(context: Context, networkData: NetworkDataPolicy) {
         initialize(context)
         persist(context, mutableState.value.copy(networkData = networkData))
+    }
+
+    fun setMinConnections(context: Context, minConnections: Int) {
+        initialize(context)
+        val current = mutableState.value
+        val (min, max) = ConnectionLimits.clampPair(minConnections, current.maxConnections)
+        persist(context, current.copy(minConnections = min, maxConnections = max))
+    }
+
+    fun setMaxConnections(context: Context, maxConnections: Int) {
+        initialize(context)
+        val current = mutableState.value
+        val (min, max) = ConnectionLimits.clampPair(current.minConnections, maxConnections)
+        persist(context, current.copy(minConnections = min, maxConnections = max))
     }
 
     fun setSuspended(context: Context, suspended: Boolean) {
@@ -99,6 +137,8 @@ object NodePolicyRepository {
             .putString(POWER_KEY, next.power.name)
             .putString(NETWORK_DATA_KEY, next.networkData.name)
             .putBoolean(SUSPENDED_KEY, next.suspendedByUser)
+            .putInt(MIN_CONNECTIONS_KEY, next.minConnections)
+            .putInt(MAX_CONNECTIONS_KEY, next.maxConnections)
             .apply()
         mutableState.value = next
     }
