@@ -43,6 +43,7 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.darkColorScheme
@@ -72,6 +73,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -80,6 +82,8 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import java.io.ByteArrayInputStream
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
@@ -191,6 +195,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val policyState by nodeViewModel.policies.collectAsState()
     val updateState by UpdateCheckRepository.state.collectAsState()
     val updateInterval by UpdateCheckRepository.interval.collectAsState()
+    val lifecycleOwner = LocalLifecycleOwner.current
+    var restrictionSnapshot by remember { mutableStateOf(readRestrictionSnapshot(context)) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var pendingNotificationAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -221,6 +227,16 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
 
     fun closeDrawer() {
         scope.launch { drawerState.close() }
+    }
+
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) {
+                restrictionSnapshot = readRestrictionSnapshot(context)
+            }
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
     }
 
     LaunchedEffect(Unit) {
@@ -310,6 +326,18 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             }
                         },
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
+                    )
+                    HorizontalDivider()
+                    BackgroundLimitsPanel(
+                        snapshot = restrictionSnapshot,
+                        onOpenSettings = {
+                            openRestrictionSettings(context, restrictionSnapshot)
+                            closeDrawer()
+                        },
+                        onOpenGuide = {
+                            openDontKillMyAppGuide(context, restrictionSnapshot.vendor)
+                            closeDrawer()
+                        },
                     )
                     HorizontalDivider()
                     OutlinedButton(
@@ -539,6 +567,80 @@ private fun PolicyControls(
             style = MaterialTheme.typography.bodySmall,
         )
     }
+}
+
+@Composable
+private fun BackgroundLimitsPanel(
+    snapshot: RestrictionSnapshot,
+    onOpenSettings: () -> Unit,
+    onOpenGuide: () -> Unit,
+) {
+    val needsFix = snapshot.look == RestrictionLook.NeedsFix
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Button(
+            onClick = onOpenSettings,
+            modifier = Modifier.fillMaxWidth(),
+            colors = if (needsFix) {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.errorContainer,
+                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
+                )
+            } else {
+                ButtonDefaults.buttonColors(
+                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
+                )
+            },
+        ) {
+            Text(
+                stringResource(
+                    if (needsFix) R.string.battery_limits_on else R.string.battery_limits_off,
+                ),
+            )
+        }
+        Text(
+            stringResource(R.string.battery_limits_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(oemTipRes(snapshot.vendor)),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (snapshot.xiaomiAutostart != XiaomiAutostartHint.NotXiaomi) {
+            Text(
+                stringResource(
+                    when (snapshot.xiaomiAutostart) {
+                        XiaomiAutostartHint.Enabled -> R.string.xiaomi_autostart_enabled
+                        XiaomiAutostartHint.Disabled -> R.string.xiaomi_autostart_disabled
+                        else -> R.string.xiaomi_autostart_unknown
+                    },
+                ),
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                stringResource(R.string.xiaomi_autostart_disclaimer),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+        OutlinedButton(
+            onClick = onOpenGuide,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.oem_guide))
+        }
+    }
+}
+
+private fun oemTipRes(vendor: OemVendor): Int = when (vendor) {
+    OemVendor.Xiaomi -> R.string.oem_tip_xiaomi
+    OemVendor.Samsung -> R.string.oem_tip_samsung
+    OemVendor.Huawei, OemVendor.Honor -> R.string.oem_tip_huawei
+    OemVendor.Oppo, OemVendor.Realme -> R.string.oem_tip_oppo
+    OemVendor.Vivo -> R.string.oem_tip_vivo
+    OemVendor.OnePlus -> R.string.oem_tip_oneplus
+    OemVendor.Asus -> R.string.oem_tip_asus
+    OemVendor.Generic -> R.string.oem_tip_generic
 }
 
 @Composable

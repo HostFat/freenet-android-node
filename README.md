@@ -76,8 +76,9 @@ is running.
 - **Charging** — starts and keeps running while the phone is plugged in.
 - **Always (best effort)** — tries to stay running whenever the network
   policy is eligible. Android can still stop it (battery optimization,
-  force-stop, OEM background limits) — the app does not request a
-  battery-optimization exemption.
+  force-stop, OEM background limits). The drawer has a control that
+  opens Android and vendor settings so you can remove those limits; the
+  app never silently grants itself an exemption.
 
 Automatic modes keep a lightweight controller and notification alive while
 waiting for eligible conditions, and the chosen policy survives app and

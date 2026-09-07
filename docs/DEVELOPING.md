@@ -190,8 +190,10 @@ until explicit Resume. Stop also performs a graceful shutdown and returns the
 power policy to Manual. Automatic restart is best-effort: the service is sticky
 in automatic modes and a boot/package-update receiver restores it, but Android
 force-stop, OEM background restrictions, and platform foreground-service limits
-can still prevent restart. The app does not request a battery-optimization
-exemption.
+can still prevent restart. The drawer exposes a tap target that opens Android
+battery settings and, on known OEM skins, vendor autostart screens. Xiaomi
+Autostart is probed with an undocumented AppOps code and treated only as an
+unreliable hint. The app never silently grants itself an exemption.
 
 Removing the Activity from Recents does not stop the foreground service. The
 persistent notification reports running/waiting/paused state and provides

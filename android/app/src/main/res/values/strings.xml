@@ -18,4 +18,20 @@
     <string name="auto_check_interval">New version auto-check every</string>
     <string name="download_apk">Open APK page</string>
     <string name="dismiss_update">Dismiss</string>
+    <string name="battery_limits_on">Battery limits on — tap to open settings</string>
+    <string name="battery_limits_off">Battery limits off — tap to review settings</string>
+    <string name="battery_limits_hint">Android can still stop a node that is running. Remove battery and background limits for this app if you want it to stay up.</string>
+    <string name="oem_guide">Phone-specific guide</string>
+    <string name="oem_tip_xiaomi">Xiaomi: enable Autostart in Security, set battery saver to No restrictions, allow Background autostart, and lock this app in Recents.</string>
+    <string name="oem_tip_samsung">Samsung: set this app to Unrestricted, remove it from Sleeping / Deep sleeping apps, and add it to Never sleeping apps.</string>
+    <string name="oem_tip_huawei">Huawei/Honor: App launch → Manage manually, then enable Auto-launch, Secondary launch, and Run in background.</string>
+    <string name="oem_tip_oppo">Oppo/Realme: allow Autostart / startup in the security app and let this app run in the background.</string>
+    <string name="oem_tip_vivo">Vivo: allow background startup / high background power consumption for this app.</string>
+    <string name="oem_tip_oneplus">OnePlus: disable battery optimization / background freeze for this app.</string>
+    <string name="oem_tip_asus">Asus: allow Autostart and disable power-saver restrictions for this app.</string>
+    <string name="oem_tip_generic">Some phones add extra battery savers. Open the guide for this manufacturer if the node keeps dying.</string>
+    <string name="xiaomi_autostart_enabled">Xiaomi Autostart: on (unreliable)</string>
+    <string name="xiaomi_autostart_disabled">Xiaomi Autostart: off (unreliable)</string>
+    <string name="xiaomi_autostart_unknown">Xiaomi Autostart: unknown (unreliable)</string>
+    <string name="xiaomi_autostart_disclaimer">Xiaomi Autostart detection is only a hint. It can be wrong, and other Xiaomi limits (battery saver, Recents lock, HyperOS background autostart) are not visible to this app.</string>
 </resources>
