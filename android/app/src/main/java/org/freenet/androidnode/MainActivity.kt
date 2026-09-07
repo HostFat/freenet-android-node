@@ -90,7 +90,6 @@ import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.mm
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
@@ -484,7 +483,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         .align(Alignment.TopStart)
                         .padding(
                             start = 8.dp,
-                            top = 8.dp + 48.dp + 1.mm,
+                            top = 8.dp + 48.dp + 6.dp,
                             end = 8.dp,
                             bottom = 8.dp,
                         ),
