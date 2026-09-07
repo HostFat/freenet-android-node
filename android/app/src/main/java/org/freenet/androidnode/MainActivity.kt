@@ -50,7 +50,6 @@ import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.DrawerValue
-import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -58,6 +57,9 @@ import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.SegmentedButton
+import androidx.compose.material3.SegmentedButtonDefaults
+import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -86,7 +88,9 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.mm
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
@@ -385,16 +389,12 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         stringResource(R.string.auto_check_interval),
                         style = MaterialTheme.typography.titleMedium,
                     )
-                    UpdateCheckInterval.entries.forEach { interval ->
-                        FilterChip(
-                            selected = updateInterval == interval,
-                            onClick = {
-                                UpdateCheckRepository.setInterval(context, interval)
-                            },
-                            label = { Text(interval.displayName) },
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                    }
+                    CompactChoiceRow(
+                        options = UpdateCheckInterval.entries,
+                        selected = updateInterval,
+                        label = { "${it.hours}h" },
+                        onSelect = { UpdateCheckRepository.setInterval(context, it) },
+                    )
                     OutlinedButton(
                         enabled = !updateState.checking,
                         onClick = {
@@ -482,7 +482,12 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopStart)
-                        .padding(8.dp),
+                        .padding(
+                            start = 8.dp,
+                            top = 8.dp + 48.dp + 1.mm,
+                            end = 8.dp,
+                            bottom = 8.dp,
+                        ),
                     shape = MaterialTheme.shapes.medium,
                     tonalElevation = 6.dp,
                     shadowElevation = 4.dp,
@@ -679,6 +684,35 @@ private fun NodeControlStrip(
 }
 
 @Composable
+private fun <T> CompactChoiceRow(
+    options: List<T>,
+    selected: T,
+    label: (T) -> String,
+    onSelect: (T) -> Unit,
+) {
+    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
+        options.forEachIndexed { index, option ->
+            SegmentedButton(
+                selected = selected == option,
+                onClick = { onSelect(option) },
+                shape = SegmentedButtonDefaults.itemShape(
+                    index = index,
+                    count = options.size,
+                ),
+                label = {
+                    Text(
+                        label(option),
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                },
+            )
+        }
+    }
+}
+
+@Composable
 private fun PolicyControls(
     policies: NodePolicyState,
     onPowerPolicy: (NodePowerPolicy) -> Unit,
@@ -687,30 +721,26 @@ private fun PolicyControls(
     onMaxConnections: (Int) -> Unit,
 ) {
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text("Node runs when", style = MaterialTheme.typography.titleMedium)
-        NodePowerPolicy.entries.forEach { policy ->
-            FilterChip(
-                selected = policies.power == policy,
-                onClick = { onPowerPolicy(policy) },
-                label = { Text(policy.displayName) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        Text(stringResource(R.string.node_runs_when), style = MaterialTheme.typography.titleMedium)
+        CompactChoiceRow(
+            options = NodePowerPolicy.entries,
+            selected = policies.power,
+            label = { it.shortLabel },
+            onSelect = onPowerPolicy,
+        )
         Text(
-            "Charging and Always keep a lightweight foreground controller active while the node waits.",
+            stringResource(R.string.node_runs_when_hint),
             style = MaterialTheme.typography.bodySmall,
         )
-        Text("Network data", style = MaterialTheme.typography.titleMedium)
-        NetworkDataPolicy.entries.forEach { policy ->
-            FilterChip(
-                selected = policies.networkData == policy,
-                onClick = { onNetworkDataPolicy(policy) },
-                label = { Text(policy.displayName) },
-                modifier = Modifier.fillMaxWidth(),
-            )
-        }
+        Text(stringResource(R.string.network_data), style = MaterialTheme.typography.titleMedium)
+        CompactChoiceRow(
+            options = NetworkDataPolicy.entries,
+            selected = policies.networkData,
+            label = { it.shortLabel },
+            onSelect = onNetworkDataPolicy,
+        )
         Text(
-            "Uses Android's validated and metered network status, regardless of Wi-Fi, cellular, Ethernet, or VPN.",
+            stringResource(R.string.network_data_hint),
             style = MaterialTheme.typography.bodySmall,
         )
         Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)

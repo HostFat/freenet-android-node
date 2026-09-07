@@ -5,15 +5,15 @@ import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
 
-enum class NodePowerPolicy(val displayName: String) {
-    Manual("Manual"),
-    Charging("Charging"),
-    Always("Always (best effort)"),
+enum class NodePowerPolicy(val displayName: String, val shortLabel: String) {
+    Manual("Manual", "Manual"),
+    Charging("Charging", "Charging"),
+    Always("Always (best effort)", "Always"),
 }
 
-enum class NetworkDataPolicy(val displayName: String) {
-    UnmeteredOnly("Unmetered only"),
-    AnyValidated("Any validated network"),
+enum class NetworkDataPolicy(val displayName: String, val shortLabel: String) {
+    UnmeteredOnly("Unmetered only", "Unmetered"),
+    AnyValidated("Any validated network", "Any validated"),
 }
 
 internal object ConnectionLimits {
