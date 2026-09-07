@@ -657,6 +657,7 @@ struct NodeStatus {
     network_metered: bool,
     vpn_active: bool,
     last_network_error: Option<String>,
+    highest_seen_peer_version: Option<String>,
 }
 
 impl NodeStatus {
@@ -680,6 +681,7 @@ impl NodeStatus {
             network_metered: false,
             vpn_active: false,
             last_network_error: None,
+            highest_seen_peer_version: None,
         }
     }
 }
@@ -849,6 +851,7 @@ impl NodeRuntime {
                 .as_ref()
                 .is_some_and(|network| network.connectivity.vpn),
             last_network_error: None,
+            highest_seen_peer_version: None,
         };
         inner.started_at_ms = Some(unix_time_ms());
         inner.last_observed_peer_count = 0;
@@ -1355,6 +1358,8 @@ fn refresh_runtime_metrics(inner: &mut RuntimeInner) {
     inner.status.bytes_received = TRANSPORT_METRICS
         .cumulative_bytes_received()
         .saturating_sub(inner.transport_received_baseline);
+    inner.status.highest_seen_peer_version = freenet::transport::get_highest_seen_version()
+        .map(|(major, minor, patch)| format!("{major}.{minor}.{patch}"));
 }
 
 enum ThreadExit {
@@ -1873,6 +1878,15 @@ mod tests {
         assert_eq!(response["data"]["currentNetworkType"], "Wi-Fi");
         assert_eq!(response["data"]["connectivityAvailable"], true);
         assert_eq!(response["data"]["networkMetered"], false);
+    }
+
+    #[test]
+    fn stopped_status_exposes_peer_version_field() {
+        let runtime = NodeRuntime::new();
+        let response: serde_json::Value =
+            serde_json::from_str(&runtime.status()).expect("parse status");
+        assert_eq!(response["ok"], true);
+        assert!(response["data"]["highestSeenPeerVersion"].is_null());
     }
 
     #[test]

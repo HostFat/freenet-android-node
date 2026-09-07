@@ -28,6 +28,7 @@ data class NodeUiState(
     val networkMetered: Boolean = false,
     val vpnActive: Boolean = false,
     val lastNetworkError: String? = null,
+    val highestSeenPeerVersion: String? = null,
 ) {
     val uptimeMs: Long
         get() = startedAtElapsedRealtimeMs
@@ -187,6 +188,7 @@ object NodeRepository {
             networkMetered = parsed.networkMetered,
             vpnActive = parsed.vpnActive,
             lastNetworkError = parsed.lastNetworkError,
+            highestSeenPeerVersion = parsed.highestSeenPeerVersion,
         )
         mutableState.value = next
         return next
@@ -307,6 +309,7 @@ internal data class NodeStatusSnapshot(
     val networkMetered: Boolean = false,
     val vpnActive: Boolean = false,
     val lastNetworkError: String? = null,
+    val highestSeenPeerVersion: String? = null,
 )
 
 internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
@@ -338,6 +341,7 @@ internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
             networkMetered = data.optBoolean("networkMetered"),
             vpnActive = data.optBoolean("vpnActive"),
             lastNetworkError = data.optionalString("lastNetworkError"),
+            highestSeenPeerVersion = data.optionalString("highestSeenPeerVersion"),
         )
     }.getOrElse { error ->
         NodeStatusSnapshot("Failed", error.message ?: response, 0, null)

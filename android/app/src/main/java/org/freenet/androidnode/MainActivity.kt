@@ -56,6 +56,7 @@ import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -72,6 +73,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
@@ -187,6 +189,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val context = LocalContext.current
     val nodeState by nodeViewModel.state.collectAsState()
     val policyState by nodeViewModel.policies.collectAsState()
+    val updateState by UpdateCheckRepository.state.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var pendingNotificationAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -217,6 +220,10 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
 
     fun closeDrawer() {
         scope.launch { drawerState.close() }
+    }
+
+    LaunchedEffect(Unit) {
+        UpdateCheckRepository.checkAutomatic(context, nodeState.highestSeenPeerVersion)
     }
 
     BackHandler(enabled = drawerState.isOpen || showDiagnostics) {
@@ -315,22 +322,33 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     ) {
                         Text("For nerds")
                     }
-                    val context = LocalContext.current
                     OutlinedButton(
+                        enabled = !updateState.checking,
                         onClick = {
-                            context.startActivity(
-                                Intent(
-                                    Intent.ACTION_VIEW,
-                                    Uri.parse(
-                                        "https://github.com/HostFat/freenet-android-node/releases/latest",
-                                    ),
-                                ),
-                            )
-                            closeDrawer()
+                            scope.launch {
+                                UpdateCheckRepository.checkManual(
+                                    context,
+                                    nodeState.highestSeenPeerVersion,
+                                )
+                                closeDrawer()
+                            }
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Latest APK")
+                        Text(
+                            if (updateState.checking) {
+                                "Checking…"
+                            } else {
+                                stringResource(R.string.check_for_updates)
+                            },
+                        )
+                    }
+                    updateState.lastError?.let { error ->
+                        Text(
+                            error,
+                            color = MaterialTheme.colorScheme.error,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
                     }
                 }
             }
@@ -360,6 +378,50 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 ) {
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
                         Text("☰", style = MaterialTheme.typography.titleLarge)
+                    }
+                }
+            }
+            val updateMessage = updateState.message
+            if (updateState.kind != UpdateKind.None && updateMessage != null) {
+                Surface(
+                    modifier = Modifier
+                        .align(Alignment.BottomCenter)
+                        .padding(16.dp)
+                        .fillMaxWidth(),
+                    shape = MaterialTheme.shapes.medium,
+                    tonalElevation = 4.dp,
+                    shadowElevation = 2.dp,
+                ) {
+                    Column(
+                        modifier = Modifier.padding(12.dp),
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            updateMessage,
+                            style = MaterialTheme.typography.bodyMedium,
+                        )
+                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                            if (updateState.kind == UpdateKind.ApkAvailable) {
+                                Button(
+                                    onClick = {
+                                        context.startActivity(
+                                            Intent(
+                                                Intent.ACTION_VIEW,
+                                                Uri.parse(
+                                                    updateState.releaseUrl
+                                                        ?: UpdateUrls.APK_RELEASES_PAGE,
+                                                ),
+                                            ),
+                                        )
+                                    },
+                                ) {
+                                    Text(stringResource(R.string.download_apk))
+                                }
+                            }
+                            TextButton(onClick = UpdateCheckRepository::dismiss) {
+                                Text(stringResource(R.string.dismiss_update))
+                            }
+                        }
                     }
                 }
             }

@@ -34,6 +34,13 @@ Installing a newly published APK on a phone still requires a user tap
 (sideload / Package Installer). Android does not allow a silent replace of a
 sideloaded app.
 
+The app itself also checks GitHub (and, while a network node is running, the
+highest Freenet version already reported by peers) at most every 12 hours, plus
+from **Check for updates** in the drawer. If a newer APK exists it shows a
+quiet banner and a silent notification whose tap opens the GitHub release page
+in the browser. If core is newer but this fork has not published an APK yet,
+only the in-app banner appears.
+
 ## Notifications
 
 Watch this repository's **Releases** on GitHub to get an email when an APK is
