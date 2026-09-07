@@ -498,7 +498,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         .align(Alignment.TopStart)
                         .padding(
                             start = 8.dp,
-                            top = 8.dp + 48.dp + 6.dp,
+                            top = 8.dp + 48.dp + 12.dp,
                             end = 8.dp,
                             bottom = 8.dp,
                         ),
