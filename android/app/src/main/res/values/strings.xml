@@ -22,6 +22,10 @@
     <string name="battery_limits_off">Battery limits off — tap to review settings</string>
     <string name="battery_limits_hint">Android can still stop a node that is running. Remove battery and background limits for this app if you want it to stay up.</string>
     <string name="oem_guide">Phone-specific guide</string>
+    <string name="external_guide_title">Open an external website?</string>
+    <string name="external_guide_body">You are about to open dontkillmyapp.com in the browser.\n\nThat site is not part of Freenet. The Freenet Project is not responsible for its content.</string>
+    <string name="external_guide_continue">Continue</string>
+    <string name="external_guide_cancel">Cancel</string>
     <string name="oem_tip_xiaomi">Xiaomi: enable Autostart in Security, set battery saver to No restrictions, allow Background autostart, and lock this app in Recents.</string>
     <string name="oem_tip_samsung">Samsung: set this app to Unrestricted, remove it from Sleeping / Deep sleeping apps, and add it to Never sleeping apps.</string>
     <string name="oem_tip_huawei">Huawei/Honor: App launch → Manage manually, then enable Auto-launch, Secondary launch, and Run in background.</string>

@@ -210,6 +210,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     var showDiagnostics by remember { mutableStateOf(false) }
     var showConfigEditor by remember { mutableStateOf(false) }
     var showNoEditor by remember { mutableStateOf(false) }
+    var showExternalGuideConfirm by remember { mutableStateOf(false) }
     var pendingRestart by remember { mutableStateOf<PendingRestart?>(null) }
     var configFingerprint by remember { mutableStateOf(ConfigToml.fingerprint(context)) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
@@ -377,10 +378,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             openRestrictionSettings(context, restrictionSnapshot)
                             closeDrawer()
                         },
-                        onOpenGuide = {
-                            openDontKillMyAppGuide(context, restrictionSnapshot.vendor)
-                            closeDrawer()
-                        },
+                        onOpenGuide = { showExternalGuideConfirm = true },
                     )
                     HorizontalDivider()
                     Text(
@@ -584,6 +582,30 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
             confirmButton = {
                 TextButton(onClick = { showNoEditor = false }) {
                     Text(stringResource(R.string.config_close))
+                }
+            },
+        )
+    }
+
+    if (showExternalGuideConfirm) {
+        AlertDialog(
+            onDismissRequest = { showExternalGuideConfirm = false },
+            title = { Text(stringResource(R.string.external_guide_title)) },
+            text = { Text(stringResource(R.string.external_guide_body)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        showExternalGuideConfirm = false
+                        openDontKillMyAppGuide(context, restrictionSnapshot.vendor)
+                        closeDrawer()
+                    },
+                ) {
+                    Text(stringResource(R.string.external_guide_continue))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showExternalGuideConfirm = false }) {
+                    Text(stringResource(R.string.external_guide_cancel))
                 }
             },
         )
