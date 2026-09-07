@@ -20,8 +20,9 @@ class ConnectionLimitsTest {
         assertEquals(1, ConnectionLimits.coerce(0))
         assertEquals(2000, ConnectionLimits.coerce(2001))
         assertEquals(Pair(10, 25), ConnectionLimits.clampLoaded(10, 25))
-        assertEquals(Pair(50, 50), ConnectionLimits.clampMin(50, 25))
+        assertEquals(Pair(25, 25), ConnectionLimits.clampMin(50, 25))
         assertEquals(Pair(10, 10), ConnectionLimits.clampMax(25, 10))
+        assertEquals(Pair(25, 25), ConnectionLimits.clampLoaded(50, 25))
         assertEquals(Pair(1, 2000), ConnectionLimits.clampLoaded(0, 5000))
     }
 

@@ -634,11 +634,18 @@ private fun PolicyControls(
         ConnectionLimitField(
             value = policies.minConnections,
             label = stringResource(R.string.min_connections),
+            upperBound = policies.maxConnections,
+            rangeText = stringResource(
+                R.string.connection_limits_min_range,
+                policies.maxConnections,
+            ),
             onCommit = onMinConnections,
         )
         ConnectionLimitField(
             value = policies.maxConnections,
             label = stringResource(R.string.max_connections),
+            upperBound = ConnectionLimits.Ceiling,
+            rangeText = stringResource(R.string.connection_limits_range),
             onCommit = onMaxConnections,
         )
         Text(
@@ -656,15 +663,18 @@ private fun PolicyControls(
 private fun ConnectionLimitField(
     value: Int,
     label: String,
+    upperBound: Int,
+    rangeText: String,
     onCommit: (Int) -> Unit,
 ) {
     var text by remember(value) { mutableStateOf(value.toString()) }
     var focused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
+    val cap = minOf(upperBound, ConnectionLimits.Ceiling)
 
     fun commit() {
         val parsed = text.toIntOrNull()
-        val next = ConnectionLimits.coerce(parsed ?: value)
+        val next = ConnectionLimits.coerce(parsed ?: value).coerceAtMost(cap)
         text = next.toString()
         if (next != value) {
             onCommit(next)
@@ -680,12 +690,12 @@ private fun ConnectionLimitField(
                 return@OutlinedTextField
             }
             val parsed = digits.toLongOrNull() ?: return@OutlinedTextField
-            if (parsed <= ConnectionLimits.Ceiling) {
+            if (parsed <= cap) {
                 text = digits
             }
         },
         label = { Text(label) },
-        supportingText = { Text(stringResource(R.string.connection_limits_range)) },
+        supportingText = { Text(rangeText) },
         singleLine = true,
         keyboardOptions = KeyboardOptions(
             keyboardType = KeyboardType.Number,

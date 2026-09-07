@@ -27,13 +27,13 @@ internal object ConnectionLimits {
     fun clampLoaded(min: Int, max: Int): Pair<Int, Int> {
         val lo = coerce(min)
         val hi = coerce(max)
-        return if (lo <= hi) lo to hi else lo to lo
+        return if (lo <= hi) lo to hi else hi to hi
     }
 
     fun clampMin(min: Int, max: Int): Pair<Int, Int> {
         val lo = coerce(min)
         val hi = coerce(max)
-        return if (lo <= hi) lo to hi else lo to lo
+        return if (lo <= hi) lo to hi else hi to hi
     }
 
     fun clampMax(min: Int, max: Int): Pair<Int, Int> {
