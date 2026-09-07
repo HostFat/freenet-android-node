@@ -7,13 +7,11 @@ import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
-import android.graphics.drawable.Icon
 import android.net.Uri
 import android.os.Build
 import java.io.IOException
 import java.net.HttpURLConnection
 import java.net.URL
-import java.util.concurrent.TimeUnit
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
@@ -34,7 +32,19 @@ data class UpdateUiState(
 object UpdateCheckRepository {
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(UpdateUiState())
+    private val mutableInterval = MutableStateFlow(UpdateCheckInterval.Default)
     val state: StateFlow<UpdateUiState> = mutableState.asStateFlow()
+    val interval: StateFlow<UpdateCheckInterval> = mutableInterval.asStateFlow()
+
+    fun initialize(context: Context) {
+        mutableInterval.value = loadInterval(context.applicationContext)
+    }
+
+    fun setInterval(context: Context, interval: UpdateCheckInterval) {
+        val appContext = context.applicationContext
+        prefs(appContext).edit().putInt(KEY_INTERVAL_HOURS, interval.hours).apply()
+        mutableInterval.value = interval
+    }
 
     suspend fun checkAutomatic(context: Context, peerVersion: String? = null) {
         check(context.applicationContext, peerVersion, force = false)
@@ -51,13 +61,11 @@ object UpdateCheckRepository {
     private suspend fun check(context: Context, peerVersion: String?, force: Boolean) {
         mutex.withLock {
             val prefs = prefs(context)
+            val intervalMs = loadInterval(context).intervalMs
             val now = System.currentTimeMillis()
             if (!force) {
                 val last = prefs.getLong(KEY_LAST_CHECK_MS, 0L)
-                if (now - last < AUTO_INTERVAL_MS && mutableState.value.kind != UpdateKind.None) {
-                    return
-                }
-                if (now - last < AUTO_INTERVAL_MS) {
+                if (now - last < intervalMs) {
                     return
                 }
             }
@@ -186,6 +194,11 @@ object UpdateCheckRepository {
         manager.createNotificationChannel(channel)
     }
 
+    private fun loadInterval(context: Context): UpdateCheckInterval =
+        UpdateCheckInterval.fromHours(
+            prefs(context).getInt(KEY_INTERVAL_HOURS, UpdateCheckInterval.Default.hours),
+        )
+
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
@@ -197,9 +210,9 @@ object UpdateCheckRepository {
     private const val PREFS = "update_check"
     private const val KEY_LAST_CHECK_MS = "last_check_ms"
     private const val KEY_NOTIFIED_APK = "notified_apk_version"
+    private const val KEY_INTERVAL_HOURS = "auto_interval_hours"
     private const val USER_AGENT = "freenet-android-node"
     private const val CHANNEL_ID = "freenet_apk_updates"
     private const val NOTIFICATION_ID = 7510
     private const val REQUEST_OPEN_RELEASE = 21
-    private val AUTO_INTERVAL_MS = TimeUnit.HOURS.toMillis(12)
 }

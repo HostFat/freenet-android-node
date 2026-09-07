@@ -190,6 +190,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val nodeState by nodeViewModel.state.collectAsState()
     val policyState by nodeViewModel.policies.collectAsState()
     val updateState by UpdateCheckRepository.state.collectAsState()
+    val updateInterval by UpdateCheckRepository.interval.collectAsState()
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var pendingNotificationAction by remember { mutableStateOf<(() -> Unit)?>(null) }
@@ -321,6 +322,20 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         modifier = Modifier.fillMaxWidth(),
                     ) {
                         Text("For nerds")
+                    }
+                    Text(
+                        stringResource(R.string.auto_check_interval),
+                        style = MaterialTheme.typography.titleMedium,
+                    )
+                    UpdateCheckInterval.entries.forEach { interval ->
+                        FilterChip(
+                            selected = updateInterval == interval,
+                            onClick = {
+                                UpdateCheckRepository.setInterval(context, interval)
+                            },
+                            label = { Text(interval.displayName) },
+                            modifier = Modifier.fillMaxWidth(),
+                        )
                     }
                     OutlinedButton(
                         enabled = !updateState.checking,

@@ -20,6 +20,14 @@ class UpdateCheckTest {
     }
 
     @Test
+    fun autoCheckIntervalDefaultsToFourHoursAndRejectsUnknownValues() {
+        assertEquals(UpdateCheckInterval.Hours4, UpdateCheckInterval.Default)
+        assertEquals(4L * 60 * 60 * 1000, UpdateCheckInterval.Hours4.intervalMs)
+        assertEquals(UpdateCheckInterval.Hours2, UpdateCheckInterval.fromHours(2))
+        assertEquals(UpdateCheckInterval.Hours4, UpdateCheckInterval.fromHours(99))
+    }
+
+    @Test
     fun debugVersionNameDoesNotPretendTheApkIsOld() {
         val decision = decideUpdate(
             installedCore = SemVer(0, 2, 134),

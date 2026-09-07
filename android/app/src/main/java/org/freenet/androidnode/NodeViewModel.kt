@@ -6,6 +6,7 @@ import androidx.lifecycle.AndroidViewModel
 class NodeViewModel(application: Application) : AndroidViewModel(application) {
     init {
         NodePolicyRepository.initialize(application)
+        UpdateCheckRepository.initialize(application)
     }
 
     val state = NodeRepository.state
