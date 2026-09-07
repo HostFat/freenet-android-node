@@ -9,6 +9,12 @@ import androidx.core.content.FileProvider
 import java.io.File
 import java.security.MessageDigest
 
+internal fun shouldPromptRestartForConfigFile(
+    fingerprintChanged: Boolean,
+    userInitiatedEdit: Boolean,
+    networkLive: Boolean,
+): Boolean = fingerprintChanged && userInitiatedEdit && networkLive
+
 internal object ConfigToml {
     const val MIN_KEY = "min-number-of-connections"
     const val MAX_KEY = "max-number-of-connections"
@@ -92,7 +98,7 @@ internal object ConfigToml {
         NodePolicyRepository.setConnectionLimits(context, min, max)
     }
 
-    fun openInExternalEditor(context: Context): Boolean {
+    fun editorIntent(context: Context): Intent? {
         ensureExists(context)
         val target = file(context)
         val uri = FileProvider.getUriForFile(
@@ -110,13 +116,16 @@ internal object ConfigToml {
         val chosen = when {
             canHandle(context, edit) -> edit
             canHandle(context, view) -> view
-            else -> return false
+            else -> return null
         }
         grantToHandlers(context, chosen, uri, flags)
-        context.startActivity(
-            Intent.createChooser(chosen, context.getString(R.string.open_config_external))
-                .addFlags(flags),
-        )
+        return Intent.createChooser(chosen, context.getString(R.string.open_config_external))
+            .addFlags(flags)
+    }
+
+    fun openInExternalEditor(context: Context): Boolean {
+        val intent = editorIntent(context) ?: return false
+        context.startActivity(intent)
         return true
     }
 

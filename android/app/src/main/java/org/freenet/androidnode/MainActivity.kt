@@ -73,6 +73,7 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -216,6 +217,31 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     var showExternalGuideConfirm by remember { mutableStateOf(false) }
     var pendingRestart by remember { mutableStateOf<PendingRestart?>(null) }
     var configFingerprint by remember { mutableStateOf(ConfigToml.fingerprint(context)) }
+    var awaitingExternalConfigEdit by rememberSaveable { mutableStateOf(false) }
+    fun adoptConfigFingerprint(userInitiatedEdit: Boolean) {
+        val now = ConfigToml.fingerprint(context)
+        val changed = now != configFingerprint
+        configFingerprint = now
+        if (changed) {
+            ConfigToml.syncLimitsFromFile(context)
+        }
+        val live = NodeRepository.state.value
+        if (
+            shouldPromptRestartForConfigFile(
+                fingerprintChanged = changed,
+                userInitiatedEdit = userInitiatedEdit,
+                networkLive = networkNodeIsLive(live.state, live.mode),
+            )
+        ) {
+            pendingRestart = PendingRestart.ConfigFile
+        }
+    }
+    val externalConfigLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.StartActivityForResult(),
+    ) {
+        adoptConfigFingerprint(userInitiatedEdit = true)
+        awaitingExternalConfigEdit = false
+    }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -265,14 +291,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 restrictionSnapshot = readRestrictionSnapshot(context)
-                val now = ConfigToml.fingerprint(context)
-                if (now != configFingerprint) {
-                    configFingerprint = now
-                    ConfigToml.syncLimitsFromFile(context)
-                    val live = NodeRepository.state.value
-                    if (networkNodeIsLive(live.state, live.mode)) {
-                        pendingRestart = PendingRestart.ConfigFile
-                    }
+                if (!awaitingExternalConfigEdit) {
+                    adoptConfigFingerprint(userInitiatedEdit = false)
                 }
             }
         }
@@ -448,11 +468,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     modifier = Modifier.fillMaxSize(),
                     onClose = { showConfigEditor = false },
                     onSaved = {
-                        configFingerprint = ConfigToml.fingerprint(context)
-                        ConfigToml.syncLimitsFromFile(context)
-                        if (networkNodeIsLive(nodeState.state, nodeState.mode)) {
-                            pendingRestart = PendingRestart.ConfigFile
-                        }
+                        adoptConfigFingerprint(userInitiatedEdit = true)
                     },
                 )
             } else if (showDiagnostics) {
@@ -466,8 +482,12 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     onOpenExternal = {
                         ConfigToml.ensureExists(context)
                         configFingerprint = ConfigToml.fingerprint(context)
-                        if (!ConfigToml.openInExternalEditor(context)) {
+                        val intent = ConfigToml.editorIntent(context)
+                        if (intent == null) {
                             showNoEditor = true
+                        } else {
+                            awaitingExternalConfigEdit = true
+                            externalConfigLauncher.launch(intent)
                         }
                     },
                 )
@@ -636,6 +656,11 @@ private fun NodeControlStrip(
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         Text("Node state: ${state.state} · ${state.mode} · ${state.peers} peers")
+        Text(
+            stringResource(R.string.peer_count_accuracy_hint),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
         if (state.lastNetworkError != null) {
             Text(
                 text = state.lastNetworkError,

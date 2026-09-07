@@ -61,4 +61,5 @@
     <string name="config_close">Close</string>
     <string name="config_no_editor">No text editor is installed that can open config.toml. Use Edit config.toml instead.</string>
     <string name="config_saved">config.toml saved</string>
+    <string name="peer_count_accuracy_hint">The dashboard peer count is more accurate; this number can lag.</string>
 </resources>

@@ -29,4 +29,44 @@ class ConfigTomlTest {
         assertEquals(false, first == second)
         assertEquals(first, ConfigToml.fingerprint("min-number-of-connections = 10\n"))
     }
+
+    @Test
+    fun restartPromptIgnoresNodeRewriteOfConfigFile() {
+        assertEquals(
+            false,
+            shouldPromptRestartForConfigFile(
+                fingerprintChanged = true,
+                userInitiatedEdit = false,
+                networkLive = true,
+            ),
+        )
+    }
+
+    @Test
+    fun restartPromptAfterUserEditWhileNetworkNodeIsLive() {
+        assertEquals(
+            true,
+            shouldPromptRestartForConfigFile(
+                fingerprintChanged = true,
+                userInitiatedEdit = true,
+                networkLive = true,
+            ),
+        )
+        assertEquals(
+            false,
+            shouldPromptRestartForConfigFile(
+                fingerprintChanged = true,
+                userInitiatedEdit = true,
+                networkLive = false,
+            ),
+        )
+        assertEquals(
+            false,
+            shouldPromptRestartForConfigFile(
+                fingerprintChanged = false,
+                userInitiatedEdit = true,
+                networkLive = true,
+            ),
+        )
+    }
 }
