@@ -340,17 +340,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         },
                     )
                     HorizontalDivider()
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                showDiagnostics = true
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text("For nerds")
-                    }
                     Text(
                         stringResource(R.string.auto_check_interval),
                         style = MaterialTheme.typography.titleMedium,
@@ -392,6 +381,18 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             color = MaterialTheme.colorScheme.error,
                             style = MaterialTheme.typography.bodySmall,
                         )
+                    }
+                    HorizontalDivider()
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                showDiagnostics = true
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text("For nerds")
                     }
                 }
             }
