@@ -5,7 +5,7 @@ maintained, or endorsed by the Freenet Project. The app is permitted to
 display the Freenet logo, but that use does not imply official status.
 
 Freenet Android Node runs a real [Freenet](https://freenet.org) node
-(currently core 0.2.131) on your phone. It starts and stops the node for you,
+(currently core 0.2.134) on your phone. It starts and stops the node for you,
 shows what it's doing, and otherwise gets out of the way so Freenet core's own
 web dashboard can do the rest. This is an early, alpha-stage prototype —
 expect battery drain, rough edges, and the occasional bug.
@@ -14,7 +14,7 @@ expect battery drain, rough edges, and the occasional bug.
 
 ### Sideload the signed release (quickest)
 
-1. On your phone, open the [latest release](https://github.com/manikmakki/freenet-android-node/releases/latest)
+1. On your phone, open the [latest release](https://github.com/HostFat/freenet-android-node/releases/latest)
    and download the installable app file (the `.apk`).
 2. Android will ask permission to install from whichever app you used to open
    it (your browser or file manager) — allow it for this one download.
@@ -32,10 +32,10 @@ Nothing here is hidden. If you'd rather not run a binary someone else built,
 build the same app yourself and read every line that goes into it:
 
 ```bash
-git clone https://github.com/manikmakki/freenet-android-node.git
+git clone https://github.com/HostFat/freenet-android-node.git
 git clone https://github.com/freenet/freenet-core.git
 cd freenet-android-node
-git checkout v0.2.131   # optional: build the exact commit behind a specific release
+git checkout v0.2.134   # optional: build the exact commit behind a specific release
 docker compose build dev
 docker compose run --rm dev scripts/build-debug.sh
 adb install -r artifacts/apk/freenet-android-node-debug.apk

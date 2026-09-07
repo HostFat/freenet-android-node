@@ -164,6 +164,25 @@ warning because the test APK itself has no ABI while the target APK provides
 Oplus runtime-flag/property and missing `.dm` profile messages are device or
 debug-install diagnostics, not Freenet/Wasmtime failures.
 
+## Core 0.2.134 adapter bump
+
+The JNI adapter was re-resolved against sibling `freenet-core` tag `v0.2.134`
+(`3e806e6e4de0847a65d20e33d306903ec1002c00`). No adapter source changes were
+required: `ConfigArgs` / `ConfigPathsArgs`, `Executor::from_config_local`,
+`run_local_node`, `run_network_node`, `NodeConfig::new` / `build`,
+`serve_client_api`, `ShutdownHandle`, `TRANSPORT_METRICS`,
+`get_open_connection_count`, `version_mismatch_generation`,
+`DEFAULT_GATEWAY_PORT`, and `TransportKeypair` remain source-compatible.
+
+New core subsystems that now always compile into the `freenet` crate
+(OpenTelemetry OTLP export, argon2id secret-export, XEdDSA collector auth)
+enter the Android library through the existing required feature set. The
+adapter still binds the management API to IPv4 loopback, matching the
+GHSA-824h-7x5x-wfmf default that 0.2.134 made explicit.
+
+`cargo check --all-targets` against 0.2.134 succeeded on the host. An Android
+NDK rebuild in Docker remains the authoritative link check.
+
 ## Blocker template
 
 ```text
