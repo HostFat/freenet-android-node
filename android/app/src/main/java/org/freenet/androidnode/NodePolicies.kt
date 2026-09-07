@@ -46,6 +46,16 @@ internal object ConnectionLimits {
 internal fun networkNodeIsLive(state: String, mode: String): Boolean =
     mode == "Network" && state in setOf("Starting", "RunningNetwork", "Stopping")
 
+internal fun connectionLimitsAreDirty(
+    draftMin: Int,
+    draftMax: Int,
+    savedMin: Int,
+    savedMax: Int,
+): Boolean {
+    val (min, max) = ConnectionLimits.clampLoaded(draftMin, draftMax)
+    return min != savedMin || max != savedMax
+}
+
 data class NodePolicyState(
     val power: NodePowerPolicy = NodePowerPolicy.Manual,
     val networkData: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,

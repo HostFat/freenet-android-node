@@ -270,9 +270,9 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         scope.launch { drawerState.close() }
     }
 
-    fun changeConnectionLimit(apply: () -> Unit) {
+    fun saveConnectionLimits(min: Int, max: Int) {
         val before = policyState
-        apply()
+        nodeViewModel.setConnectionLimits(min, max)
         val after = nodeViewModel.policies.value
         if (
             after.minConnections == before.minConnections &&
@@ -387,12 +387,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             }
                         },
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
-                        onMinConnections = { value ->
-                            changeConnectionLimit { nodeViewModel.setMinConnections(value) }
-                        },
-                        onMaxConnections = { value ->
-                            changeConnectionLimit { nodeViewModel.setMaxConnections(value) }
-                        },
+                        onSaveConnectionLimits = ::saveConnectionLimits,
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -741,9 +736,22 @@ private fun PolicyControls(
     policies: NodePolicyState,
     onPowerPolicy: (NodePowerPolicy) -> Unit,
     onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
-    onMinConnections: (Int) -> Unit,
-    onMaxConnections: (Int) -> Unit,
+    onSaveConnectionLimits: (Int, Int) -> Unit,
 ) {
+    var draftMin by remember { mutableStateOf(policies.minConnections) }
+    var draftMax by remember { mutableStateOf(policies.maxConnections) }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(policies.minConnections, policies.maxConnections) {
+        draftMin = policies.minConnections
+        draftMax = policies.maxConnections
+    }
+    val dirty = connectionLimitsAreDirty(
+        draftMin,
+        draftMax,
+        policies.minConnections,
+        policies.maxConnections,
+    )
+
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.node_runs_when), style = MaterialTheme.typography.titleMedium)
         CompactChoiceRow(
@@ -769,22 +777,39 @@ private fun PolicyControls(
         )
         Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)
         ConnectionLimitField(
-            value = policies.minConnections,
+            value = draftMin,
             label = stringResource(R.string.min_connections),
-            upperBound = policies.maxConnections,
+            upperBound = draftMax,
             rangeText = stringResource(
                 R.string.connection_limits_min_range,
-                policies.maxConnections,
+                draftMax,
             ),
-            onCommit = onMinConnections,
+            onChange = { next ->
+                draftMin = next.coerceAtMost(draftMax)
+            },
         )
         ConnectionLimitField(
-            value = policies.maxConnections,
+            value = draftMax,
             label = stringResource(R.string.max_connections),
             upperBound = ConnectionLimits.Ceiling,
             rangeText = stringResource(R.string.connection_limits_range),
-            onCommit = onMaxConnections,
+            onChange = { next ->
+                draftMax = next
+                if (draftMin > next) {
+                    draftMin = next
+                }
+            },
         )
+        Button(
+            onClick = {
+                focusManager.clearFocus()
+                onSaveConnectionLimits(draftMin, draftMax)
+            },
+            enabled = dirty,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.save_connection_limits))
+        }
         Text(
             stringResource(R.string.connection_limits_apply_next_start),
             style = MaterialTheme.typography.bodySmall,
@@ -802,19 +827,24 @@ private fun ConnectionLimitField(
     label: String,
     upperBound: Int,
     rangeText: String,
-    onCommit: (Int) -> Unit,
+    onChange: (Int) -> Unit,
 ) {
-    var text by remember(value) { mutableStateOf(value.toString()) }
+    var text by remember { mutableStateOf(value.toString()) }
     var focused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
     val cap = minOf(upperBound, ConnectionLimits.Ceiling)
+    LaunchedEffect(value) {
+        if (!focused) {
+            text = value.toString()
+        }
+    }
 
     fun commit() {
         val parsed = text.toIntOrNull()
         val next = ConnectionLimits.coerce(parsed ?: value).coerceAtMost(cap)
         text = next.toString()
         if (next != value) {
-            onCommit(next)
+            onChange(next)
         }
     }
 
@@ -829,6 +859,7 @@ private fun ConnectionLimitField(
             val parsed = digits.toLongOrNull() ?: return@OutlinedTextField
             if (parsed <= cap) {
                 text = digits
+                parsed.toInt().takeIf { it != value }?.let(onChange)
             }
         },
         label = { Text(label) },

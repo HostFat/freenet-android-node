@@ -49,6 +49,10 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodeRepository.setMaxConnections(getApplication(), maxConnections)
     }
 
+    fun setConnectionLimits(minConnections: Int, maxConnections: Int) {
+        NodeRepository.setConnectionLimits(getApplication(), minConnections, maxConnections)
+    }
+
     fun restartNetworkNode() {
         NodeRepository.restartNetworkNode(getApplication())
     }

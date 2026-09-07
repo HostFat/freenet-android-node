@@ -45,6 +45,7 @@
     <string name="peer_connections">Peer connections</string>
     <string name="min_connections">Minimum</string>
     <string name="max_connections">Maximum</string>
+    <string name="save_connection_limits">Save peer connections</string>
     <string name="connection_limits_apply_next_start">Takes effect the next time the network node starts.</string>
     <string name="connection_limits_range">Integers from 1 to 2000.</string>
     <string name="connection_limits_min_range">Integers from 1 to %1$d (cannot exceed Maximum).</string>

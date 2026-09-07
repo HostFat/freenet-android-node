@@ -35,4 +35,12 @@ class ConnectionLimitsTest {
         assertEquals(false, networkNodeIsLive("Paused", "Network"))
         assertEquals(false, networkNodeIsLive("Stopped", "Network"))
     }
+
+    @Test
+    fun savePeerConnectionsOnlyWhenDraftDiffersFromSaved() {
+        assertEquals(false, connectionLimitsAreDirty(10, 25, 10, 25))
+        assertEquals(true, connectionLimitsAreDirty(11, 25, 10, 25))
+        assertEquals(true, connectionLimitsAreDirty(10, 30, 10, 25))
+        assertEquals(false, connectionLimitsAreDirty(50, 25, 25, 25))
+    }
 }

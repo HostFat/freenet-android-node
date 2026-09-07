@@ -141,6 +141,14 @@ object NodeRepository {
         NodePolicyRepository.setMaxConnections(context.applicationContext, maxConnections)
     }
 
+    fun setConnectionLimits(context: Context, minConnections: Int, maxConnections: Int) {
+        NodePolicyRepository.setConnectionLimits(
+            context.applicationContext,
+            minConnections,
+            maxConnections,
+        )
+    }
+
     fun restartNetworkNode(context: Context) {
         val appContext = context.applicationContext
         NodePolicyRepository.initialize(appContext)
