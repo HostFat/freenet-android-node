@@ -17,6 +17,16 @@ class UpdateCheckTest {
         assertEquals(SemVer(0, 2, 134, 1), SemVer.parse("v0.2.134.1"))
         assertEquals(1, SemVer(0, 2, 134, 1).compareTo(SemVer(0, 2, 134)))
         assertNull(SemVer.parse("main"))
+        assertEquals(
+            SemVer(0, 2, 134, 3),
+            versionFromReleaseLocation(
+                "https://github.com/HostFat/freenet-android-node/releases/tag/v0.2.134.3",
+            ),
+        )
+        assertEquals(
+            SemVer(0, 2, 134),
+            versionFromReleaseLocation("/freenet/freenet-core/releases/tag/v0.2.134"),
+        )
     }
 
     @Test

@@ -66,12 +66,17 @@ internal enum class UpdateCheckInterval(val hours: Int, val displayName: String)
 }
 
 internal object UpdateUrls {
-    const val CORE_RELEASES_API =
-        "https://api.github.com/repos/freenet/freenet-core/releases/latest"
-    const val APK_RELEASES_API =
-        "https://api.github.com/repos/HostFat/freenet-android-node/releases/latest"
+    const val CORE_RELEASES_PAGE =
+        "https://github.com/freenet/freenet-core/releases/latest"
     const val APK_RELEASES_PAGE =
         "https://github.com/HostFat/freenet-android-node/releases/latest"
+}
+
+internal fun versionFromReleaseLocation(location: String): SemVer? {
+    val path = location.substringBefore('?').substringBefore('#').trimEnd('/')
+    val tag = path.substringAfterLast("/releases/tag/", missingDelimiterValue = "")
+        .ifBlank { path.substringAfterLast('/') }
+    return SemVer.parse(tag)
 }
 
 internal fun effectiveInstalledAppVersion(installedApp: SemVer?, installedCore: SemVer?): SemVer? {

@@ -19,7 +19,6 @@ import kotlinx.coroutines.flow.asStateFlow
 import kotlinx.coroutines.sync.Mutex
 import kotlinx.coroutines.sync.withLock
 import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 internal data class UpdateUiState(
     val checking: Boolean = false,
@@ -109,8 +108,8 @@ internal object UpdateCheckRepository {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionName
             }.getOrNull(),
         )
-        val coreRelease = fetchLatestRelease(UpdateUrls.CORE_RELEASES_API)
-        val apkRelease = fetchLatestRelease(UpdateUrls.APK_RELEASES_API)
+        val coreRelease = fetchLatestRelease(UpdateUrls.CORE_RELEASES_PAGE)
+        val apkRelease = fetchLatestRelease(UpdateUrls.APK_RELEASES_PAGE)
         return decideUpdate(
             installedCore = installedCore,
             installedApp = installedApp,
@@ -121,25 +120,30 @@ internal object UpdateCheckRepository {
         )
     }
 
-    private fun fetchLatestRelease(apiUrl: String): GithubRelease {
-        val connection = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+    private fun fetchLatestRelease(latestUrl: String): GithubRelease {
+        val connection = (URL(latestUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 15_000
-            instanceFollowRedirects = true
+            instanceFollowRedirects = false
             setRequestProperty("User-Agent", USER_AGENT)
-            setRequestProperty("Accept", "application/vnd.github+json")
+            setRequestProperty("Accept", "text/html")
         }
         try {
             val code = connection.responseCode
-            if (code !in 200..299) {
-                throw IOException("GitHub returned HTTP $code")
+            val location = connection.getHeaderField("Location")
+            val resolved = when {
+                code in 300..399 && !location.isNullOrBlank() -> {
+                    if (location.startsWith("http")) location else URL(URL(latestUrl), location).toString()
+                }
+                code in 200..299 -> connection.url.toString()
+                code == 403 || code == 429 ->
+                    throw IOException("GitHub rate limit (HTTP $code); try again later")
+                else -> throw IOException("GitHub returned HTTP $code")
             }
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
-            val json = JSONObject(body)
-            return GithubRelease(
-                version = SemVer.parse(json.optString("tag_name")),
-                htmlUrl = json.optString("html_url").ifBlank { null },
-            )
+            val version = versionFromReleaseLocation(resolved)
+                ?: throw IOException("Could not parse a release tag from GitHub")
+            val htmlUrl = if (resolved.contains("/releases/tag/")) resolved else latestUrl
+            return GithubRelease(version = version, htmlUrl = htmlUrl)
         } finally {
             connection.disconnect()
         }
