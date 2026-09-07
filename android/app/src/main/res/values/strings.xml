@@ -15,7 +15,7 @@
     <string name="update_notification_channel_description">Quiet notice when a newer APK is published</string>
     <string name="update_notification_title">Freenet Android APK available</string>
     <string name="check_for_updates">Check for updates</string>
-    <string name="auto_check_interval">Auto-check every</string>
+    <string name="auto_check_interval">New version auto-check every</string>
     <string name="download_apk">Open APK page</string>
     <string name="dismiss_update">Dismiss</string>
 </resources>
