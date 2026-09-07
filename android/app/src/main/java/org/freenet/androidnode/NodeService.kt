@@ -130,6 +130,24 @@ class NodeService : Service() {
                 lifecycleMutex.withLock { shutDownNode(startId, paused = false) }
             }
 
+            ACTION_RESTART_NETWORK -> {
+                NodePolicyRepository.setSuspended(this, false)
+                runningMode = "Network"
+                startForegroundImmediately(runningMode)
+                serviceScope.launch {
+                    lifecycleMutex.withLock {
+                        if (nativeIsActive()) {
+                            shutDownNode(
+                                startId = startId,
+                                keepController = true,
+                                waitingDetail = "Restarting with the new connection limits",
+                            )
+                        }
+                        reconcilePolicy(startId, explicitStart = true)
+                    }
+                }
+            }
+
             else -> {
                 if (NodePolicyRepository.state.value.automatic) {
                     runningMode = "Network"
@@ -455,6 +473,7 @@ class NodeService : Service() {
         const val ACTION_RECONCILE_POLICY = "org.freenet.androidnode.action.RECONCILE_POLICY"
         const val ACTION_PAUSE = "org.freenet.androidnode.action.PAUSE"
         const val ACTION_STOP = "org.freenet.androidnode.action.STOP"
+        const val ACTION_RESTART_NETWORK = "org.freenet.androidnode.action.RESTART_NETWORK"
 
         private const val STATUS_POLL_INTERVAL_MS = 250L
         private const val SHUTDOWN_TIMEOUT_MS = 30_000L
@@ -480,5 +499,8 @@ class NodeService : Service() {
 
         fun stopIntent(context: Context): Intent =
             Intent(context, NodeService::class.java).setAction(ACTION_STOP)
+
+        fun restartNetworkIntent(context: Context): Intent =
+            Intent(context, NodeService::class.java).setAction(ACTION_RESTART_NETWORK)
     }
 }

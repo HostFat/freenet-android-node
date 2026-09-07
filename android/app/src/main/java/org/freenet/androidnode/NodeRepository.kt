@@ -141,6 +141,21 @@ object NodeRepository {
         NodePolicyRepository.setMaxConnections(context.applicationContext, maxConnections)
     }
 
+    fun restartNetworkNode(context: Context) {
+        val appContext = context.applicationContext
+        NodePolicyRepository.initialize(appContext)
+        NodePolicyRepository.setSuspended(appContext, false)
+        mutableState.value = mutableState.value.copy(
+            state = "Starting",
+            detail = "Restarting the network node with the new connection limits",
+            serviceActive = true,
+            mode = "Network",
+            lastLifecycleResponse = "Restarting network node through NodeService",
+            taskRemovedWhileRunning = false,
+        )
+        appContext.startForegroundService(NodeService.restartNetworkIntent(appContext))
+    }
+
     fun reportNotificationPermissionRequired() {
         mutableState.value = mutableState.value.copy(
             detail = "Notification permission is required before starting the node",

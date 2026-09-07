@@ -48,4 +48,8 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
     fun setMaxConnections(maxConnections: Int) {
         NodeRepository.setMaxConnections(getApplication(), maxConnections)
     }
+
+    fun restartNetworkNode() {
+        NodeRepository.restartNetworkNode(getApplication())
+    }
 }

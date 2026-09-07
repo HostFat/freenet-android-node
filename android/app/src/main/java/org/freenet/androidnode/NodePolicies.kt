@@ -30,6 +30,9 @@ internal object ConnectionLimits {
     }
 }
 
+internal fun networkNodeIsLive(state: String, mode: String): Boolean =
+    mode == "Network" && state in setOf("Starting", "RunningNetwork", "Stopping")
+
 data class NodePolicyState(
     val power: NodePowerPolicy = NodePowerPolicy.Manual,
     val networkData: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,

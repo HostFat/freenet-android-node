@@ -20,4 +20,14 @@ class ConnectionLimitsTest {
         assertEquals(Pair(10, 10), ConnectionLimits.clampPair(1, 5))
         assertEquals(Pair(25, 25), ConnectionLimits.clampPair(40, 80))
     }
+
+    @Test
+    fun restartPromptOnlyWhenTheNetworkNodeIsLive() {
+        assertEquals(true, networkNodeIsLive("RunningNetwork", "Network"))
+        assertEquals(true, networkNodeIsLive("Starting", "Network"))
+        assertEquals(true, networkNodeIsLive("Stopping", "Network"))
+        assertEquals(false, networkNodeIsLive("RunningLocal", "Local"))
+        assertEquals(false, networkNodeIsLive("Paused", "Network"))
+        assertEquals(false, networkNodeIsLive("Stopped", "Network"))
+    }
 }

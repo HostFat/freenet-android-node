@@ -201,6 +201,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val scope = rememberCoroutineScope()
     var pendingNotificationAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showDiagnostics by remember { mutableStateOf(false) }
+    var pendingConnectionRestart by remember { mutableStateOf<Pair<Int, Int>?>(null) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -227,6 +228,21 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
 
     fun closeDrawer() {
         scope.launch { drawerState.close() }
+    }
+
+    fun changeConnectionLimit(apply: () -> Unit) {
+        val before = policyState
+        apply()
+        val after = nodeViewModel.policies.value
+        if (
+            after.minConnections == before.minConnections &&
+            after.maxConnections == before.maxConnections
+        ) {
+            return
+        }
+        if (networkNodeIsLive(nodeState.state, nodeState.mode)) {
+            pendingConnectionRestart = after.minConnections to after.maxConnections
+        }
     }
 
     DisposableEffect(lifecycleOwner) {
@@ -326,8 +342,12 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             }
                         },
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
-                        onMinConnections = nodeViewModel::setMinConnections,
-                        onMaxConnections = nodeViewModel::setMaxConnections,
+                        onMinConnections = { value ->
+                            changeConnectionLimit { nodeViewModel.setMinConnections(value) }
+                        },
+                        onMaxConnections = { value ->
+                            changeConnectionLimit { nodeViewModel.setMaxConnections(value) }
+                        },
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -472,6 +492,38 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 }
             }
         }
+    }
+
+    pendingConnectionRestart?.let { (minConnections, maxConnections) ->
+        AlertDialog(
+            onDismissRequest = { pendingConnectionRestart = null },
+            title = { Text(stringResource(R.string.restart_node_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.restart_node_message,
+                        minConnections,
+                        maxConnections,
+                    ),
+                )
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingConnectionRestart = null
+                        withNotificationPermission(nodeViewModel::restartNetworkNode)
+                        closeDrawer()
+                    },
+                ) {
+                    Text(stringResource(R.string.restart_node_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingConnectionRestart = null }) {
+                    Text(stringResource(R.string.restart_node_deny))
+                }
+            },
+        )
     }
 }
 
