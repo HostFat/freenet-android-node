@@ -45,4 +45,12 @@
     <string name="restart_node_message">The network node is already running. Restart it now to apply a minimum of %1$d and a maximum of %2$d peer connections?</string>
     <string name="restart_node_confirm">Restart</string>
     <string name="restart_node_deny">Not now</string>
+    <string name="restart_config_message">The network node is already running. Restart it now to apply the edited config.toml?</string>
+    <string name="edit_config">Edit config.toml</string>
+    <string name="open_config_external">Open config.toml in an editor</string>
+    <string name="config_open_hint">Edits apply on the next node start. If the network node is running, you will be asked to restart. Freenet may rewrite this file on start and drop comments.</string>
+    <string name="config_save">Save</string>
+    <string name="config_close">Close</string>
+    <string name="config_no_editor">No text editor is installed that can open config.toml. Use Edit config.toml instead.</string>
+    <string name="config_saved">config.toml saved</string>
 </resources>

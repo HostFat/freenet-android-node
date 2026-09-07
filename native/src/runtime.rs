@@ -1665,8 +1665,14 @@ async fn prepare_network_node(
     args.ws_api.ws_api_port = Some(android_config.websocket_port);
     args.network_api.address = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     args.network_api.skip_load_from_network = false;
-    args.network_api.min_connections = Some(android_config.min_connections);
-    args.network_api.max_connections = Some(android_config.max_connections);
+    let config_toml = android_config.configuration_directory.join("config.toml");
+    if config_toml.exists() {
+        // Leave min/max unset so ConfigArgs::build() keeps operator edits
+        // from config.toml instead of overlaying the Android UI values.
+    } else {
+        args.network_api.min_connections = Some(android_config.min_connections);
+        args.network_api.max_connections = Some(android_config.max_connections);
+    }
     args.secrets.transport_keypair = Some(android_config.transport_keypair_path());
     args.secrets.cipher = Some(android_config.delegate_cipher_path());
 

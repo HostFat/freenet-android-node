@@ -208,7 +208,10 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val scope = rememberCoroutineScope()
     var pendingNotificationAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showDiagnostics by remember { mutableStateOf(false) }
-    var pendingConnectionRestart by remember { mutableStateOf<Pair<Int, Int>?>(null) }
+    var showConfigEditor by remember { mutableStateOf(false) }
+    var showNoEditor by remember { mutableStateOf(false) }
+    var pendingRestart by remember { mutableStateOf<PendingRestart?>(null) }
+    var configFingerprint by remember { mutableStateOf(ConfigToml.fingerprint(context)) }
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -247,8 +250,10 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         ) {
             return
         }
+        ConfigToml.syncLimitsToFile(context, after.minConnections, after.maxConnections)
+        configFingerprint = ConfigToml.fingerprint(context)
         if (networkNodeIsLive(nodeState.state, nodeState.mode)) {
-            pendingConnectionRestart = after.minConnections to after.maxConnections
+            pendingRestart = PendingRestart.Connections(after.minConnections, after.maxConnections)
         }
     }
 
@@ -256,6 +261,15 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         val observer = LifecycleEventObserver { _, event ->
             if (event == Lifecycle.Event.ON_RESUME) {
                 restrictionSnapshot = readRestrictionSnapshot(context)
+                val now = ConfigToml.fingerprint(context)
+                if (now != configFingerprint) {
+                    configFingerprint = now
+                    ConfigToml.syncLimitsFromFile(context)
+                    val live = NodeRepository.state.value
+                    if (networkNodeIsLive(live.state, live.mode)) {
+                        pendingRestart = PendingRestart.ConfigFile
+                    }
+                }
             }
         }
         lifecycleOwner.lifecycle.addObserver(observer)
@@ -266,11 +280,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         UpdateCheckRepository.checkAutomatic(context, nodeState.highestSeenPeerVersion)
     }
 
-    BackHandler(enabled = drawerState.isOpen || showDiagnostics) {
-        if (drawerState.isOpen) {
-            closeDrawer()
-        } else {
-            showDiagnostics = false
+    BackHandler(enabled = drawerState.isOpen || showDiagnostics || showConfigEditor) {
+        when {
+            drawerState.isOpen -> closeDrawer()
+            showConfigEditor -> showConfigEditor = false
+            else -> showDiagnostics = false
         }
     }
 
@@ -432,8 +446,34 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 .fillMaxSize()
                 .windowInsetsPadding(WindowInsets.safeDrawing),
         ) {
-            if (showDiagnostics) {
-                DiagnosticsPanel(modifier = Modifier.fillMaxSize())
+            if (showConfigEditor) {
+                ConfigEditorPanel(
+                    modifier = Modifier.fillMaxSize(),
+                    onClose = { showConfigEditor = false },
+                    onSaved = {
+                        configFingerprint = ConfigToml.fingerprint(context)
+                        ConfigToml.syncLimitsFromFile(context)
+                        if (networkNodeIsLive(nodeState.state, nodeState.mode)) {
+                            pendingRestart = PendingRestart.ConfigFile
+                        }
+                    },
+                )
+            } else if (showDiagnostics) {
+                DiagnosticsPanel(
+                    modifier = Modifier.fillMaxSize(),
+                    onEditConfig = {
+                        ConfigToml.ensureExists(context)
+                        configFingerprint = ConfigToml.fingerprint(context)
+                        showConfigEditor = true
+                    },
+                    onOpenExternal = {
+                        ConfigToml.ensureExists(context)
+                        configFingerprint = ConfigToml.fingerprint(context)
+                        if (!ConfigToml.openInExternalEditor(context)) {
+                            showNoEditor = true
+                        }
+                    },
+                )
             } else {
                 DashboardPanel(
                     state = nodeState,
@@ -501,23 +541,26 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         }
     }
 
-    pendingConnectionRestart?.let { (minConnections, maxConnections) ->
+    pendingRestart?.let { restart ->
         AlertDialog(
-            onDismissRequest = { pendingConnectionRestart = null },
+            onDismissRequest = { pendingRestart = null },
             title = { Text(stringResource(R.string.restart_node_title)) },
             text = {
                 Text(
-                    stringResource(
-                        R.string.restart_node_message,
-                        minConnections,
-                        maxConnections,
-                    ),
+                    when (restart) {
+                        is PendingRestart.Connections -> stringResource(
+                            R.string.restart_node_message,
+                            restart.min,
+                            restart.max,
+                        )
+                        PendingRestart.ConfigFile -> stringResource(R.string.restart_config_message)
+                    },
                 )
             },
             confirmButton = {
                 Button(
                     onClick = {
-                        pendingConnectionRestart = null
+                        pendingRestart = null
                         withNotificationPermission(nodeViewModel::restartNetworkNode)
                         closeDrawer()
                     },
@@ -526,12 +569,30 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 }
             },
             dismissButton = {
-                TextButton(onClick = { pendingConnectionRestart = null }) {
+                TextButton(onClick = { pendingRestart = null }) {
                     Text(stringResource(R.string.restart_node_deny))
                 }
             },
         )
     }
+
+    if (showNoEditor) {
+        AlertDialog(
+            onDismissRequest = { showNoEditor = false },
+            title = { Text(stringResource(R.string.open_config_external)) },
+            text = { Text(stringResource(R.string.config_no_editor)) },
+            confirmButton = {
+                TextButton(onClick = { showNoEditor = false }) {
+                    Text(stringResource(R.string.config_close))
+                }
+            },
+        )
+    }
+}
+
+private sealed class PendingRestart {
+    data class Connections(val min: Int, val max: Int) : PendingRestart()
+    data object ConfigFile : PendingRestart()
 }
 
 @Composable
@@ -963,7 +1024,11 @@ private class LoopbackDashboardClient(
 }
 
 @Composable
-private fun DiagnosticsPanel(modifier: Modifier = Modifier) {
+private fun DiagnosticsPanel(
+    modifier: Modifier = Modifier,
+    onEditConfig: () -> Unit,
+    onOpenExternal: () -> Unit,
+) {
     val context = LocalContext.current
     var snapshot by remember { mutableStateOf("Collecting diagnostics…") }
 
@@ -990,6 +1055,22 @@ private fun DiagnosticsPanel(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        OutlinedButton(
+            onClick = onEditConfig,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.edit_config))
+        }
+        OutlinedButton(
+            onClick = onOpenExternal,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.open_config_external))
+        }
+        Text(
+            stringResource(R.string.config_open_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
         SelectionContainer(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1002,6 +1083,56 @@ private fun DiagnosticsPanel(modifier: Modifier = Modifier) {
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+    }
+}
+
+@Composable
+private fun ConfigEditorPanel(
+    modifier: Modifier = Modifier,
+    onClose: () -> Unit,
+    onSaved: () -> Unit,
+) {
+    val context = LocalContext.current
+    var text by remember {
+        mutableStateOf(
+            run {
+                ConfigToml.ensureExists(context)
+                ConfigToml.read(context)
+            },
+        )
+    }
+
+    Column(
+        modifier = modifier
+            .fillMaxSize()
+            .padding(12.dp),
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            Button(
+                onClick = {
+                    ConfigToml.write(context, text)
+                    onSaved()
+                },
+            ) {
+                Text(stringResource(R.string.config_save))
+            }
+            OutlinedButton(onClick = onClose) {
+                Text(stringResource(R.string.config_close))
+            }
+        }
+        Text(
+            stringResource(R.string.config_open_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        OutlinedTextField(
+            value = text,
+            onValueChange = { text = it },
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f),
+            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
+        )
     }
 }
 

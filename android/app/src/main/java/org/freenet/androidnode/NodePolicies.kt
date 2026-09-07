@@ -131,6 +131,12 @@ object NodePolicyRepository {
         persist(context, current.copy(minConnections = min, maxConnections = max))
     }
 
+    fun setConnectionLimits(context: Context, minConnections: Int, maxConnections: Int) {
+        initialize(context)
+        val (min, max) = ConnectionLimits.clampLoaded(minConnections, maxConnections)
+        persist(context, mutableState.value.copy(minConnections = min, maxConnections = max))
+    }
+
     fun setSuspended(context: Context, suspended: Boolean) {
         initialize(context)
         persist(context, mutableState.value.copy(suspendedByUser = suspended))
