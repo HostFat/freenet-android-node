@@ -18,7 +18,7 @@ enum class NetworkDataPolicy(val displayName: String) {
 
 internal object ConnectionLimits {
     const val Floor = 1
-    const val Ceiling = 200
+    const val Ceiling = 2000
     const val DefaultMin = 10
     const val DefaultMax = 25
 

@@ -21,7 +21,7 @@ use crate::contract_proof::{
 
 const LOG_CAPACITY: usize = 256;
 const ANDROID_CONNECTION_FLOOR: usize = 1;
-const ANDROID_CONNECTION_CEILING: usize = 200;
+const ANDROID_CONNECTION_CEILING: usize = 2000;
 const ANDROID_DEFAULT_MIN_CONNECTIONS: usize = 10;
 const ANDROID_DEFAULT_MAX_CONNECTIONS: usize = 25;
 
@@ -1863,12 +1863,12 @@ mod tests {
         assert_eq!(error.code, "INVALID_CONNECTION_LIMITS");
 
         json["minConnections"] = serde_json::json!(10);
-        json["maxConnections"] = serde_json::json!(200);
-        AndroidNodeConfig::parse(&json.to_string()).expect("Freenet default max is allowed");
+        json["maxConnections"] = serde_json::json!(2000);
+        AndroidNodeConfig::parse(&json.to_string()).expect("tested Freenet config max is allowed");
 
-        json["maxConnections"] = serde_json::json!(201);
+        json["maxConnections"] = serde_json::json!(2001);
         let error = AndroidNodeConfig::parse(&json.to_string())
-            .expect_err("above Freenet default max must fail");
+            .expect_err("above 2000 must fail");
         assert_eq!(error.code, "INVALID_CONNECTION_LIMITS");
 
         json["minConnections"] = serde_json::json!(0);
