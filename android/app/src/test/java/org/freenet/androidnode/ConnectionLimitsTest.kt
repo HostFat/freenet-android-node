@@ -27,6 +27,16 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun riverChatInviteOnlyWhenTheNetworkNodeIsRunning() {
+        assertEquals(true, showRiverChatInvite("RunningNetwork", "Network"))
+        assertEquals(false, showRiverChatInvite("Starting", "Network"))
+        assertEquals(false, showRiverChatInvite("Paused", "Network"))
+        assertEquals(false, showRiverChatInvite("Stopped", "Network"))
+        assertEquals(false, showRiverChatInvite("RunningLocal", "Local"))
+        assertEquals("https://freenet.org/quickstart", RIVER_CHAT_INVITE_URL)
+    }
+
+    @Test
     fun restartPromptOnlyWhenTheNetworkNodeIsLive() {
         assertEquals(true, networkNodeIsLive("RunningNetwork", "Network"))
         assertEquals(true, networkNodeIsLive("Starting", "Network"))

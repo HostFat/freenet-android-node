@@ -46,6 +46,11 @@ internal object ConnectionLimits {
 internal fun networkNodeIsLive(state: String, mode: String): Boolean =
     mode == "Network" && state in setOf("Starting", "RunningNetwork", "Stopping")
 
+internal const val RIVER_CHAT_INVITE_URL = "https://freenet.org/quickstart"
+
+internal fun showRiverChatInvite(state: String, mode: String): Boolean =
+    mode == "Network" && state == "RunningNetwork"
+
 internal fun connectionLimitsAreDirty(
     draftMin: Int,
     draftMax: Int,

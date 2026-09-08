@@ -85,11 +85,17 @@ import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.LinkAnnotation
+import androidx.compose.ui.text.SpanStyle
+import androidx.compose.ui.text.TextLinkStyles
+import androidx.compose.ui.text.buildAnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import androidx.compose.ui.window.DialogProperties
@@ -674,6 +680,40 @@ private fun NodeControlStrip(
                     Text("Start local node")
                 }
             }
+        }
+        if (showRiverChatInvite(state.state, state.mode)) {
+            val url = RIVER_CHAT_INVITE_URL
+            val full = stringResource(R.string.river_chat_invite, url)
+            val linkColor = MaterialTheme.colorScheme.primary
+            val annotated = remember(full, url, linkColor) {
+                buildAnnotatedString {
+                    val start = full.indexOf(url)
+                    if (start < 0) {
+                        append(full)
+                    } else {
+                        append(full.substring(0, start))
+                        withLink(
+                            LinkAnnotation.Url(
+                                url,
+                                TextLinkStyles(
+                                    style = SpanStyle(
+                                        color = linkColor,
+                                        textDecoration = TextDecoration.Underline,
+                                    ),
+                                ),
+                            ),
+                        ) {
+                            append(url)
+                        }
+                        append(full.substring(start + url.length))
+                    }
+                }
+            }
+            Text(
+                text = annotated,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
     }
 }
