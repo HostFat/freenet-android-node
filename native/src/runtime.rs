@@ -1755,6 +1755,7 @@ async fn prepare_network_node(
     }
     config.ws_api.webapp_cache_dir = android_config.webapp_cache_dir();
     let websocket_port = config.ws_api.port;
+    let udp_port = config.network_api.port;
     let clients = freenet::server::serve_client_api(config.ws_api.clone())
         .await
         .map_err(|error| {
@@ -1776,7 +1777,7 @@ async fn prepare_network_node(
         )
     })?;
     let shutdown_handle = node.shutdown_handle();
-    Ok((node, shutdown_handle, websocket_port, config.network_api.port))
+    Ok((node, shutdown_handle, websocket_port, udp_port))
 }
 
 fn require_canonical_path(name: &str, actual: &Path, expected: &Path) -> Result<(), NodeError> {
