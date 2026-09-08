@@ -77,6 +77,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
@@ -361,6 +363,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     ) {
                         Text("Dashboard")
                     }
+                    HorizontalDivider()
                     NodeControlStrip(
                         state = nodeState,
                         onStartLocal = {
@@ -682,41 +685,47 @@ private fun NodeControlStrip(
             }
         }
         if (showRiverChatInvite(state.state, state.mode)) {
-            val url = RIVER_CHAT_INVITE_URL
-            val full = stringResource(R.string.river_chat_invite, url)
-            val linkColor = MaterialTheme.colorScheme.primary
-            val annotated = remember(full, url, linkColor) {
-                buildAnnotatedString {
-                    val start = full.indexOf(url)
-                    if (start < 0) {
-                        append(full)
-                    } else {
-                        append(full.substring(0, start))
-                        withLink(
-                            LinkAnnotation.Url(
-                                url,
-                                TextLinkStyles(
-                                    style = SpanStyle(
-                                        color = linkColor,
-                                        textDecoration = TextDecoration.Underline,
-                                    ),
-                                ),
-                            ),
-                        ) {
-                            append(url)
-                        }
-                        append(full.substring(start + url.length))
-                    }
-                }
-            }
             Text(
-                text = annotated,
+                text = stringResource(R.string.river_chat_invite_running),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Text(
+                text = linkedUrlText(
+                    stringResource(R.string.river_chat_invite_get, RIVER_CHAT_INVITE_URL),
+                    RIVER_CHAT_INVITE_URL,
+                    MaterialTheme.colorScheme.primary,
+                ),
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
         }
     }
 }
+
+private fun linkedUrlText(full: String, url: String, linkColor: Color): AnnotatedString =
+    buildAnnotatedString {
+        val start = full.indexOf(url)
+        if (start < 0) {
+            append(full)
+            return@buildAnnotatedString
+        }
+        append(full.substring(0, start))
+        withLink(
+            LinkAnnotation.Url(
+                url,
+                TextLinkStyles(
+                    style = SpanStyle(
+                        color = linkColor,
+                        textDecoration = TextDecoration.Underline,
+                    ),
+                ),
+            ),
+        ) {
+            append(url)
+        }
+        append(full.substring(start + url.length))
+    }
 
 @Composable
 private fun <T> CompactChoiceRow(
@@ -780,6 +789,7 @@ private fun PolicyControls(
             stringResource(R.string.node_runs_when_hint),
             style = MaterialTheme.typography.bodySmall,
         )
+        HorizontalDivider()
         Text(stringResource(R.string.network_data), style = MaterialTheme.typography.titleMedium)
         CompactChoiceRow(
             options = NetworkDataPolicy.entries,
@@ -791,6 +801,7 @@ private fun PolicyControls(
             stringResource(R.string.network_data_hint),
             style = MaterialTheme.typography.bodySmall,
         )
+        HorizontalDivider()
         Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)
         ConnectionLimitField(
             value = draftMin,
