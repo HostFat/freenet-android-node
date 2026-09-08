@@ -24,6 +24,9 @@
     <string name="restore_identity">Restore identity</string>
     <string name="identity_backup_hint">The identity lives in app-private no-backup storage. Without this file, a reinstall is a different peer. Restart the node after restore.</string>
     <string name="recent_logs">Recent logs</string>
+    <string name="copy_json">Copy JSON</string>
+    <string name="copy_all_logs">Copy all logs</string>
+    <string name="diagnostics_json">JSON</string>
     <string name="dismiss_changelog">Got it</string>
     <string name="node_runs_when">Node runs when</string>
     <string name="node_runs_when_hint">Charging and Always keep a lightweight foreground controller active while the node waits. Always is best-effort: Android can still stop the node.</string>

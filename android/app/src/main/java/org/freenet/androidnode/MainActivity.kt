@@ -24,19 +24,25 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
+import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.selection.toggleable
 import androidx.compose.foundation.text.KeyboardActions
@@ -82,8 +88,10 @@ import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
@@ -1317,6 +1325,7 @@ private fun DiagnosticsPanel(
     val context = LocalContext.current
     var snapshot by remember { mutableStateOf("Collecting diagnostics…") }
     var logs by remember { mutableStateOf("Collecting logs…") }
+    var showLogs by remember { mutableStateOf(false) }
     var identityMessage by remember { mutableStateOf<String?>(null) }
     val exportIdentity = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
@@ -1341,22 +1350,41 @@ private fun DiagnosticsPanel(
         }
     }
 
+    BackHandler(enabled = showLogs) {
+        showLogs = false
+    }
+
+    if (showLogs) {
+        Column(
+            modifier = modifier
+                .fillMaxSize()
+                .padding(12.dp),
+            verticalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                Button(onClick = { copyToClipboard(context, logs) }) {
+                    Text(stringResource(R.string.copy_all_logs))
+                }
+                OutlinedButton(onClick = { showLogs = false }) {
+                    Text(stringResource(R.string.config_close))
+                }
+            }
+            ScrollableMonospaceBox(
+                text = logs,
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .weight(1f),
+            )
+        }
+        return
+    }
+
     Column(
         modifier = modifier
             .fillMaxSize()
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(onClick = { copyToClipboard(context, snapshot) }) {
-                Text("Copy JSON")
-            }
-            Text(
-                "Metrics and the bounded, sanitized native log ring.",
-                modifier = Modifier.align(Alignment.CenterVertically),
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
         OutlinedButton(
             onClick = onEditConfig,
             modifier = Modifier.fillMaxWidth(),
@@ -1392,30 +1420,101 @@ private fun DiagnosticsPanel(
         identityMessage?.let { message ->
             Text(message, style = MaterialTheme.typography.bodySmall)
         }
-        Text(stringResource(R.string.recent_logs), style = MaterialTheme.typography.titleMedium)
-        SelectionContainer(
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
+        OutlinedButton(
+            onClick = { showLogs = true },
+            modifier = Modifier.fillMaxWidth(),
         ) {
-            Text(
-                text = logs,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall,
-            )
+            Text(stringResource(R.string.recent_logs))
         }
-        SelectionContainer(
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.diagnostics_json), style = MaterialTheme.typography.titleMedium)
+            Button(onClick = { copyToClipboard(context, snapshot) }) {
+                Text(stringResource(R.string.copy_json))
+            }
+        }
+        ScrollableMonospaceBox(
+            text = snapshot,
             modifier = Modifier
                 .fillMaxWidth()
-                .weight(1f)
-                .verticalScroll(rememberScrollState()),
-        ) {
-            Text(
-                text = snapshot,
-                fontFamily = FontFamily.Monospace,
-                style = MaterialTheme.typography.bodySmall,
-            )
+                .weight(1f),
+        )
+    }
+}
+
+@Composable
+private fun ScrollableMonospaceBox(
+    text: String,
+    modifier: Modifier = Modifier,
+) {
+    val scroll = rememberScrollState()
+    val density = LocalDensity.current
+    Surface(
+        modifier = modifier,
+        tonalElevation = 1.dp,
+        shape = MaterialTheme.shapes.small,
+    ) {
+        Box(modifier = Modifier.fillMaxSize()) {
+            SelectionContainer(
+                modifier = Modifier
+                    .fillMaxSize()
+                    .padding(end = 10.dp)
+                    .verticalScroll(scroll)
+                    .padding(8.dp),
+            ) {
+                Text(
+                    text = text,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
+            BoxWithConstraints(
+                modifier = Modifier
+                    .align(Alignment.CenterEnd)
+                    .fillMaxHeight()
+                    .width(8.dp)
+                    .padding(vertical = 4.dp, horizontal = 2.dp),
+            ) {
+                val trackPx = with(density) { maxHeight.toPx() }
+                val canScroll = scroll.maxValue > 0
+                val visibleFraction = if (!canScroll) {
+                    1f
+                } else {
+                    (scroll.viewportSize.toFloat() /
+                        (scroll.viewportSize + scroll.maxValue).toFloat())
+                        .coerceIn(0.12f, 1f)
+                }
+                val thumbPx = (trackPx * visibleFraction).coerceAtLeast(with(density) { 24.dp.toPx() })
+                val yPx = if (!canScroll) {
+                    0f
+                } else {
+                    scroll.value.toFloat() / scroll.maxValue.toFloat() * (trackPx - thumbPx)
+                }
+                Box(
+                    modifier = Modifier
+                        .fillMaxHeight()
+                        .width(3.dp)
+                        .align(Alignment.Center)
+                        .background(
+                            MaterialTheme.colorScheme.outlineVariant,
+                            RoundedCornerShape(2.dp),
+                        ),
+                )
+                Box(
+                    modifier = Modifier
+                        .align(Alignment.TopCenter)
+                        .offset { IntOffset(0, yPx.toInt()) }
+                        .width(3.dp)
+                        .height(with(density) { thumbPx.toDp() })
+                        .background(
+                            MaterialTheme.colorScheme.outline,
+                            RoundedCornerShape(2.dp),
+                        ),
+                )
+            }
         }
     }
 }
