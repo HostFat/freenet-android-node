@@ -231,6 +231,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     var showConfigEditor by remember { mutableStateOf(false) }
     var showNoEditor by remember { mutableStateOf(false) }
     var showExternalGuideConfirm by remember { mutableStateOf(false) }
+    var changelogLine by remember { mutableStateOf(AppChangelog.pendingLine(context)) }
     var pendingRestart by remember { mutableStateOf<PendingRestart?>(null) }
     var configFingerprint by remember { mutableStateOf(ConfigToml.fingerprint(context)) }
     var awaitingExternalConfigEdit by rememberSaveable { mutableStateOf(false) }
@@ -375,18 +376,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                             )
-                        }
-                    }
-                    var changelogLine by remember {
-                        mutableStateOf(AppChangelog.pendingLine(context))
-                    }
-                    changelogLine?.let { line ->
-                        Text(line, style = MaterialTheme.typography.bodySmall)
-                        TextButton(onClick = {
-                            AppChangelog.markSeen(context)
-                            changelogLine = null
-                        }) {
-                            Text(stringResource(R.string.dismiss_changelog))
                         }
                     }
                     OutlinedButton(
@@ -591,7 +580,29 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         }
     }
 
-    pendingRestart?.let { restart ->
+    changelogLine?.let { line ->
+        AlertDialog(
+            onDismissRequest = {},
+            properties = DialogProperties(
+                dismissOnBackPress = false,
+                dismissOnClickOutside = false,
+            ),
+            title = { Text(stringResource(R.string.changelog_title)) },
+            text = { Text(line) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        AppChangelog.markSeen(context)
+                        changelogLine = null
+                    },
+                ) {
+                    Text(stringResource(R.string.dismiss_changelog))
+                }
+            },
+        )
+    }
+
+    pendingRestart?.let { restart -> }
         AlertDialog(
             onDismissRequest = { pendingRestart = null },
             title = { Text(stringResource(R.string.restart_node_title)) },

@@ -34,6 +34,7 @@
     <string name="copy_all_logs">Copy all logs</string>
     <string name="diagnostics_json">JSON</string>
     <string name="dismiss_changelog">Got it</string>
+    <string name="changelog_title">What\'s new</string>
     <string name="node_runs_when">Node runs when</string>
     <string name="node_runs_when_hint">Charging and Always keep a lightweight foreground controller active while the node waits. Always is best-effort: Android can still stop the node.</string>
     <string name="network_data">Network data</string>
