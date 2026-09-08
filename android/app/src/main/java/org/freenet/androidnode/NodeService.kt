@@ -304,6 +304,8 @@ class NodeService : Service() {
                 policy.networkData,
                 policy.minConnections,
                 policy.maxConnections,
+                policy.udpPortMode,
+                policy.udpPort,
             )
             val result = if (networkMode) {
                 NativeBridge.startNetworkNode(configJson)

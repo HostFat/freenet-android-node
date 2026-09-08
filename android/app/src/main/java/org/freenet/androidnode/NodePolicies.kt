@@ -16,6 +16,20 @@ enum class NetworkDataPolicy(val displayName: String, val shortLabel: String) {
     AnyValidated("Any validated network", "Any validated"),
 }
 
+enum class UdpPortMode(val displayName: String, val shortLabel: String) {
+    Saved("Saved", "Saved"),
+    Custom("Custom", "Custom"),
+    Random("Random", "Random"),
+}
+
+internal object UdpPorts {
+    const val Floor = 1
+    const val Ceiling = 65535
+    const val Default = 31337
+
+    fun coerce(value: Int): Int = value.coerceIn(Floor, Ceiling)
+}
+
 internal object ConnectionLimits {
     const val Floor = 1
     const val Ceiling = 2000
@@ -61,12 +75,24 @@ internal fun connectionLimitsAreDirty(
     return min != savedMin || max != savedMax
 }
 
+internal fun udpPortSettingsAreDirty(
+    draftMode: UdpPortMode,
+    draftPort: Int,
+    savedMode: UdpPortMode,
+    savedPort: Int,
+): Boolean {
+    if (draftMode != savedMode) return true
+    return draftMode == UdpPortMode.Custom && UdpPorts.coerce(draftPort) != savedPort
+}
+
 data class NodePolicyState(
     val power: NodePowerPolicy = NodePowerPolicy.Manual,
     val networkData: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
     val suspendedByUser: Boolean = false,
     val minConnections: Int = ConnectionLimits.DefaultMin,
     val maxConnections: Int = ConnectionLimits.DefaultMax,
+    val udpPortMode: UdpPortMode = UdpPortMode.Saved,
+    val udpPort: Int = UdpPorts.Default,
 ) {
     val automatic: Boolean
         get() = power != NodePowerPolicy.Manual
@@ -90,6 +116,8 @@ object NodePolicyRepository {
     private const val SUSPENDED_KEY = "suspended_by_user"
     private const val MIN_CONNECTIONS_KEY = "min_connections"
     private const val MAX_CONNECTIONS_KEY = "max_connections"
+    private const val UDP_PORT_MODE_KEY = "udp_port_mode"
+    private const val UDP_PORT_KEY = "udp_port"
 
     private val mutableState = MutableStateFlow(NodePolicyState())
     val state: StateFlow<NodePolicyState> = mutableState.asStateFlow()
@@ -118,6 +146,12 @@ object NodePolicyRepository {
             suspendedByUser = preferences.getBoolean(SUSPENDED_KEY, false),
             minConnections = minConnections,
             maxConnections = maxConnections,
+            udpPortMode = preferences.getString(UDP_PORT_MODE_KEY, null)
+                ?.let { stored -> enumValues<UdpPortMode>().find { it.name == stored } }
+                ?: UdpPortMode.Saved,
+            udpPort = UdpPorts.coerce(
+                preferences.getInt(UDP_PORT_KEY, UdpPorts.Default),
+            ),
         )
         initialized = true
     }
@@ -152,6 +186,17 @@ object NodePolicyRepository {
         persist(context, mutableState.value.copy(minConnections = min, maxConnections = max))
     }
 
+    fun setUdpPortSettings(context: Context, mode: UdpPortMode, port: Int) {
+        initialize(context)
+        persist(
+            context,
+            mutableState.value.copy(
+                udpPortMode = mode,
+                udpPort = UdpPorts.coerce(port),
+            ),
+        )
+    }
+
     fun setSuspended(context: Context, suspended: Boolean) {
         initialize(context)
         persist(context, mutableState.value.copy(suspendedByUser = suspended))
@@ -176,6 +221,8 @@ object NodePolicyRepository {
             .putBoolean(SUSPENDED_KEY, next.suspendedByUser)
             .putInt(MIN_CONNECTIONS_KEY, next.minConnections)
             .putInt(MAX_CONNECTIONS_KEY, next.maxConnections)
+            .putString(UDP_PORT_MODE_KEY, next.udpPortMode.name)
+            .putInt(UDP_PORT_KEY, next.udpPort)
             .apply()
         mutableState.value = next
     }

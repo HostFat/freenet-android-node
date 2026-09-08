@@ -278,6 +278,23 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         scope.launch { drawerState.close() }
     }
 
+    fun saveUdpPortSettings(mode: UdpPortMode, port: Int) {
+        val before = policyState
+        nodeViewModel.setUdpPortSettings(mode, port)
+        val after = nodeViewModel.policies.value
+        if (
+            after.udpPortMode == before.udpPortMode &&
+            after.udpPort == before.udpPort
+        ) {
+            return
+        }
+        ConfigToml.syncUdpPortToFile(context, after.udpPortMode, after.udpPort)
+        configFingerprint = ConfigToml.fingerprint(context)
+        if (networkNodeIsLive(nodeState.state, nodeState.mode)) {
+            pendingRestart = PendingRestart.UdpPort
+        }
+    }
+
     fun saveConnectionLimits(min: Int, max: Int) {
         val before = policyState
         nodeViewModel.setConnectionLimits(min, max)
@@ -397,6 +414,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         },
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
                         onSaveConnectionLimits = ::saveConnectionLimits,
+                        onSaveUdpPortSettings = ::saveUdpPortSettings,
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -556,6 +574,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             restart.max,
                         )
                         PendingRestart.ConfigFile -> stringResource(R.string.restart_config_message)
+                        PendingRestart.UdpPort -> stringResource(R.string.restart_udp_port_message)
                     },
                 )
             },
@@ -619,6 +638,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
 private sealed class PendingRestart {
     data class Connections(val min: Int, val max: Int) : PendingRestart()
     data object ConfigFile : PendingRestart()
+    data object UdpPort : PendingRestart()
 }
 
 @Composable
@@ -762,13 +782,21 @@ private fun PolicyControls(
     onPowerPolicy: (NodePowerPolicy) -> Unit,
     onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
     onSaveConnectionLimits: (Int, Int) -> Unit,
+    onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
 ) {
+    val context = LocalContext.current
     var draftMin by remember { mutableStateOf(policies.minConnections) }
     var draftMax by remember { mutableStateOf(policies.maxConnections) }
+    var draftUdpMode by remember { mutableStateOf(policies.udpPortMode) }
+    var draftUdpPort by remember { mutableStateOf(policies.udpPort) }
     val focusManager = LocalFocusManager.current
     LaunchedEffect(policies.minConnections, policies.maxConnections) {
         draftMin = policies.minConnections
         draftMax = policies.maxConnections
+    }
+    LaunchedEffect(policies.udpPortMode, policies.udpPort) {
+        draftUdpMode = policies.udpPortMode
+        draftUdpPort = policies.udpPort
     }
     val dirty = connectionLimitsAreDirty(
         draftMin,
@@ -776,6 +804,13 @@ private fun PolicyControls(
         policies.minConnections,
         policies.maxConnections,
     )
+    val udpDirty = udpPortSettingsAreDirty(
+        draftUdpMode,
+        draftUdpPort,
+        policies.udpPortMode,
+        policies.udpPort,
+    )
+    val savedUdpPort = ConfigToml.parseInt(ConfigToml.read(context), ConfigToml.NETWORK_PORT_KEY)
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.node_runs_when), style = MaterialTheme.typography.titleMedium)
@@ -845,6 +880,54 @@ private fun PolicyControls(
             stringResource(R.string.connection_limits_desktop_note),
             style = MaterialTheme.typography.bodySmall,
         )
+        HorizontalDivider()
+        Text(stringResource(R.string.udp_port), style = MaterialTheme.typography.titleMedium)
+        CompactChoiceRow(
+            options = UdpPortMode.entries,
+            selected = draftUdpMode,
+            label = { it.shortLabel },
+            onSelect = { draftUdpMode = it },
+        )
+        Text(
+            stringResource(
+                when (draftUdpMode) {
+                    UdpPortMode.Saved -> R.string.udp_port_saved_hint
+                    UdpPortMode.Custom -> R.string.udp_port_custom_hint
+                    UdpPortMode.Random -> R.string.udp_port_random_hint
+                },
+            ),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (draftUdpMode == UdpPortMode.Saved && savedUdpPort != null) {
+            Text(
+                stringResource(R.string.udp_port_current, savedUdpPort),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (draftUdpMode == UdpPortMode.Custom) {
+            ConnectionLimitField(
+                value = draftUdpPort,
+                label = stringResource(R.string.udp_port),
+                upperBound = UdpPorts.Ceiling,
+                rangeText = stringResource(R.string.udp_port_range),
+                ceiling = UdpPorts.Ceiling,
+                onChange = { draftUdpPort = UdpPorts.coerce(it) },
+            )
+        }
+        Button(
+            onClick = {
+                focusManager.clearFocus()
+                onSaveUdpPortSettings(draftUdpMode, draftUdpPort)
+            },
+            enabled = udpDirty,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.save_udp_port))
+        }
+        Text(
+            stringResource(R.string.connection_limits_apply_next_start),
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
 
@@ -855,11 +938,12 @@ private fun ConnectionLimitField(
     upperBound: Int,
     rangeText: String,
     onChange: (Int) -> Unit,
+    ceiling: Int = ConnectionLimits.Ceiling,
 ) {
     var text by remember { mutableStateOf(value.toString()) }
     var focused by remember { mutableStateOf(false) }
     val focusManager = LocalFocusManager.current
-    val cap = minOf(upperBound, ConnectionLimits.Ceiling)
+    val cap = minOf(upperBound, ceiling)
     LaunchedEffect(value) {
         if (!focused) {
             text = value.toString()
@@ -868,7 +952,7 @@ private fun ConnectionLimitField(
 
     fun commit() {
         val parsed = text.toIntOrNull()
-        val next = ConnectionLimits.coerce(parsed ?: value).coerceAtMost(cap)
+        val next = (parsed ?: value).coerceIn(ConnectionLimits.Floor, cap)
         text = next.toString()
         if (next != value) {
             onChange(next)

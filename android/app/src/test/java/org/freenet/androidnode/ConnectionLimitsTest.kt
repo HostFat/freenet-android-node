@@ -47,6 +47,28 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun udpPortSettingsDirtyOnlyWhenModeOrCustomPortChanges() {
+        assertEquals(
+            false,
+            udpPortSettingsAreDirty(UdpPortMode.Saved, 31337, UdpPortMode.Saved, 31337),
+        )
+        assertEquals(
+            true,
+            udpPortSettingsAreDirty(UdpPortMode.Random, 31337, UdpPortMode.Saved, 31337),
+        )
+        assertEquals(
+            false,
+            udpPortSettingsAreDirty(UdpPortMode.Random, 1, UdpPortMode.Random, 31337),
+        )
+        assertEquals(
+            true,
+            udpPortSettingsAreDirty(UdpPortMode.Custom, 55012, UdpPortMode.Custom, 31337),
+        )
+        assertEquals(1, UdpPorts.coerce(0))
+        assertEquals(65535, UdpPorts.coerce(70000))
+    }
+
+    @Test
     fun savePeerConnectionsOnlyWhenDraftDiffersFromSaved() {
         assertEquals(false, connectionLimitsAreDirty(10, 25, 10, 25))
         assertEquals(true, connectionLimitsAreDirty(11, 25, 10, 25))

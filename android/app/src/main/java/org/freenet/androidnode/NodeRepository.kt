@@ -416,6 +416,8 @@ internal fun androidNodeConfigJson(
     networkDataPolicy: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
     minConnections: Int = ConnectionLimits.DefaultMin,
     maxConnections: Int = ConnectionLimits.DefaultMax,
+    udpPortMode: UdpPortMode = UdpPortMode.Saved,
+    udpPort: Int = UdpPorts.Default,
 ): String {
     val persistentRoot = File(context.filesDir, "freenet")
     val config = JSONObject()
@@ -438,6 +440,8 @@ internal fun androidNodeConfigJson(
         .put("websocketPort", 7509)
         .put("minConnections", minConnections)
         .put("maxConnections", maxConnections)
+        .put("udpPortMode", udpPortMode.name.lowercase())
+        .put("udpPort", udpPort)
     if (connectivity != null) {
         config.put(
             "network",

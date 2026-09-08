@@ -53,6 +53,10 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodeRepository.setConnectionLimits(getApplication(), minConnections, maxConnections)
     }
 
+    fun setUdpPortSettings(mode: UdpPortMode, port: Int) {
+        NodePolicyRepository.setUdpPortSettings(getApplication(), mode, port)
+    }
+
     fun restartNetworkNode() {
         NodeRepository.restartNetworkNode(getApplication())
     }

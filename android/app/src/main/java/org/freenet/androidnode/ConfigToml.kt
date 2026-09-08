@@ -18,6 +18,7 @@ internal fun shouldPromptRestartForConfigFile(
 internal object ConfigToml {
     const val MIN_KEY = "min-number-of-connections"
     const val MAX_KEY = "max-number-of-connections"
+    const val NETWORK_PORT_KEY = "network-port"
     const val FILE_PROVIDER_SUFFIX = ".fileprovider"
 
     fun file(context: Context): File =
@@ -83,6 +84,23 @@ internal object ConfigToml {
     fun parseInt(text: String, key: String): Int? {
         val regex = Regex("(?m)^[ \\t]*${Regex.escape(key)}[ \\t]*=[ \\t]*(\\d+)")
         return regex.find(text)?.groupValues?.get(1)?.toIntOrNull()
+    }
+
+    fun removeKey(text: String, key: String): String {
+        val regex = Regex("(?m)^[ \\t]*${Regex.escape(key)}[ \\t]*=[ \\t]*.*\\n?")
+        return regex.replace(text, "")
+    }
+
+    fun syncUdpPortToFile(context: Context, mode: UdpPortMode, port: Int) {
+        val current = read(context)
+        val updated = when (mode) {
+            UdpPortMode.Custom -> upsertInt(current, NETWORK_PORT_KEY, UdpPorts.coerce(port))
+            UdpPortMode.Random -> removeKey(current, NETWORK_PORT_KEY)
+            UdpPortMode.Saved -> current
+        }
+        if (updated != current) {
+            write(context, updated)
+        }
     }
 
     fun syncLimitsToFile(context: Context, min: Int, max: Int) {

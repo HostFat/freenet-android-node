@@ -31,6 +31,14 @@ class ConfigTomlTest {
     }
 
     @Test
+    fun removeKeyDropsNetworkPortAssignment() {
+        val original = "mode = \"network\"\nnetwork-port = 55012\nws-api-port = 7509\n"
+        val stripped = ConfigToml.removeKey(original, ConfigToml.NETWORK_PORT_KEY)
+        assertNull(ConfigToml.parseInt(stripped, ConfigToml.NETWORK_PORT_KEY))
+        assertEquals(7509, ConfigToml.parseInt(stripped, "ws-api-port"))
+    }
+
+    @Test
     fun restartPromptIgnoresNodeRewriteOfConfigFile() {
         assertEquals(
             false,

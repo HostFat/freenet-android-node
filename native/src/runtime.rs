@@ -60,7 +60,20 @@ struct AndroidNodeConfig {
     #[serde(default = "default_max_connections")]
     max_connections: usize,
     #[serde(default)]
+    udp_port_mode: UdpPortMode,
+    #[serde(default)]
+    udp_port: Option<u16>,
+    #[serde(default)]
     network: Option<NetworkModeConfig>,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, PartialEq, Eq)]
+#[serde(rename_all = "lowercase")]
+enum UdpPortMode {
+    #[default]
+    Saved,
+    Custom,
+    Random,
 }
 
 #[derive(Clone, Debug, Deserialize)]
@@ -1665,6 +1678,20 @@ async fn prepare_network_node(
     args.ws_api.ws_api_port = Some(android_config.websocket_port);
     args.network_api.address = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     args.network_api.skip_load_from_network = false;
+    // ConfigArgs::default() pre-fills a random network_port. Clear it so a
+    // Saved mode can keep config.toml, matching desktop Freenet.
+    args.network_api.network_port = None;
+    match android_config.udp_port_mode {
+        UdpPortMode::Custom => {
+            args.network_api.network_port = Some(
+                android_config
+                    .udp_port
+                    .filter(|port| *port != 0)
+                    .unwrap_or(31337),
+            );
+        }
+        UdpPortMode::Saved | UdpPortMode::Random => {}
+    }
     let config_toml = android_config.configuration_directory.join("config.toml");
     if config_toml.exists() {
         // Leave min/max unset so ConfigArgs::build() keeps operator edits
@@ -1682,6 +1709,9 @@ async fn prepare_network_node(
             format!("Failed to build the Freenet network configuration: {error:#}"),
         )
     })?;
+    if android_config.udp_port_mode == UdpPortMode::Random {
+        strip_toml_assignment(&config_toml, "network-port")?;
+    }
     let paths = config.paths();
     require_canonical_path(
         "Freenet network database directory",
@@ -1750,6 +1780,46 @@ fn require_canonical_path(name: &str, actual: &Path, expected: &Path) -> Result<
     require_exact_path(name, &actual, &expected)
 }
 
+fn strip_toml_assignment(path: &Path, key: &str) -> Result<(), NodeError> {
+    if !path.exists() {
+        return Ok(());
+    }
+    let original = std::fs::read_to_string(path).map_err(|error| {
+        NodeError::new(
+            "CONFIG_REWRITE_FAILED",
+            format!("Failed to read config.toml to drop {key}: {error}"),
+        )
+    })?;
+    let updated = strip_toml_assignment_text(&original, key);
+    if updated == original {
+        return Ok(());
+    }
+    std::fs::write(path, updated).map_err(|error| {
+        NodeError::new(
+            "CONFIG_REWRITE_FAILED",
+            format!("Failed to write config.toml without {key}: {error}"),
+        )
+    })?;
+    Ok(())
+}
+
+fn strip_toml_assignment_text(text: &str, key: &str) -> String {
+    let kept: Vec<&str> = text
+        .lines()
+        .filter(|line| {
+            line.trim_start()
+                .strip_prefix(key)
+                .map(|rest| !rest.trim_start().starts_with('='))
+                .unwrap_or(true)
+        })
+        .collect();
+    let mut out = kept.join("\n");
+    if text.ends_with('\n') && !out.ends_with('\n') {
+        out.push('\n');
+    }
+    out
+}
+
 fn config_json_port(config_json: &str) -> Option<u16> {
     serde_json::from_str::<serde_json::Value>(config_json)
         .ok()?
@@ -1802,7 +1872,10 @@ fn serialize_response<T: Serialize>(response: &ResponseEnvelope<T>) -> String {
 
 #[cfg(test)]
 mod tests {
-    use super::{AndroidNodeConfig, NodeRuntime, NodeState, error_response, success_response};
+    use super::{
+        AndroidNodeConfig, NodeRuntime, NodeState, error_response, strip_toml_assignment_text,
+        success_response,
+    };
     use std::path::Path;
 
     fn valid_config_json() -> String {
@@ -1856,6 +1929,19 @@ mod tests {
         );
         assert_eq!(config.min_connections, 10);
         assert_eq!(config.max_connections, 25);
+        assert_eq!(config.udp_port_mode, super::UdpPortMode::Saved);
+        assert_eq!(config.udp_port, None);
+    }
+
+    #[test]
+    fn random_udp_mode_drops_network_port_from_toml() {
+        let original = "mode = \"network\"\nnetwork-port = 55012\nws-api-port = 7509\n";
+        let stripped = strip_toml_assignment_text(original, "network-port");
+        assert!(
+            !stripped.contains("network-port"),
+            "random mode must not keep network-port in config.toml"
+        );
+        assert!(stripped.contains("ws-api-port = 7509"));
     }
 
     #[test]

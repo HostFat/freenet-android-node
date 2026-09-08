@@ -47,6 +47,14 @@
     <string name="min_connections">Minimum</string>
     <string name="max_connections">Maximum</string>
     <string name="save_connection_limits">Save limits</string>
+    <string name="udp_port">UDP port</string>
+    <string name="save_udp_port">Save UDP port</string>
+    <string name="udp_port_range">Integers from 1 to 65535.</string>
+    <string name="udp_port_saved_hint">Like desktop Freenet: pick a free UDP port and keep it in config.toml for the next start.</string>
+    <string name="udp_port_custom_hint">Bind this UDP port every start. It is written to config.toml.</string>
+    <string name="udp_port_random_hint">Pick a new free UDP port every start. It is not saved in config.toml.</string>
+    <string name="udp_port_current">Current saved port: %1$d</string>
+    <string name="restart_udp_port_message">The network node is already running. Restart it now to apply the UDP port setting?</string>
     <string name="connection_limits_apply_next_start">Takes effect the next time the network node starts.</string>
     <string name="connection_limits_range">Integers from 1 to 2000.</string>
     <string name="connection_limits_min_range">Integers from 1 to %1$d (cannot exceed Maximum).</string>
