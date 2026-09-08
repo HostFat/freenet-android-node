@@ -602,7 +602,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         )
     }
 
-    pendingRestart?.let { restart -> }
+    pendingRestart?.let { restart ->
         AlertDialog(
             onDismissRequest = { pendingRestart = null },
             title = { Text(stringResource(R.string.restart_node_title)) },
