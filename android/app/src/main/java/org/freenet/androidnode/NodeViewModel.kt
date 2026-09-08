@@ -57,6 +57,10 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodePolicyRepository.setUdpPortSettings(getApplication(), mode, port)
     }
 
+    fun setStartOnBoot(enabled: Boolean) {
+        NodePolicyRepository.setStartOnBoot(getApplication(), enabled)
+    }
+
     fun restartNetworkNode() {
         NodeRepository.restartNetworkNode(getApplication())
     }

@@ -75,6 +75,19 @@ internal fun connectionLimitsAreDirty(
     return min != savedMin || max != savedMax
 }
 
+internal fun networkStatusLabel(state: String, mode: String, peers: Int, serviceActive: Boolean): String =
+    when {
+        !serviceActive || state == "Stopped" || state == "Failed" -> "Stopped"
+        state == "Paused" -> "Paused"
+        state == "Waiting" -> "Waiting"
+        mode == "Local" && (state == "RunningLocal" || state == "Starting") ->
+            if (state == "Starting") "Starting local" else "Local"
+        state == "Starting" || state == "Stopping" -> "Connecting"
+        state == "RunningNetwork" && peers > 0 -> "Connected"
+        state == "RunningNetwork" -> "Connecting"
+        else -> state
+    }
+
 internal fun udpPortSettingsAreDirty(
     draftMode: UdpPortMode,
     draftPort: Int,
@@ -93,6 +106,7 @@ data class NodePolicyState(
     val maxConnections: Int = ConnectionLimits.DefaultMax,
     val udpPortMode: UdpPortMode = UdpPortMode.Saved,
     val udpPort: Int = UdpPorts.Default,
+    val startOnBoot: Boolean = false,
 ) {
     val automatic: Boolean
         get() = power != NodePowerPolicy.Manual
@@ -118,6 +132,7 @@ object NodePolicyRepository {
     private const val MAX_CONNECTIONS_KEY = "max_connections"
     private const val UDP_PORT_MODE_KEY = "udp_port_mode"
     private const val UDP_PORT_KEY = "udp_port"
+    private const val START_ON_BOOT_KEY = "start_on_boot"
 
     private val mutableState = MutableStateFlow(NodePolicyState())
     val state: StateFlow<NodePolicyState> = mutableState.asStateFlow()
@@ -152,6 +167,7 @@ object NodePolicyRepository {
             udpPort = UdpPorts.coerce(
                 preferences.getInt(UDP_PORT_KEY, UdpPorts.Default),
             ),
+            startOnBoot = preferences.getBoolean(START_ON_BOOT_KEY, false),
         )
         initialized = true
     }
@@ -184,6 +200,11 @@ object NodePolicyRepository {
         initialize(context)
         val (min, max) = ConnectionLimits.clampLoaded(minConnections, maxConnections)
         persist(context, mutableState.value.copy(minConnections = min, maxConnections = max))
+    }
+
+    fun setStartOnBoot(context: Context, enabled: Boolean) {
+        initialize(context)
+        persist(context, mutableState.value.copy(startOnBoot = enabled))
     }
 
     fun setUdpPortSettings(context: Context, mode: UdpPortMode, port: Int) {
@@ -223,6 +244,7 @@ object NodePolicyRepository {
             .putInt(MAX_CONNECTIONS_KEY, next.maxConnections)
             .putString(UDP_PORT_MODE_KEY, next.udpPortMode.name)
             .putInt(UDP_PORT_KEY, next.udpPort)
+            .putBoolean(START_ON_BOOT_KEY, next.startOnBoot)
             .apply()
         mutableState.value = next
     }

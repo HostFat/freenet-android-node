@@ -369,6 +369,18 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             )
                         }
                     }
+                    var changelogLine by remember {
+                        mutableStateOf(AppChangelog.pendingLine(context))
+                    }
+                    changelogLine?.let { line ->
+                        Text(line, style = MaterialTheme.typography.bodySmall)
+                        TextButton(onClick = {
+                            AppChangelog.markSeen(context)
+                            changelogLine = null
+                        }) {
+                            Text(stringResource(R.string.dismiss_changelog))
+                        }
+                    }
                     OutlinedButton(
                         onClick = {
                             scope.launch {
@@ -380,24 +392,32 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     ) {
                         Text("Dashboard")
                     }
+                    if (nodeState.state == "RunningNetwork" || nodeState.state == "RunningLocal") {
+                        OutlinedButton(
+                            onClick = {
+                                context.startActivity(
+                                    Intent(Intent.ACTION_VIEW, Uri.parse(DASHBOARD_URL)),
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.open_dashboard_browser))
+                        }
+                    }
                     HorizontalDivider()
                     NodeControlStrip(
                         state = nodeState,
                         onStartLocal = {
                             withNotificationPermission(nodeViewModel::startLocalNode)
-                            closeDrawer()
                         },
                         onStartNetwork = {
                             withNotificationPermission(nodeViewModel::startNetworkNode)
-                            closeDrawer()
                         },
                         onPause = {
                             nodeViewModel.pauseNode()
-                            closeDrawer()
                         },
                         onStop = {
                             nodeViewModel.stopNode()
-                            closeDrawer()
                         },
                     )
                     HorizontalDivider()
@@ -415,6 +435,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
                         onSaveConnectionLimits = ::saveConnectionLimits,
                         onSaveUdpPortSettings = ::saveUdpPortSettings,
+                        startOnBoot = policyState.startOnBoot,
+                        onStartOnBoot = nodeViewModel::setStartOnBoot,
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -655,12 +677,35 @@ private fun NodeControlStrip(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        Text("Node state: ${state.state} · ${state.mode} · ${state.peers} peers")
+        val status = networkStatusLabel(state.state, state.mode, state.peers, state.serviceActive)
         Text(
-            stringResource(R.string.peer_count_accuracy_hint),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
+            if (status == "Connected") {
+                "Node: Connected · ${state.peers} peers"
+            } else {
+                "Node: $status"
+            },
         )
+        if (status == "Connected") {
+            Text(
+                stringResource(R.string.peer_count_accuracy_hint),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        if (state.mode == "Network" && state.udpPort != null && state.udpPort > 0) {
+            Text(
+                "UDP port: ${state.udpPort}",
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        state.natHint?.let { hint ->
+            Text(
+                hint,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         if (state.lastNetworkError != null) {
             Text(
                 text = state.lastNetworkError,
@@ -783,6 +828,8 @@ private fun PolicyControls(
     onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
     onSaveConnectionLimits: (Int, Int) -> Unit,
     onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
+    startOnBoot: Boolean,
+    onStartOnBoot: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     var draftMin by remember { mutableStateOf(policies.minConnections) }
@@ -822,6 +869,26 @@ private fun PolicyControls(
         )
         Text(
             stringResource(R.string.node_runs_when_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .toggleable(
+                    value = startOnBoot,
+                    onValueChange = onStartOnBoot,
+                    role = Role.Checkbox,
+                ),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Checkbox(checked = startOnBoot, onCheckedChange = null)
+            Text(
+                stringResource(R.string.start_on_boot),
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+        Text(
+            stringResource(R.string.start_on_boot_hint),
             style = MaterialTheme.typography.bodySmall,
         )
         HorizontalDivider()
@@ -1249,10 +1316,27 @@ private fun DiagnosticsPanel(
 ) {
     val context = LocalContext.current
     var snapshot by remember { mutableStateOf("Collecting diagnostics…") }
+    var logs by remember { mutableStateOf("Collecting logs…") }
+    var identityMessage by remember { mutableStateOf<String?>(null) }
+    val exportIdentity = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("application/zip"),
+    ) { uri ->
+        if (uri != null) {
+            identityMessage = IdentityBackup.export(context, uri)
+        }
+    }
+    val importIdentity = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocument(),
+    ) { uri ->
+        if (uri != null) {
+            identityMessage = IdentityBackup.importFrom(context, uri)
+        }
+    }
 
     LaunchedEffect(Unit) {
         while (true) {
             snapshot = withContext(Dispatchers.Default) { diagnosticSnapshot() }
+            logs = withContext(Dispatchers.Default) { formatRecentLogs() }
             delay(2_000)
         }
     }
@@ -1289,6 +1373,38 @@ private fun DiagnosticsPanel(
             stringResource(R.string.config_open_hint),
             style = MaterialTheme.typography.bodySmall,
         )
+        OutlinedButton(
+            onClick = { exportIdentity.launch("freenet-identity-backup.zip") },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.backup_identity))
+        }
+        OutlinedButton(
+            onClick = { importIdentity.launch(arrayOf("application/zip", "*/*")) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.restore_identity))
+        }
+        Text(
+            stringResource(R.string.identity_backup_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        identityMessage?.let { message ->
+            Text(message, style = MaterialTheme.typography.bodySmall)
+        }
+        Text(stringResource(R.string.recent_logs), style = MaterialTheme.typography.titleMedium)
+        SelectionContainer(
+            modifier = Modifier
+                .fillMaxWidth()
+                .weight(1f)
+                .verticalScroll(rememberScrollState()),
+        ) {
+            Text(
+                text = logs,
+                fontFamily = FontFamily.Monospace,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         SelectionContainer(
             modifier = Modifier
                 .fillMaxWidth()
@@ -1352,6 +1468,25 @@ private fun ConfigEditorPanel(
             textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
         )
     }
+}
+
+private fun formatRecentLogs(): String {
+    val raw = NativeBridge.recentLogs(DIAGNOSTIC_LOG_ENTRIES).getOrElse { error ->
+        return error.message ?: "Could not read logs"
+    }
+    return runCatching {
+        val entries = JSONObject(raw).getJSONObject("data").getJSONArray("entries")
+        if (entries.length() == 0) return@runCatching "No log entries yet."
+        buildString {
+            for (index in 0 until entries.length()) {
+                val entry = entries.getJSONObject(index)
+                append(entry.optString("level"))
+                append("  ")
+                append(entry.optString("message"))
+                append('\n')
+            }
+        }.trimEnd()
+    }.getOrElse { raw }
 }
 
 private fun diagnosticSnapshot(): String {

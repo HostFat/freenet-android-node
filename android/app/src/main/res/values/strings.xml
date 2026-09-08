@@ -17,6 +17,14 @@
     <string name="check_for_updates">Check for updates</string>
     <string name="open_github_release">Open GitHub release</string>
     <string name="auto_check_interval">New version auto-check every</string>
+    <string name="start_on_boot">Start on boot</string>
+    <string name="start_on_boot_hint">After a reboot or app update, try to start the network node. Android can still block this; also turn off battery limits. Charging/Always still apply if selected.</string>
+    <string name="open_dashboard_browser">Open dashboard in browser</string>
+    <string name="backup_identity">Backup identity</string>
+    <string name="restore_identity">Restore identity</string>
+    <string name="identity_backup_hint">The identity lives in app-private no-backup storage. Without this file, a reinstall is a different peer. Restart the node after restore.</string>
+    <string name="recent_logs">Recent logs</string>
+    <string name="dismiss_changelog">Got it</string>
     <string name="node_runs_when">Node runs when</string>
     <string name="node_runs_when_hint">Charging and Always keep a lightweight foreground controller active while the node waits. Always is best-effort: Android can still stop the node.</string>
     <string name="network_data">Network data</string>

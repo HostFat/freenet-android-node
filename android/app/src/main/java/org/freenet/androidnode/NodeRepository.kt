@@ -29,6 +29,8 @@ data class NodeUiState(
     val vpnActive: Boolean = false,
     val lastNetworkError: String? = null,
     val highestSeenPeerVersion: String? = null,
+    val udpPort: Int? = null,
+    val natHint: String? = null,
 ) {
     val uptimeMs: Long
         get() = startedAtElapsedRealtimeMs
@@ -220,6 +222,7 @@ object NodeRepository {
             vpnActive = parsed.vpnActive,
             lastNetworkError = parsed.lastNetworkError,
             highestSeenPeerVersion = parsed.highestSeenPeerVersion,
+            udpPort = parsed.udpPort,
         )
         mutableState.value = next
         return next
@@ -313,6 +316,11 @@ object NodeRepository {
         mutableStorageState.value = parseStorageStatus(response)
     }
 
+    internal fun publishNatHint(hint: String?) {
+        if (mutableState.value.natHint == hint) return
+        mutableState.value = mutableState.value.copy(natHint = hint)
+    }
+
     internal fun publishConnectivity(snapshot: ConnectivitySnapshot, response: String) {
         mutableState.value = mutableState.value.copy(
             currentNetworkType = snapshot.networkType,
@@ -341,6 +349,7 @@ internal data class NodeStatusSnapshot(
     val vpnActive: Boolean = false,
     val lastNetworkError: String? = null,
     val highestSeenPeerVersion: String? = null,
+    val udpPort: Int? = null,
 )
 
 internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
@@ -373,6 +382,7 @@ internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
             vpnActive = data.optBoolean("vpnActive"),
             lastNetworkError = data.optionalString("lastNetworkError"),
             highestSeenPeerVersion = data.optionalString("highestSeenPeerVersion"),
+            udpPort = data.optInt("udpPort").takeIf { data.has("udpPort") && !data.isNull("udpPort") && it > 0 },
         )
     }.getOrElse { error ->
         NodeStatusSnapshot("Failed", error.message ?: response, 0, null)

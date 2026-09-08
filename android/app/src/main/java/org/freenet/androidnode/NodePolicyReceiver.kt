@@ -18,7 +18,8 @@ class NodePolicyReceiver : BroadcastReceiver() {
         }
         NodePolicyRepository.initialize(context)
         val policy = NodePolicyRepository.state.value
-        if (!policy.automatic || policy.suspendedByUser) return
+        if (policy.suspendedByUser) return
+        if (!policy.automatic && !policy.startOnBoot) return
 
         runCatching {
             context.startForegroundService(NodeService.reconcilePolicyIntent(context))

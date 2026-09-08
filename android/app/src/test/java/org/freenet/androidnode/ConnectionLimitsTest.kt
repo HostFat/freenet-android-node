@@ -27,6 +27,30 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun networkStatusLabelIsConnectedConnectingOrStopped() {
+        assertEquals(
+            "Stopped",
+            networkStatusLabel("Stopped", "Network", 0, false),
+        )
+        assertEquals(
+            "Connecting",
+            networkStatusLabel("RunningNetwork", "Network", 0, true),
+        )
+        assertEquals(
+            "Connected",
+            networkStatusLabel("RunningNetwork", "Network", 4, true),
+        )
+        assertEquals(
+            "Paused",
+            networkStatusLabel("Paused", "Network", 0, true),
+        )
+        assertEquals(
+            "Local",
+            networkStatusLabel("RunningLocal", "Local", 0, true),
+        )
+    }
+
+    @Test
     fun riverChatInviteOnlyWhenTheNetworkNodeIsRunning() {
         assertEquals(true, showRiverChatInvite("RunningNetwork", "Network"))
         assertEquals(false, showRiverChatInvite("Starting", "Network"))

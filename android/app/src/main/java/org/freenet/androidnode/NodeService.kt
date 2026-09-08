@@ -268,7 +268,7 @@ class NodeService : Service() {
         }
 
         if (active) return
-        if (policy.power == NodePowerPolicy.Manual && !explicitStart) {
+        if (policy.power == NodePowerPolicy.Manual && !explicitStart && !policy.startOnBoot) {
             shutdownCompleted = true
             finishService(startId)
             return
@@ -349,6 +349,7 @@ class NodeService : Service() {
         statusJob?.cancel()
         statusJob = serviceScope.launch(Dispatchers.IO) {
             var lastNotificationSecond = -1L
+            var natTick = 0
             while (isActive) {
                 val response = NativeBridge.nodeStatus().getOrElse {
                     "JNI error: ${it.message ?: "unknown error"}"
@@ -358,6 +359,15 @@ class NodeService : Service() {
                     serviceActive = true,
                     startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
                 )
+                if (state.state == "RunningNetwork") {
+                    natTick += 1
+                    if (natTick == 1 || natTick % 32 == 0) {
+                        NodeRepository.publishNatHint(DashboardHints.natHint())
+                    }
+                } else {
+                    natTick = 0
+                    NodeRepository.publishNatHint(null)
+                }
                 val uptimeSecond = state.uptimeMs / 1_000
                 if (uptimeSecond != lastNotificationSecond) {
                     nodeNotificationManager.update(state)

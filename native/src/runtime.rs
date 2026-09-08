@@ -1,6 +1,6 @@
 use std::collections::VecDeque;
 use std::io::Write;
-use std::net::{IpAddr, Ipv4Addr};
+use std::net::{IpAddr, Ipv4Addr, SocketAddr, UdpSocket};
 use std::panic::{AssertUnwindSafe, catch_unwind};
 use std::path::{Component, Path, PathBuf};
 use std::sync::{Arc, Mutex, MutexGuard, OnceLock};
@@ -700,6 +700,7 @@ struct NodeStatus {
     vpn_active: bool,
     last_network_error: Option<String>,
     highest_seen_peer_version: Option<String>,
+    udp_port: Option<u16>,
 }
 
 impl NodeStatus {
@@ -724,6 +725,7 @@ impl NodeStatus {
             vpn_active: false,
             last_network_error: None,
             highest_seen_peer_version: None,
+            udp_port: None,
         }
     }
 }
@@ -894,6 +896,7 @@ impl NodeRuntime {
                 .is_some_and(|network| network.connectivity.vpn),
             last_network_error: None,
             highest_seen_peer_version: None,
+            udp_port: None,
         };
         inner.started_at_ms = Some(unix_time_ms());
         inner.last_observed_peer_count = 0;
@@ -949,6 +952,7 @@ impl NodeRuntime {
             inner.status.state = NodeState::Stopped;
             inner.status.detail = "The node thread had already stopped".to_owned();
             inner.status.websocket_port = None;
+            inner.status.udp_port = None;
             inner.status.transition_time_ms = unix_time_ms();
             return success_response(inner.status.clone());
         }
@@ -1248,6 +1252,10 @@ impl SharedRuntime {
         });
     }
 
+    fn set_udp_port(&self, port: Option<u16>) {
+        lock_recover(&self.inner).status.udp_port = port;
+    }
+
     fn mark_running(&self, websocket_port: u16, mode: NodeMode) {
         let mut inner = lock_recover(&self.inner);
         if inner.status.state != NodeState::Starting {
@@ -1278,6 +1286,7 @@ impl SharedRuntime {
         inner.status.state = NodeState::Stopped;
         inner.status.detail = "The node stopped and released its runtime".to_owned();
         inner.status.websocket_port = None;
+        inner.status.udp_port = None;
         inner.status.transition_time_ms = unix_time_ms();
         inner.status.peer_count = 0;
         inner.started_at_ms = None;
@@ -1297,6 +1306,7 @@ impl SharedRuntime {
         inner.status.state = NodeState::Failed;
         inner.status.detail = message.clone();
         inner.status.websocket_port = None;
+        inner.status.udp_port = None;
         inner.status.transition_time_ms = unix_time_ms();
         if inner.contract_proof.state.is_active() {
             inner.contract_proof.state = ContractProofState::Failed;
@@ -1540,7 +1550,7 @@ async fn run_network_runtime(
 ) -> ThreadExit {
     let setup = prepare_network_node(&config);
     tokio::pin!(setup);
-    let (node, shutdown_handle, websocket_port) = tokio::select! {
+    let (node, shutdown_handle, websocket_port, udp_port) = tokio::select! {
         biased;
         command = command_rx.recv() => {
             match command {
@@ -1560,9 +1570,12 @@ async fn run_network_runtime(
         }
     };
 
+    shared.set_udp_port(Some(udp_port));
     shared.log(
         "INFO",
-        "Freenet network configuration loaded from the documented gateway index",
+        format!(
+            "Freenet network configuration loaded from the documented gateway index; UDP port {udp_port}"
+        ),
     );
     let node = freenet::run_network_node(node);
     tokio::pin!(node);
@@ -1659,7 +1672,7 @@ async fn prepare_local_node(
 
 async fn prepare_network_node(
     android_config: &AndroidNodeConfig,
-) -> Result<(freenet::Node, freenet::ShutdownHandle, u16), NodeError> {
+) -> Result<(freenet::Node, freenet::ShutdownHandle, u16, u16), NodeError> {
     android_config.validate_network_mode()?;
     android_config.prepare_storage()?;
     android_config.enable_documented_network_bootstrap()?;
@@ -1678,21 +1691,26 @@ async fn prepare_network_node(
     args.ws_api.ws_api_port = Some(android_config.websocket_port);
     args.network_api.address = Some(IpAddr::V4(Ipv4Addr::UNSPECIFIED));
     args.network_api.skip_load_from_network = false;
-    // ConfigArgs::default() pre-fills a random network_port. Clear it so a
-    // Saved mode can keep config.toml, matching desktop Freenet.
-    args.network_api.network_port = None;
-    match android_config.udp_port_mode {
-        UdpPortMode::Custom => {
-            args.network_api.network_port = Some(
-                android_config
-                    .udp_port
-                    .filter(|port| *port != 0)
-                    .unwrap_or(31337),
-            );
-        }
-        UdpPortMode::Saved | UdpPortMode::Random => {}
-    }
+    args.network_api.bandwidth_limit = None;
+    args.network_api.transient_budget = None;
+    args.network_api.transient_ttl_secs = None;
+    args.log_level = None;
+    // ConfigArgs::default() pre-fills a random network_port. Choose explicitly
+    // so Saved can keep config.toml and prefer 31337 like desktop Freenet.
     let config_toml = android_config.configuration_directory.join("config.toml");
+    let file_udp_port = std::fs::read_to_string(&config_toml)
+        .ok()
+        .and_then(|text| parse_toml_u16(&text, "network-port"));
+    let selected_udp_port = match android_config.udp_port_mode {
+        UdpPortMode::Custom => android_config
+            .udp_port
+            .filter(|port| *port != 0)
+            .unwrap_or(31337),
+        UdpPortMode::Saved => file_udp_port.unwrap_or_else(pick_saved_udp_port),
+        UdpPortMode::Random => pick_ephemeral_udp_port(),
+    };
+    ensure_udp_port_free(selected_udp_port)?;
+    args.network_api.network_port = Some(selected_udp_port);
     if config_toml.exists() {
         // Leave min/max unset so ConfigArgs::build() keeps operator edits
         // from config.toml instead of overlaying the Android UI values.
@@ -1758,7 +1776,7 @@ async fn prepare_network_node(
         )
     })?;
     let shutdown_handle = node.shutdown_handle();
-    Ok((node, shutdown_handle, websocket_port))
+    Ok((node, shutdown_handle, websocket_port, config.network_api.port))
 }
 
 fn require_canonical_path(name: &str, actual: &Path, expected: &Path) -> Result<(), NodeError> {
@@ -1778,6 +1796,56 @@ fn require_canonical_path(name: &str, actual: &Path, expected: &Path) -> Result<
         )
     })?;
     require_exact_path(name, &actual, &expected)
+}
+
+fn pick_saved_udp_port() -> u16 {
+    if udp_port_is_free(31337) {
+        31337
+    } else {
+        pick_ephemeral_udp_port()
+    }
+}
+
+fn pick_ephemeral_udp_port() -> u16 {
+    UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), 0))
+        .ok()
+        .and_then(|socket| socket.local_addr().ok())
+        .map(|addr| addr.port())
+        .filter(|port| *port != 0)
+        .unwrap_or(31337)
+}
+
+fn udp_port_is_free(port: u16) -> bool {
+    UdpSocket::bind(SocketAddr::new(
+        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
+        port,
+    ))
+    .is_ok()
+}
+
+fn ensure_udp_port_free(port: u16) -> Result<(), NodeError> {
+    if udp_port_is_free(port) {
+        Ok(())
+    } else {
+        Err(NodeError::new(
+            "UDP_PORT_IN_USE",
+            format!(
+                "UDP port {port} is already in use. Choose another Custom port, or use Saved or Random."
+            ),
+        ))
+    }
+}
+
+fn parse_toml_u16(text: &str, key: &str) -> Option<u16> {
+    for line in text.lines() {
+        let trimmed = line.trim_start();
+        let rest = trimmed.strip_prefix(key)?;
+        let value = rest.trim_start().strip_prefix('=')?.trim();
+        if let Ok(port) = value.parse::<u16>() {
+            return Some(port);
+        }
+    }
+    None
 }
 
 fn strip_toml_assignment(path: &Path, key: &str) -> Result<(), NodeError> {
@@ -1942,6 +2010,13 @@ mod tests {
             "random mode must not keep network-port in config.toml"
         );
         assert!(stripped.contains("ws-api-port = 7509"));
+    }
+
+    #[test]
+    fn parse_toml_u16_reads_network_port() {
+        let text = "mode = \"network\"\nnetwork-port = 55012\nws-api-port = 7509\n";
+        assert_eq!(super::parse_toml_u16(text, "network-port"), Some(55012));
+        assert_eq!(super::parse_toml_u16(text, "missing"), None);
     }
 
     #[test]
