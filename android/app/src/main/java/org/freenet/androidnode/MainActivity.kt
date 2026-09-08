@@ -535,6 +535,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
             } else if (showDiagnostics) {
                 DiagnosticsPanel(
                     modifier = Modifier.fillMaxSize(),
+                    onClose = { showDiagnostics = false },
                     onEditConfig = {
                         ConfigToml.ensureExists(context)
                         configFingerprint = ConfigToml.fingerprint(context)
@@ -558,7 +559,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            if (drawerState.isClosed) {
+            if (drawerState.isClosed && !showDiagnostics && !showConfigEditor) {
                 Surface(
                     modifier = Modifier
                         .align(Alignment.TopStart)
@@ -1330,6 +1331,7 @@ private class LoopbackDashboardClient(
 @Composable
 private fun DiagnosticsPanel(
     modifier: Modifier = Modifier,
+    onClose: () -> Unit,
     onEditConfig: () -> Unit,
     onOpenExternal: () -> Unit,
 ) {
@@ -1396,6 +1398,12 @@ private fun DiagnosticsPanel(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        OutlinedButton(
+            onClick = onClose,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.config_close))
+        }
         Text(
             stringResource(R.string.config_toml_heading),
             style = MaterialTheme.typography.bodySmall,
