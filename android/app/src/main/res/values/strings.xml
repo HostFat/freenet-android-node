@@ -15,6 +15,7 @@
     <string name="update_notification_channel_description">Quiet notice when a newer APK is published</string>
     <string name="update_notification_title">Freenet Android APK available</string>
     <string name="check_for_updates">Check for updates</string>
+    <string name="open_github_release">Open GitHub release</string>
     <string name="auto_check_interval">New version auto-check every</string>
     <string name="node_runs_when">Node runs when</string>
     <string name="node_runs_when_hint">Charging and Always keep a lightweight foreground controller active while the node waits. Always is best-effort: Android can still stop the node.</string>

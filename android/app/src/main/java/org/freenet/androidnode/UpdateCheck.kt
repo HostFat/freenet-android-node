@@ -117,8 +117,12 @@ internal fun decideUpdate(
         return UpdateDecision(
             kind = UpdateKind.CoreOnly,
             message = "Freenet $newestCore is out ($source); a matching APK is not published yet.",
+            releaseUrl = UpdateUrls.CORE_RELEASES_PAGE,
         )
     }
 
-    return UpdateDecision(kind = UpdateKind.None)
+    return UpdateDecision(
+        kind = UpdateKind.None,
+        message = "No update available.",
+    )
 }

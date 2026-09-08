@@ -417,7 +417,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                                     context,
                                     nodeState.highestSeenPeerVersion,
                                 )
-                                closeDrawer()
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -429,6 +428,27 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                                 stringResource(R.string.check_for_updates)
                             },
                         )
+                    }
+                    updateState.message?.let { message ->
+                        Text(
+                            message,
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                    if (updateState.releaseUrl != null) {
+                        Button(
+                            onClick = {
+                                context.startActivity(
+                                    Intent(
+                                        Intent.ACTION_VIEW,
+                                        Uri.parse(updateState.releaseUrl),
+                                    ),
+                                )
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.open_github_release))
+                        }
                     }
                     updateState.lastError?.let { error ->
                         Text(
@@ -508,50 +528,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 ) {
                     IconButton(onClick = { scope.launch { drawerState.open() } }) {
                         Text("☰", style = MaterialTheme.typography.titleLarge)
-                    }
-                }
-            }
-            val updateMessage = updateState.message
-            if (updateState.kind != UpdateKind.None && updateMessage != null) {
-                Surface(
-                    modifier = Modifier
-                        .align(Alignment.BottomCenter)
-                        .padding(16.dp)
-                        .fillMaxWidth(),
-                    shape = MaterialTheme.shapes.medium,
-                    tonalElevation = 4.dp,
-                    shadowElevation = 2.dp,
-                ) {
-                    Column(
-                        modifier = Modifier.padding(12.dp),
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            updateMessage,
-                            style = MaterialTheme.typography.bodyMedium,
-                        )
-                        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                            if (updateState.kind == UpdateKind.ApkAvailable) {
-                                Button(
-                                    onClick = {
-                                        context.startActivity(
-                                            Intent(
-                                                Intent.ACTION_VIEW,
-                                                Uri.parse(
-                                                    updateState.releaseUrl
-                                                        ?: UpdateUrls.APK_RELEASES_PAGE,
-                                                ),
-                                            ),
-                                        )
-                                    },
-                                ) {
-                                    Text(stringResource(R.string.download_apk))
-                                }
-                            }
-                            TextButton(onClick = UpdateCheckRepository::dismiss) {
-                                Text(stringResource(R.string.dismiss_update))
-                            }
-                        }
                     }
                 }
             }

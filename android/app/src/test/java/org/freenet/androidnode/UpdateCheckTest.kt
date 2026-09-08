@@ -48,6 +48,7 @@ class UpdateCheckTest {
             peerSeen = null,
         )
         assertEquals(UpdateKind.None, decision.kind)
+        assertEquals("No update available.", decision.message)
     }
 
     @Test
@@ -76,7 +77,7 @@ class UpdateCheckTest {
             peerSeen = null,
         )
         assertEquals(UpdateKind.CoreOnly, fromGithub.kind)
-        assertNull(fromGithub.releaseUrl)
+        assertEquals(UpdateUrls.CORE_RELEASES_PAGE, fromGithub.releaseUrl)
 
         val fromPeers = decideUpdate(
             installedCore = SemVer(0, 2, 134),
