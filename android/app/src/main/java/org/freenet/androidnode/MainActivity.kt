@@ -1385,33 +1385,55 @@ private fun DiagnosticsPanel(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        OutlinedButton(
-            onClick = onEditConfig,
+        Text(
+            stringResource(R.string.config_toml_heading),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(stringResource(R.string.edit_config))
-        }
-        OutlinedButton(
-            onClick = onOpenExternal,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.open_config_external))
+            OutlinedButton(
+                onClick = onEditConfig,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.edit_config_short))
+            }
+            OutlinedButton(
+                onClick = onOpenExternal,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(
+                    stringResource(R.string.open_config_editor_short),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
         }
         Text(
             stringResource(R.string.config_open_hint),
             style = MaterialTheme.typography.bodySmall,
         )
-        OutlinedButton(
-            onClick = { exportIdentity.launch("freenet-identity-backup.zip") },
+        Text(
+            stringResource(R.string.identity_heading),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(stringResource(R.string.backup_identity))
-        }
-        OutlinedButton(
-            onClick = { importIdentity.launch(arrayOf("application/zip", "*/*")) },
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.restore_identity))
+            OutlinedButton(
+                onClick = { exportIdentity.launch("freenet-identity-backup.zip") },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.backup_identity_short))
+            }
+            OutlinedButton(
+                onClick = { importIdentity.launch(arrayOf("application/zip", "*/*")) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.restore_identity_short))
+            }
         }
         Text(
             stringResource(R.string.identity_backup_hint),
