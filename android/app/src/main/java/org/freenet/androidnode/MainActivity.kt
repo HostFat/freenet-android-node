@@ -1081,6 +1081,22 @@ private fun PolicyControls(
         )
         HorizontalDivider()
         Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.connection_limits_resource_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(R.string.connection_limits_mobile_default),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(R.string.connection_limits_desktop_note),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(R.string.connection_limits_experimental),
+            style = MaterialTheme.typography.bodySmall,
+        )
         ConnectionLimitField(
             value = draftMin,
             label = stringResource(R.string.min_connections),
@@ -1117,15 +1133,6 @@ private fun PolicyControls(
         }
         Text(
             stringResource(R.string.connection_limits_apply_next_start),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            stringResource(R.string.connection_limits_desktop_note),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            stringResource(R.string.connection_limits_resource_hint),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
             style = MaterialTheme.typography.bodySmall,
         )
         HorizontalDivider()

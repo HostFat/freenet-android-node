@@ -26,17 +26,17 @@ class ConnectionLimitsTest {
     }
 
     @Test
-    fun defaultsAreTenAndTwentyFive() {
+    fun defaultsAreTenAndTen() {
         val state = NodePolicyState()
         assertEquals(10, state.minConnections)
-        assertEquals(25, state.maxConnections)
+        assertEquals(10, state.maxConnections)
         assertEquals(false, state.autoRestartOnCrash)
         assertEquals(false, state.notifyConnected)
         assertEquals(false, state.notifyStopped)
         assertEquals(true, state.notifyUdpBusy)
         assertEquals(true, state.notifyUpdate)
         assertEquals(10, ConnectionLimits.DefaultMin)
-        assertEquals(25, ConnectionLimits.DefaultMax)
+        assertEquals(10, ConnectionLimits.DefaultMax)
     }
 
     @Test

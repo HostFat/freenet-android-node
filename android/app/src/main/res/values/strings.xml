@@ -100,8 +100,10 @@
     <string name="connection_limits_apply_next_start">Takes effect the next time the network node starts.</string>
     <string name="connection_limits_range">Integers from 1 to 2000.</string>
     <string name="connection_limits_min_range">Integers from 1 to %1$d (cannot exceed Maximum).</string>
-    <string name="connection_limits_desktop_note">A typical desktop Freenet node defaults to a minimum of 25 and a maximum of 200 peer connections. Freenet is still experimental.</string>
     <string name="connection_limits_resource_hint">More peer connections use more CPU, RAM, bandwidth, and battery. Fewer connections are lighter on the phone, but content that is not widely cached on the network may be slower to load or fail to load.</string>
+    <string name="connection_limits_mobile_default">On this mobile version the default limits are very tight: a minimum of 10 and a maximum of 10.</string>
+    <string name="connection_limits_desktop_note">A typical desktop Freenet node defaults to a minimum of 25 and a maximum of 200.</string>
+    <string name="connection_limits_experimental">Freenet is still experimental.</string>
     <string name="restart_node_title">Restart the node?</string>
     <string name="restart_node_message">The network node is already running. Restart it now to apply a minimum of %1$d and a maximum of %2$d peer connections?</string>
     <string name="restart_node_confirm">Restart</string>

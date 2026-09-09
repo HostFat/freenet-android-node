@@ -34,7 +34,7 @@ internal object ConnectionLimits {
     const val Floor = 1
     const val Ceiling = 2000
     const val DefaultMin = 10
-    const val DefaultMax = 25
+    const val DefaultMax = 10
 
     fun coerce(value: Int): Int = value.coerceIn(Floor, Ceiling)
 

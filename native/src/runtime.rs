@@ -23,7 +23,7 @@ const LOG_CAPACITY: usize = 256;
 const ANDROID_CONNECTION_FLOOR: usize = 1;
 const ANDROID_CONNECTION_CEILING: usize = 2000;
 const ANDROID_DEFAULT_MIN_CONNECTIONS: usize = 10;
-const ANDROID_DEFAULT_MAX_CONNECTIONS: usize = 25;
+const ANDROID_DEFAULT_MAX_CONNECTIONS: usize = 10;
 
 fn default_min_connections() -> usize {
     ANDROID_DEFAULT_MIN_CONNECTIONS
@@ -1997,7 +1997,7 @@ mod tests {
             "/data/user/0/org.freenet.androidnode/files/freenet/database/local"
         );
         assert_eq!(config.min_connections, 10);
-        assert_eq!(config.max_connections, 25);
+        assert_eq!(config.max_connections, 10);
         assert_eq!(config.udp_port_mode, super::UdpPortMode::Saved);
         assert_eq!(config.udp_port, None);
     }
