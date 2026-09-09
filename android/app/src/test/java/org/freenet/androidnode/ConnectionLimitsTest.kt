@@ -5,6 +5,15 @@ import org.junit.Test
 
 class ConnectionLimitsTest {
     @Test
+    fun changelogShowsOnlyAfterAnUpdateNotOnFirstInstall() {
+        assertEquals(null, changelogLineIfUpdated("0.2.134.10", null))
+        assertEquals(null, changelogLineIfUpdated("0.2.134.10", ""))
+        assertEquals(null, changelogLineIfUpdated("0.2.134.10", "0.2.134.10"))
+        assertEquals(AppChangelog.LINE, changelogLineIfUpdated("0.2.134.11", "0.2.134.10"))
+        assertEquals(null, changelogLineIfUpdated(null, "0.2.134.10"))
+    }
+
+    @Test
     fun defaultsAreTenAndTwentyFive() {
         val state = NodePolicyState()
         assertEquals(10, state.minConnections)
