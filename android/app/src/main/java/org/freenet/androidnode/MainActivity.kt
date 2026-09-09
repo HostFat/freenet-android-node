@@ -1123,6 +1123,11 @@ private fun PolicyControls(
             stringResource(R.string.connection_limits_desktop_note),
             style = MaterialTheme.typography.bodySmall,
         )
+        Text(
+            stringResource(R.string.connection_limits_resource_hint),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
         HorizontalDivider()
         Text(stringResource(R.string.udp_port), style = MaterialTheme.typography.titleMedium)
         CompactChoiceRow(
