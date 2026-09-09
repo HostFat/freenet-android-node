@@ -61,6 +61,26 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodePolicyRepository.setStartOnBoot(getApplication(), enabled)
     }
 
+    fun setAutoRestartOnCrash(enabled: Boolean) {
+        NodePolicyRepository.setAutoRestartOnCrash(getApplication(), enabled)
+    }
+
+    fun setNotifyConnected(enabled: Boolean) {
+        NodePolicyRepository.setNotifyConnected(getApplication(), enabled)
+    }
+
+    fun setNotifyStopped(enabled: Boolean) {
+        NodePolicyRepository.setNotifyStopped(getApplication(), enabled)
+    }
+
+    fun setNotifyUdpBusy(enabled: Boolean) {
+        NodePolicyRepository.setNotifyUdpBusy(getApplication(), enabled)
+    }
+
+    fun setNotifyUpdate(enabled: Boolean) {
+        NodePolicyRepository.setNotifyUpdate(getApplication(), enabled)
+    }
+
     fun restartNetworkNode() {
         NodeRepository.restartNetworkNode(getApplication())
     }

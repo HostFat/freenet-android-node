@@ -36,6 +36,10 @@ class NodeService : Service() {
     private var startedAtElapsedRealtimeMs: Long? = null
     private var runningMode = "Local"
     private var latestStartId = 0
+    private var userRequestedShutdown = false
+    private var crashRestartAttempt = 0
+    private var crashRestartJob: Job? = null
+    private var notifiedConnectedThisRun = false
 
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context?, intent: Intent?) {
@@ -88,6 +92,11 @@ class NodeService : Service() {
         when (intent?.action) {
             ACTION_START_LOCAL -> {
                 NodePolicyRepository.stopAutomaticScheduling(this)
+                userRequestedShutdown = false
+                crashRestartAttempt = 0
+                crashRestartJob?.cancel()
+                crashRestartJob = null
+                notifiedConnectedThisRun = false
                 runningMode = "Local"
                 startForegroundImmediately(runningMode)
                 serviceScope.launch {
@@ -97,6 +106,11 @@ class NodeService : Service() {
 
             ACTION_START_NETWORK -> {
                 NodePolicyRepository.setSuspended(this, false)
+                userRequestedShutdown = false
+                crashRestartAttempt = 0
+                crashRestartJob?.cancel()
+                crashRestartJob = null
+                notifiedConnectedThisRun = false
                 runningMode = "Network"
                 startForegroundController("Evaluating node policies")
                 serviceScope.launch {
@@ -113,6 +127,9 @@ class NodeService : Service() {
             }
 
             ACTION_PAUSE -> serviceScope.launch {
+                userRequestedShutdown = true
+                crashRestartJob?.cancel()
+                crashRestartJob = null
                 NodePolicyRepository.setSuspended(this@NodeService, true)
                 lifecycleMutex.withLock {
                     val automatic = NodePolicyRepository.state.value.automatic
@@ -126,12 +143,19 @@ class NodeService : Service() {
             }
 
             ACTION_STOP -> serviceScope.launch {
+                userRequestedShutdown = true
+                crashRestartJob?.cancel()
+                crashRestartJob = null
                 NodePolicyRepository.stopAutomaticScheduling(this@NodeService)
                 lifecycleMutex.withLock { shutDownNode(startId, paused = false) }
             }
 
             ACTION_RESTART_NETWORK -> {
                 NodePolicyRepository.setSuspended(this, false)
+                userRequestedShutdown = false
+                crashRestartJob?.cancel()
+                crashRestartJob = null
+                notifiedConnectedThisRun = false
                 runningMode = "Network"
                 startForegroundImmediately(runningMode)
                 serviceScope.launch {
@@ -173,6 +197,7 @@ class NodeService : Service() {
         Log.i(TAG, "NodeService destroyed shutdownCompleted=$shutdownCompleted")
         connectivityMonitor.unregister()
         runCatching { unregisterReceiver(powerReceiver) }
+        crashRestartJob?.cancel()
         statusJob?.cancel()
         if (!shutdownCompleted) {
             val response = NativeBridge.stopNode().getOrElse {
@@ -318,18 +343,41 @@ class NodeService : Service() {
         }
         NodeRepository.publishLifecycleResponse(response)
         if (!responseIsSuccessful(response)) {
-            val nativeStatus = nativeStatus(response)
-            if (nativeStatus.state !in ACTIVE_NATIVE_STATES) {
+            val startStatus = parseNodeStatus(response)
+            if (isUdpPortInUseResponse(response)) {
+                NodeRepository.publishUdpPortInUse(startStatus.detail, response)
+                if (policy.notifyUdpBusy) {
+                    nodeNotificationManager.notifyUdpBusy(startStatus.detail)
+                }
+                shutdownCompleted = true
+                finishService(startId)
+                return
+            }
+            if (startStatus.state !in ACTIVE_NATIVE_STATES) {
+                val policyBlocked = nativeErrorCode(response) == "NETWORK_POLICY_BLOCKED"
+                if (
+                    !policyBlocked &&
+                    policy.autoRestartOnCrash &&
+                    !userRequestedShutdown &&
+                    crashRestartAttempt < MAX_CRASH_RESTARTS
+                ) {
+                    scheduleCrashRestart(networkMode)
+                    return
+                }
                 if (networkMode && policy.automatic) {
-                    publishControllerState(nativeStatus.detail)
+                    publishControllerState(startStatus.detail)
                 } else {
-                    NodeRepository.publishFailure(nativeStatus.detail, response)
+                    NodeRepository.publishFailure(startStatus.detail, response)
+                    if (policy.notifyStopped) {
+                        nodeNotificationManager.notifyStopped(startStatus.detail)
+                    }
                     shutdownCompleted = true
                     finishService(startId)
                 }
                 return
             }
         }
+        crashRestartAttempt = 0
         beginStatusUpdates()
     }
 
@@ -360,13 +408,30 @@ class NodeService : Service() {
                     startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
                 )
                 if (state.state == "RunningNetwork") {
+                    NodePolicyRepository.recordNetworkUp(this@NodeService)
+                    crashRestartAttempt = 0
                     natTick += 1
                     if (natTick == 1 || natTick % 32 == 0) {
                         NodeRepository.publishNatHint(DashboardHints.natHint())
                     }
+                    if (!notifiedConnectedThisRun && state.peers > 0) {
+                        notifiedConnectedThisRun = true
+                        if (NodePolicyRepository.state.value.notifyConnected) {
+                            nodeNotificationManager.notifyConnected(state.peers)
+                        }
+                    }
                 } else {
                     natTick = 0
                     NodeRepository.publishNatHint(null)
+                }
+                if (
+                    (state.state == "Stopped" || state.state == "Failed") &&
+                    !userRequestedShutdown
+                ) {
+                    serviceScope.launch {
+                        lifecycleMutex.withLock { handleUnexpectedNativeStop() }
+                    }
+                    return@launch
                 }
                 val uptimeSecond = state.uptimeMs / 1_000
                 if (uptimeSecond != lastNotificationSecond) {
@@ -434,6 +499,9 @@ class NodeService : Service() {
                         NodeRepository.publishPolicyStopped(finalStatus, response, policyReason)
                     } else {
                         NodeRepository.publishStopped(finalStatus, response)
+                        if (NodePolicyRepository.state.value.notifyStopped) {
+                            nodeNotificationManager.notifyStopped(finalStatus.detail)
+                        }
                     }
                     finishService(startId)
                 }
@@ -447,6 +515,65 @@ class NodeService : Service() {
             response,
         )
         beginStatusUpdates()
+    }
+
+    private suspend fun handleUnexpectedNativeStop() {
+        statusJob?.cancel()
+        statusJob = null
+        if (userRequestedShutdown) return
+        val policy = NodePolicyRepository.state.value
+        val detail = NodeRepository.state.value.detail.ifBlank {
+            "Native node stopped unexpectedly"
+        }
+        if (policy.autoRestartOnCrash && crashRestartAttempt < MAX_CRASH_RESTARTS) {
+            scheduleCrashRestart(runningMode == "Network")
+            return
+        }
+        if (policy.notifyStopped) {
+            nodeNotificationManager.notifyStopped(detail)
+        }
+        if (policy.automatic) {
+            publishControllerState("Native node stopped unexpectedly")
+        } else {
+            NodeRepository.publishFailure(detail, NodeRepository.state.value.lastLifecycleResponse)
+            shutdownCompleted = true
+            finishService(latestStartId)
+        }
+    }
+
+    private fun scheduleCrashRestart(networkMode: Boolean) {
+        crashRestartJob?.cancel()
+        val delayMs = CRASH_RESTART_BACKOFF_MS[
+            crashRestartAttempt.coerceAtMost(CRASH_RESTART_BACKOFF_MS.lastIndex)
+        ]
+        crashRestartAttempt += 1
+        val seconds = delayMs / 1_000
+        publishControllerState(
+            "Native node stopped unexpectedly. Restarting in ${seconds}s " +
+                "($crashRestartAttempt/$MAX_CRASH_RESTARTS)…",
+        )
+        crashRestartJob = serviceScope.launch {
+            delay(delayMs)
+            lifecycleMutex.withLock {
+                if (userRequestedShutdown) return@withLock
+                val policy = NodePolicyRepository.state.value
+                if (!policy.autoRestartOnCrash) {
+                    if (policy.automatic) {
+                        publishControllerState("Native node stopped unexpectedly")
+                    } else {
+                        shutdownCompleted = true
+                        finishService(latestStartId)
+                    }
+                    return@withLock
+                }
+                notifiedConnectedThisRun = false
+                if (networkMode) {
+                    reconcilePolicy(latestStartId, explicitStart = true)
+                } else {
+                    startNode(latestStartId, networkMode = false)
+                }
+            }
+        }
     }
 
     private fun publishControllerState(detail: String, paused: Boolean = false) {
@@ -489,6 +616,8 @@ class NodeService : Service() {
 
         private const val STATUS_POLL_INTERVAL_MS = 250L
         private const val SHUTDOWN_TIMEOUT_MS = 30_000L
+        private const val MAX_CRASH_RESTARTS = 5
+        private val CRASH_RESTART_BACKOFF_MS = longArrayOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L)
         private const val TAG = "FreenetNodeService"
         private val ACTIVE_NATIVE_STATES = setOf(
             "Starting",

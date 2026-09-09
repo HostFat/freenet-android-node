@@ -31,6 +31,7 @@ data class NodeUiState(
     val highestSeenPeerVersion: String? = null,
     val udpPort: Int? = null,
     val natHint: String? = null,
+    val udpPortInUse: Boolean = false,
 ) {
     val uptimeMs: Long
         get() = startedAtElapsedRealtimeMs
@@ -72,6 +73,7 @@ object NodeRepository {
             startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
             lastLifecycleResponse = "Starting local node through NodeService",
             taskRemovedWhileRunning = false,
+            udpPortInUse = false,
         )
         appContext.startForegroundService(NodeService.startLocalIntent(appContext))
     }
@@ -89,6 +91,7 @@ object NodeRepository {
             startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
             lastLifecycleResponse = "Starting network node through NodeService",
             taskRemovedWhileRunning = false,
+            udpPortInUse = false,
         )
         appContext.startForegroundService(NodeService.startNetworkIntent(appContext))
     }
@@ -162,6 +165,7 @@ object NodeRepository {
             mode = "Network",
             lastLifecycleResponse = "Restarting network node through NodeService",
             taskRemovedWhileRunning = false,
+            udpPortInUse = false,
         )
         appContext.startForegroundService(NodeService.restartNetworkIntent(appContext))
     }
@@ -182,6 +186,7 @@ object NodeRepository {
             peers = 0,
             startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
             taskRemovedWhileRunning = false,
+            udpPortInUse = false,
         )
     }
 
@@ -223,6 +228,7 @@ object NodeRepository {
             lastNetworkError = parsed.lastNetworkError,
             highestSeenPeerVersion = parsed.highestSeenPeerVersion,
             udpPort = parsed.udpPort,
+            udpPortInUse = false,
         )
         mutableState.value = next
         return next
@@ -277,6 +283,19 @@ object NodeRepository {
             serviceActive = false,
             startedAtElapsedRealtimeMs = null,
             lastLifecycleResponse = response,
+            udpPortInUse = false,
+        )
+    }
+
+    internal fun publishUdpPortInUse(detail: String, response: String) {
+        mutableState.value = mutableState.value.copy(
+            state = "Failed",
+            detail = detail,
+            serviceActive = false,
+            startedAtElapsedRealtimeMs = null,
+            lastLifecycleResponse = response,
+            lastNetworkError = detail,
+            udpPortInUse = true,
         )
     }
 

@@ -60,6 +60,9 @@ internal object ConnectionLimits {
 internal fun networkNodeIsLive(state: String, mode: String): Boolean =
     mode == "Network" && state in setOf("Starting", "RunningNetwork", "Stopping")
 
+internal fun nodeIsLive(state: String): Boolean =
+    state in setOf("Starting", "RunningNetwork", "RunningLocal", "Stopping")
+
 internal const val RIVER_CHAT_INVITE_URL = "https://freenet.org/quickstart"
 
 internal fun showRiverChatInvite(state: String, mode: String): Boolean =
@@ -75,7 +78,16 @@ internal fun connectionLimitsAreDirty(
     return min != savedMin || max != savedMax
 }
 
-internal fun networkStatusLabel(state: String, mode: String, peers: Int, serviceActive: Boolean): String =
+internal fun isGatewayOnlyHint(natHint: String?): Boolean =
+    natHint?.contains("gateways", ignoreCase = true) == true
+
+internal fun networkStatusLabel(
+    state: String,
+    mode: String,
+    peers: Int,
+    serviceActive: Boolean,
+    natHint: String? = null,
+): String =
     when {
         !serviceActive || state == "Stopped" || state == "Failed" -> "Stopped"
         state == "Paused" -> "Paused"
@@ -84,9 +96,45 @@ internal fun networkStatusLabel(state: String, mode: String, peers: Int, service
             if (state == "Starting") "Starting local" else "Local"
         state == "Starting" || state == "Stopping" -> "Connecting"
         state == "RunningNetwork" && peers > 0 -> "Connected"
+        state == "RunningNetwork" && isGatewayOnlyHint(natHint) -> "Gateway only"
         state == "RunningNetwork" -> "Connecting"
         else -> state
     }
+
+internal fun formatTrafficBytes(bytes: Long): String {
+    if (bytes < 1024L) return "$bytes B"
+    val kb = bytes / 1024.0
+    if (kb < 1024.0) return "%.1f KB".format(java.util.Locale.US, kb)
+    val mb = kb / 1024.0
+    if (mb < 1024.0) return "%.1f MB".format(java.util.Locale.US, mb)
+    return "%.2f GB".format(java.util.Locale.US, mb / 1024.0)
+}
+
+internal fun formatLastUp(nowMs: Long, lastUpEpochMs: Long): String {
+    if (lastUpEpochMs <= 0L) return "never"
+    if (nowMs - lastUpEpochMs < 60_000L) return "just now"
+    return java.text.DateFormat.getDateTimeInstance(
+        java.text.DateFormat.MEDIUM,
+        java.text.DateFormat.SHORT,
+    ).format(java.util.Date(lastUpEpochMs))
+}
+
+internal const val NATIVE_ERROR_UDP_PORT_IN_USE = "UDP_PORT_IN_USE"
+
+internal fun nativeErrorCode(response: String): String? {
+    val fromJson = runCatching {
+        org.json.JSONObject(response).optJSONObject("error")?.optString("code")
+            ?.takeIf { it.isNotBlank() }
+    }.getOrNull()
+    if (fromJson != null) return fromJson
+    return Regex("\"code\"\\s*:\\s*\"([A-Z0-9_]+)\"").find(response)?.groupValues?.get(1)
+}
+
+internal fun isUdpPortInUseResponse(response: String): Boolean =
+    nativeErrorCode(response) == NATIVE_ERROR_UDP_PORT_IN_USE
+
+internal fun identityRestoreSucceeded(message: String): Boolean =
+    message.startsWith("Identity restored")
 
 internal fun udpPortSettingsAreDirty(
     draftMode: UdpPortMode,
@@ -107,6 +155,12 @@ data class NodePolicyState(
     val udpPortMode: UdpPortMode = UdpPortMode.Saved,
     val udpPort: Int = UdpPorts.Default,
     val startOnBoot: Boolean = false,
+    val autoRestartOnCrash: Boolean = false,
+    val notifyConnected: Boolean = false,
+    val notifyStopped: Boolean = false,
+    val notifyUdpBusy: Boolean = true,
+    val notifyUpdate: Boolean = true,
+    val lastNetworkUpEpochMs: Long = 0L,
 ) {
     val automatic: Boolean
         get() = power != NodePowerPolicy.Manual
@@ -133,6 +187,12 @@ object NodePolicyRepository {
     private const val UDP_PORT_MODE_KEY = "udp_port_mode"
     private const val UDP_PORT_KEY = "udp_port"
     private const val START_ON_BOOT_KEY = "start_on_boot"
+    private const val AUTO_RESTART_ON_CRASH_KEY = "auto_restart_on_crash"
+    private const val NOTIFY_CONNECTED_KEY = "notify_connected"
+    private const val NOTIFY_STOPPED_KEY = "notify_stopped"
+    private const val NOTIFY_UDP_BUSY_KEY = "notify_udp_busy"
+    private const val NOTIFY_UPDATE_KEY = "notify_update"
+    private const val LAST_NETWORK_UP_KEY = "last_network_up_ms"
 
     private val mutableState = MutableStateFlow(NodePolicyState())
     val state: StateFlow<NodePolicyState> = mutableState.asStateFlow()
@@ -168,6 +228,12 @@ object NodePolicyRepository {
                 preferences.getInt(UDP_PORT_KEY, UdpPorts.Default),
             ),
             startOnBoot = preferences.getBoolean(START_ON_BOOT_KEY, false),
+            autoRestartOnCrash = preferences.getBoolean(AUTO_RESTART_ON_CRASH_KEY, false),
+            notifyConnected = preferences.getBoolean(NOTIFY_CONNECTED_KEY, false),
+            notifyStopped = preferences.getBoolean(NOTIFY_STOPPED_KEY, false),
+            notifyUdpBusy = preferences.getBoolean(NOTIFY_UDP_BUSY_KEY, true),
+            notifyUpdate = preferences.getBoolean(NOTIFY_UPDATE_KEY, true),
+            lastNetworkUpEpochMs = preferences.getLong(LAST_NETWORK_UP_KEY, 0L),
         )
         initialized = true
     }
@@ -205,6 +271,39 @@ object NodePolicyRepository {
     fun setStartOnBoot(context: Context, enabled: Boolean) {
         initialize(context)
         persist(context, mutableState.value.copy(startOnBoot = enabled))
+    }
+
+    fun setAutoRestartOnCrash(context: Context, enabled: Boolean) {
+        initialize(context)
+        persist(context, mutableState.value.copy(autoRestartOnCrash = enabled))
+    }
+
+    fun setNotifyConnected(context: Context, enabled: Boolean) {
+        initialize(context)
+        persist(context, mutableState.value.copy(notifyConnected = enabled))
+    }
+
+    fun setNotifyStopped(context: Context, enabled: Boolean) {
+        initialize(context)
+        persist(context, mutableState.value.copy(notifyStopped = enabled))
+    }
+
+    fun setNotifyUdpBusy(context: Context, enabled: Boolean) {
+        initialize(context)
+        persist(context, mutableState.value.copy(notifyUdpBusy = enabled))
+    }
+
+    fun setNotifyUpdate(context: Context, enabled: Boolean) {
+        initialize(context)
+        persist(context, mutableState.value.copy(notifyUpdate = enabled))
+    }
+
+    fun recordNetworkUp(context: Context) {
+        initialize(context)
+        val now = System.currentTimeMillis()
+        val current = mutableState.value
+        if (now - current.lastNetworkUpEpochMs < LAST_UP_WRITE_INTERVAL_MS) return
+        persist(context, current.copy(lastNetworkUpEpochMs = now))
     }
 
     fun setUdpPortSettings(context: Context, mode: UdpPortMode, port: Int) {
@@ -245,7 +344,15 @@ object NodePolicyRepository {
             .putString(UDP_PORT_MODE_KEY, next.udpPortMode.name)
             .putInt(UDP_PORT_KEY, next.udpPort)
             .putBoolean(START_ON_BOOT_KEY, next.startOnBoot)
+            .putBoolean(AUTO_RESTART_ON_CRASH_KEY, next.autoRestartOnCrash)
+            .putBoolean(NOTIFY_CONNECTED_KEY, next.notifyConnected)
+            .putBoolean(NOTIFY_STOPPED_KEY, next.notifyStopped)
+            .putBoolean(NOTIFY_UDP_BUSY_KEY, next.notifyUdpBusy)
+            .putBoolean(NOTIFY_UPDATE_KEY, next.notifyUpdate)
+            .putLong(LAST_NETWORK_UP_KEY, next.lastNetworkUpEpochMs)
             .apply()
         mutableState.value = next
     }
+
+    private const val LAST_UP_WRITE_INTERVAL_MS = 60_000L
 }

@@ -6,6 +6,7 @@ import android.app.NotificationManager
 import android.app.PendingIntent
 import android.content.Context
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.graphics.drawable.Icon
 import android.os.Build
 
@@ -22,6 +23,15 @@ class NodeNotificationManager(private val context: Context) {
             setShowBadge(false)
         }
         notificationManager.createNotificationChannel(channel)
+        val events = NotificationChannel(
+            EVENT_CHANNEL_ID,
+            context.getString(R.string.event_notification_channel_name),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            description = context.getString(R.string.event_notification_channel_description)
+            setShowBadge(true)
+        }
+        notificationManager.createNotificationChannel(events)
     }
 
     fun build(state: NodeUiState): Notification {
@@ -117,6 +127,58 @@ class NodeNotificationManager(private val context: Context) {
         notificationManager.cancel(NOTIFICATION_ID)
     }
 
+    fun notifyConnected(peers: Int) {
+        notifyEvent(
+            EVENT_CONNECTED_ID,
+            context.getString(R.string.event_connected_title),
+            context.getString(R.string.event_connected_text, peers),
+        )
+    }
+
+    fun notifyStopped(detail: String) {
+        notifyEvent(
+            EVENT_STOPPED_ID,
+            context.getString(R.string.event_stopped_title),
+            detail,
+        )
+    }
+
+    fun notifyUdpBusy(detail: String) {
+        notifyEvent(
+            EVENT_UDP_BUSY_ID,
+            context.getString(R.string.event_udp_busy_title),
+            detail,
+        )
+    }
+
+    private fun notifyEvent(id: Int, title: String, text: String) {
+        if (
+            Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU &&
+            context.checkSelfPermission(android.Manifest.permission.POST_NOTIFICATIONS) !=
+            PackageManager.PERMISSION_GRANTED
+        ) {
+            return
+        }
+        val openApp = PendingIntent.getActivity(
+            context,
+            REQUEST_OPEN_APP,
+            Intent(context, MainActivity::class.java).apply {
+                flags = Intent.FLAG_ACTIVITY_SINGLE_TOP or Intent.FLAG_ACTIVITY_CLEAR_TOP
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = Notification.Builder(context, EVENT_CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_node_notification)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(Notification.BigTextStyle().bigText(text))
+            .setCategory(Notification.CATEGORY_STATUS)
+            .setAutoCancel(true)
+            .setContentIntent(openApp)
+            .build()
+        notificationManager.notify(id, notification)
+    }
+
     private fun formatUptime(uptimeMs: Long): String {
         val totalSeconds = uptimeMs / 1_000
         val hours = totalSeconds / 3_600
@@ -132,6 +194,10 @@ class NodeNotificationManager(private val context: Context) {
     companion object {
         const val CHANNEL_ID = "freenet_node_status"
         const val NOTIFICATION_ID = 7509
+        const val EVENT_CHANNEL_ID = "freenet_node_events"
+        const val EVENT_CONNECTED_ID = 7511
+        const val EVENT_STOPPED_ID = 7512
+        const val EVENT_UDP_BUSY_ID = 7513
 
         private const val REQUEST_OPEN_APP = 1
         private const val REQUEST_PAUSE = 2

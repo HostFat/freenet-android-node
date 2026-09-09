@@ -304,6 +304,13 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         }
     }
 
+    fun applyUdpFallback(mode: UdpPortMode) {
+        saveUdpPortSettings(mode, policyState.udpPort)
+        if (!networkNodeIsLive(nodeState.state, nodeState.mode)) {
+            withNotificationPermission(nodeViewModel::startNetworkNode)
+        }
+    }
+
     fun saveConnectionLimits(min: Int, max: Int) {
         val before = policyState
         nodeViewModel.setConnectionLimits(min, max)
@@ -404,6 +411,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     HorizontalDivider()
                     NodeControlStrip(
                         state = nodeState,
+                        lastUpEpochMs = policyState.lastNetworkUpEpochMs,
                         onStartLocal = {
                             withNotificationPermission(nodeViewModel::startLocalNode)
                         },
@@ -416,10 +424,16 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onStop = {
                             nodeViewModel.stopNode()
                         },
+                        onCopyFingerprint = { fingerprint ->
+                            copyToClipboard(context, fingerprint)
+                        },
+                        onUseSavedUdp = { applyUdpFallback(UdpPortMode.Saved) },
+                        onUseRandomUdp = { applyUdpFallback(UdpPortMode.Random) },
                     )
                     HorizontalDivider()
                     PolicyControls(
                         policies = policyState,
+                        udpPortInUse = nodeState.udpPortInUse,
                         onPowerPolicy = { policy ->
                             if (policy == NodePowerPolicy.Manual) {
                                 nodeViewModel.setPowerPolicy(policy)
@@ -432,8 +446,15 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
                         onSaveConnectionLimits = ::saveConnectionLimits,
                         onSaveUdpPortSettings = ::saveUdpPortSettings,
+                        onUseSavedUdp = { applyUdpFallback(UdpPortMode.Saved) },
+                        onUseRandomUdp = { applyUdpFallback(UdpPortMode.Random) },
                         startOnBoot = policyState.startOnBoot,
                         onStartOnBoot = nodeViewModel::setStartOnBoot,
+                        onAutoRestartOnCrash = nodeViewModel::setAutoRestartOnCrash,
+                        onNotifyConnected = nodeViewModel::setNotifyConnected,
+                        onNotifyStopped = nodeViewModel::setNotifyStopped,
+                        onNotifyUdpBusy = nodeViewModel::setNotifyUdpBusy,
+                        onNotifyUpdate = nodeViewModel::setNotifyUpdate,
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -549,6 +570,12 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 DiagnosticsPanel(
                     modifier = Modifier.fillMaxSize(),
                     onClose = { showDiagnostics = false },
+                    onIdentityRestored = {
+                        val live = NodeRepository.state.value
+                        if (networkNodeIsLive(live.state, live.mode)) {
+                            pendingRestart = PendingRestart.Identity
+                        }
+                    },
                     onEditConfig = {
                         ConfigToml.ensureExists(context)
                         configFingerprint = ConfigToml.fingerprint(context)
@@ -630,6 +657,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         )
                         PendingRestart.ConfigFile -> stringResource(R.string.restart_config_message)
                         PendingRestart.UdpPort -> stringResource(R.string.restart_udp_port_message)
+                        PendingRestart.Identity -> stringResource(R.string.restart_identity_message)
                     },
                 )
             },
@@ -694,15 +722,20 @@ private sealed class PendingRestart {
     data class Connections(val min: Int, val max: Int) : PendingRestart()
     data object ConfigFile : PendingRestart()
     data object UdpPort : PendingRestart()
+    data object Identity : PendingRestart()
 }
 
 @Composable
 private fun NodeControlStrip(
     state: NodeUiState,
+    lastUpEpochMs: Long,
     onStartLocal: () -> Unit,
     onStartNetwork: () -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
+    onCopyFingerprint: (String) -> Unit,
+    onUseSavedUdp: () -> Unit,
+    onUseRandomUdp: () -> Unit,
 ) {
     Column(
         modifier = Modifier
@@ -710,7 +743,13 @@ private fun NodeControlStrip(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        val status = networkStatusLabel(state.state, state.mode, state.peers, state.serviceActive)
+        val status = networkStatusLabel(
+            state.state,
+            state.mode,
+            state.peers,
+            state.serviceActive,
+            state.natHint,
+        )
         Text(
             if (status == "Connected") {
                 "Node: Connected · ${state.peers} peers"
@@ -724,6 +763,41 @@ private fun NodeControlStrip(
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+        Text(
+            stringResource(R.string.last_up, formatLastUp(System.currentTimeMillis(), lastUpEpochMs)),
+            color = MaterialTheme.colorScheme.onSurfaceVariant,
+            style = MaterialTheme.typography.bodySmall,
+        )
+        if (state.serviceActive && (state.bytesSent > 0 || state.bytesReceived > 0)) {
+            Text(
+                stringResource(
+                    R.string.traffic_line,
+                    formatTrafficBytes(state.bytesSent),
+                    formatTrafficBytes(state.bytesReceived),
+                ),
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
+        state.identityFingerprint?.takeIf { it.isNotBlank() }?.let { fingerprint ->
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Text(
+                    fingerprint,
+                    modifier = Modifier.weight(1f),
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    fontFamily = FontFamily.Monospace,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+                TextButton(onClick = { onCopyFingerprint(fingerprint) }) {
+                    Text(stringResource(R.string.copy_fingerprint))
+                }
+            }
         }
         if (state.mode == "Network" && state.udpPort != null && state.udpPort > 0) {
             Text(
@@ -739,7 +813,30 @@ private fun NodeControlStrip(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
-        if (state.lastNetworkError != null) {
+        if (state.udpPortInUse) {
+            Text(
+                stringResource(R.string.udp_port_in_use),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onUseSavedUdp,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.udp_use_saved))
+                }
+                OutlinedButton(
+                    onClick = onUseRandomUdp,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.udp_use_random))
+                }
+            }
+        } else if (state.lastNetworkError != null) {
             Text(
                 text = state.lastNetworkError,
                 color = MaterialTheme.colorScheme.error,
@@ -857,12 +954,20 @@ private fun <T> CompactChoiceRow(
 @Composable
 private fun PolicyControls(
     policies: NodePolicyState,
+    udpPortInUse: Boolean,
     onPowerPolicy: (NodePowerPolicy) -> Unit,
     onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
     onSaveConnectionLimits: (Int, Int) -> Unit,
     onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
+    onUseSavedUdp: () -> Unit,
+    onUseRandomUdp: () -> Unit,
     startOnBoot: Boolean,
     onStartOnBoot: (Boolean) -> Unit,
+    onAutoRestartOnCrash: (Boolean) -> Unit,
+    onNotifyConnected: (Boolean) -> Unit,
+    onNotifyStopped: (Boolean) -> Unit,
+    onNotifyUdpBusy: (Boolean) -> Unit,
+    onNotifyUpdate: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     var draftMin by remember { mutableStateOf(policies.minConnections) }
@@ -923,6 +1028,44 @@ private fun PolicyControls(
         Text(
             stringResource(R.string.start_on_boot_hint),
             style = MaterialTheme.typography.bodySmall,
+        )
+        SettingsCheckbox(
+            checked = policies.autoRestartOnCrash,
+            label = stringResource(R.string.auto_restart_on_crash),
+            onCheckedChange = onAutoRestartOnCrash,
+        )
+        Text(
+            stringResource(R.string.auto_restart_on_crash_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        HorizontalDivider()
+        Text(
+            stringResource(R.string.event_notifications),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            stringResource(R.string.event_notifications_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SettingsCheckbox(
+            checked = policies.notifyConnected,
+            label = stringResource(R.string.notify_connected),
+            onCheckedChange = onNotifyConnected,
+        )
+        SettingsCheckbox(
+            checked = policies.notifyStopped,
+            label = stringResource(R.string.notify_stopped),
+            onCheckedChange = onNotifyStopped,
+        )
+        SettingsCheckbox(
+            checked = policies.notifyUdpBusy,
+            label = stringResource(R.string.notify_udp_busy),
+            onCheckedChange = onNotifyUdpBusy,
+        )
+        SettingsCheckbox(
+            checked = policies.notifyUpdate,
+            label = stringResource(R.string.notify_update),
+            onCheckedChange = onNotifyUpdate,
         )
         HorizontalDivider()
         Text(stringResource(R.string.network_data), style = MaterialTheme.typography.titleMedium)
@@ -1024,9 +1167,57 @@ private fun PolicyControls(
         ) {
             Text(stringResource(R.string.save_udp_port))
         }
+        if (udpPortInUse) {
+            Text(
+                stringResource(R.string.udp_port_in_use),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                OutlinedButton(
+                    onClick = onUseSavedUdp,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.udp_use_saved))
+                }
+                OutlinedButton(
+                    onClick = onUseRandomUdp,
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.udp_use_random))
+                }
+            }
+        }
         Text(
             stringResource(R.string.connection_limits_apply_next_start),
             style = MaterialTheme.typography.bodySmall,
+        )
+    }
+}
+
+@Composable
+private fun SettingsCheckbox(
+    checked: Boolean,
+    label: String,
+    onCheckedChange: (Boolean) -> Unit,
+) {
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .toggleable(
+                value = checked,
+                onValueChange = onCheckedChange,
+                role = Role.Checkbox,
+            ),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        Checkbox(checked = checked, onCheckedChange = null)
+        Text(
+            label,
+            modifier = Modifier.padding(start = 8.dp),
         )
     }
 }
@@ -1345,6 +1536,7 @@ private class LoopbackDashboardClient(
 private fun DiagnosticsPanel(
     modifier: Modifier = Modifier,
     onClose: () -> Unit,
+    onIdentityRestored: () -> Unit,
     onEditConfig: () -> Unit,
     onOpenExternal: () -> Unit,
 ) {
@@ -1364,7 +1556,19 @@ private fun DiagnosticsPanel(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
-            identityMessage = IdentityBackup.importFrom(context, uri)
+            val message = IdentityBackup.importFrom(context, uri)
+            identityMessage = message
+            if (identityRestoreSucceeded(message)) {
+                onIdentityRestored()
+            }
+        }
+    }
+    var logsExportMessage by remember { mutableStateOf<String?>(null) }
+    val exportLogs = rememberLauncherForActivityResult(
+        ActivityResultContracts.CreateDocument("text/plain"),
+    ) { uri ->
+        if (uri != null) {
+            logsExportMessage = writeTextToUri(context, uri, logs)
         }
     }
 
@@ -1387,13 +1591,28 @@ private fun DiagnosticsPanel(
                 .padding(12.dp),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-                Button(onClick = { copyToClipboard(context, logs) }) {
-                    Text(stringResource(R.string.copy_all_logs))
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+            ) {
+                Button(
+                    onClick = { copyToClipboard(context, logs) },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.copy_all_logs), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                }
+                OutlinedButton(
+                    onClick = { exportLogs.launch("freenet-node-logs.txt") },
+                    modifier = Modifier.weight(1f),
+                ) {
+                    Text(stringResource(R.string.export_logs), maxLines = 1, overflow = TextOverflow.Ellipsis)
                 }
                 OutlinedButton(onClick = { showLogs = false }) {
                     Text(stringResource(R.string.config_close))
                 }
+            }
+            logsExportMessage?.let { message ->
+                Text(message, style = MaterialTheme.typography.bodySmall)
             }
             ScrollableMonospaceBox(
                 text = logs,
@@ -1665,6 +1884,15 @@ private fun diagnosticSnapshot(): String {
 private fun copyToClipboard(context: Context, value: String) {
     val clipboard = context.getSystemService(ClipboardManager::class.java)
     clipboard.setPrimaryClip(ClipData.newPlainText("Freenet diagnostics", value))
+}
+
+private fun writeTextToUri(context: Context, uri: Uri, text: String): String {
+    return runCatching {
+        context.contentResolver.openOutputStream(uri)?.use { output ->
+            output.write(text.toByteArray(Charsets.UTF_8))
+        } ?: return context.getString(R.string.export_logs_failed)
+        context.getString(R.string.export_logs_saved)
+    }.getOrElse { context.getString(R.string.export_logs_failed) }
 }
 
 private fun isAllowedDashboardUri(value: String): Boolean =

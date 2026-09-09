@@ -151,6 +151,10 @@ internal object UpdateCheckRepository {
 
     private fun maybeNotifyApk(context: Context, decision: UpdateDecision) {
         val version = decision.apkVersion?.toString() ?: return
+        NodePolicyRepository.initialize(context)
+        if (!NodePolicyRepository.state.value.notifyUpdate) {
+            return
+        }
         val prefs = prefs(context)
         if (prefs.getString(KEY_NOTIFIED_APK, null) == version) {
             return

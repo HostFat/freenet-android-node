@@ -30,6 +30,11 @@ class ConnectionLimitsTest {
         val state = NodePolicyState()
         assertEquals(10, state.minConnections)
         assertEquals(25, state.maxConnections)
+        assertEquals(false, state.autoRestartOnCrash)
+        assertEquals(false, state.notifyConnected)
+        assertEquals(false, state.notifyStopped)
+        assertEquals(true, state.notifyUdpBusy)
+        assertEquals(true, state.notifyUpdate)
         assertEquals(10, ConnectionLimits.DefaultMin)
         assertEquals(25, ConnectionLimits.DefaultMax)
     }
@@ -69,6 +74,51 @@ class ConnectionLimitsTest {
             "Local",
             networkStatusLabel("RunningLocal", "Local", 0, true),
         )
+        assertEquals(
+            "Gateway only",
+            networkStatusLabel(
+                "RunningNetwork",
+                "Network",
+                0,
+                true,
+                "Only connected to gateways — no peer-to-peer connections yet",
+            ),
+        )
+        assertEquals(
+            "Connected",
+            networkStatusLabel(
+                "RunningNetwork",
+                "Network",
+                2,
+                true,
+                "Only connected to gateways — no peer-to-peer connections yet",
+            ),
+        )
+    }
+
+    @Test
+    fun trafficAndLastUpFormatForTheMenu() {
+        assertEquals("0 B", formatTrafficBytes(0))
+        assertEquals("512 B", formatTrafficBytes(512))
+        assertEquals("1.0 KB", formatTrafficBytes(1024))
+        assertEquals("1.5 KB", formatTrafficBytes(1536))
+        assertEquals("1.0 MB", formatTrafficBytes(1024L * 1024L))
+        assertEquals("never", formatLastUp(1_000L, 0L))
+        assertEquals("just now", formatLastUp(10_000L, 9_500L))
+    }
+
+    @Test
+    fun udpPortInUseAndIdentityRestoreHelpers() {
+        val busy = """{"ok":false,"data":null,"error":{"code":"UDP_PORT_IN_USE","message":"UDP port 31337 is already in use. Choose another Custom port, or use Saved or Random."}}"""
+        assertEquals(NATIVE_ERROR_UDP_PORT_IN_USE, nativeErrorCode(busy))
+        assertEquals(true, isUdpPortInUseResponse(busy))
+        assertEquals(false, isUdpPortInUseResponse("""{"ok":false,"error":{"code":"NETWORK_POLICY_BLOCKED","message":"x"}}"""))
+        assertEquals(true, identityRestoreSucceeded("Identity restored. Restart the node to use it."))
+        assertEquals(false, identityRestoreSucceeded("Could not read the backup file"))
+        assertEquals(true, nodeIsLive("RunningNetwork"))
+        assertEquals(true, nodeIsLive("RunningLocal"))
+        assertEquals(false, nodeIsLive("Stopped"))
+        assertEquals(false, nodeIsLive("Paused"))
     }
 
     @Test
