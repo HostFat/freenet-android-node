@@ -515,6 +515,19 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     ) {
                         Text("For nerds")
                     }
+                    val appVersion = remember {
+                        runCatching {
+                            context.packageManager.getPackageInfo(context.packageName, 0).versionName
+                        }.getOrNull()
+                    }
+                    val nodeVersion = remember {
+                        coreVersionFromBuildInfo(NativeBridge.freenetBuildInfo().getOrNull())
+                    }
+                    Text(
+                        panelVersionLine(appVersion, nodeVersion),
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        style = MaterialTheme.typography.labelSmall,
+                    )
                 }
             }
         },

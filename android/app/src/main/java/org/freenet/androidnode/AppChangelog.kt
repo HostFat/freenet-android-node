@@ -2,6 +2,15 @@ package org.freenet.androidnode
 
 import android.content.Context
 
+internal fun panelVersionLine(appVersion: String?, coreVersion: String?): String {
+    val app = appVersion?.trim()?.takeIf { it.isNotEmpty() } ?: "—"
+    val core = coreVersion?.trim()?.takeIf { it.isNotEmpty() } ?: "—"
+    return "App $app · Node $core"
+}
+
+internal fun coreVersionFromBuildInfo(info: String?): String? =
+    SemVer.parseFromCoreBuildInfo(info)?.toString()
+
 internal fun changelogLineIfUpdated(current: String?, seen: String?): String? {
     if (current.isNullOrBlank()) return null
     if (seen.isNullOrBlank()) return null

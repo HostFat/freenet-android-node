@@ -5,6 +5,18 @@ import org.junit.Test
 
 class ConnectionLimitsTest {
     @Test
+    fun panelVersionLineShowsAppAndNode() {
+        assertEquals("App 0.2.134.10 · Node 0.2.134", panelVersionLine("0.2.134.10", "0.2.134"))
+        assertEquals("App — · Node —", panelVersionLine(null, "  "))
+        assertEquals(
+            "0.2.134",
+            coreVersionFromBuildInfo(
+                "Freenet core 0.2.134; features: redb, trace; default gateway port: 31337",
+            ),
+        )
+    }
+
+    @Test
     fun changelogShowsOnlyAfterAnUpdateNotOnFirstInstall() {
         assertEquals(null, changelogLineIfUpdated("0.2.134.10", null))
         assertEquals(null, changelogLineIfUpdated("0.2.134.10", ""))
