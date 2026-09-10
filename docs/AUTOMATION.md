@@ -8,7 +8,10 @@ This fork rebuilds a signed Android APK whenever Freenet core publishes a new
 1. [`.github/workflows/auto-bump.yml`](../.github/workflows/auto-bump.yml) runs
    every six hours (and on demand).
 2. It reads `https://github.com/freenet/freenet-core/releases/latest`.
-3. If this repository already has a GitHub Release with the same tag, it stops.
+3. If this repository already has a GitHub Release for that core — the exact
+   tag `vX.Y.Z` **or** a fork suffix `vX.Y.Z.N` such as `v0.2.135.1` — it
+   stops. The first APK for a new core should use the core tag; later app-only
+   builds use `.1`, `.2`, …
 4. Otherwise it:
    - checks out that core tag next to this repo
    - runs `cargo update` in `native/` so `Cargo.lock` matches the new crate graph

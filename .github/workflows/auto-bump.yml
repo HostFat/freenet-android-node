@@ -47,12 +47,14 @@ jobs:
         run: |
           set -euo pipefail
           tag="${{ steps.core.outputs.tag }}"
-          if gh release view "${tag}" >/dev/null 2>&1; then
+          python3 scripts/apk_covers_core.py --self-test
+          tags="$(gh release list --limit 200 --json tagName --jq '.[].tagName')"
+          if printf '%s\n' "$tags" | python3 scripts/apk_covers_core.py --core "$tag"; then
             echo "already=true" >> "$GITHUB_OUTPUT"
-            echo "Release ${tag} already exists on this repo; nothing to do."
+            echo "An APK for ${tag} already exists (exact tag or ${tag}.*); nothing to do."
           else
             echo "already=false" >> "$GITHUB_OUTPUT"
-            echo "No ${tag} APK release yet; will bump and build."
+            echo "No ${tag} or ${tag}.* APK release yet; will bump and build."
           fi
 
       - name: Checkout matching freenet-core
