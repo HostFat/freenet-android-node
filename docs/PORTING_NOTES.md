@@ -183,6 +183,13 @@ GHSA-824h-7x5x-wfmf default that 0.2.134 made explicit.
 `cargo check --all-targets` against 0.2.134 succeeded on the host. An Android
 NDK rebuild in Docker remains the authoritative link check.
 
+## Core 0.2.135 adapter bump
+
+The JNI adapter was re-resolved against sibling `freenet-core` tag `v0.2.135`
+(`ea1ff5f169bc0a2279dd201f4463a76bfad79cb4`). `native/Cargo.toml` now depends
+on `freenet-stdlib` 0.10.0 so it matches the core workspace. `Cargo.lock` was
+refreshed with `cargo update`. No other adapter source changes.
+
 ## Blocker template
 
 ```text
