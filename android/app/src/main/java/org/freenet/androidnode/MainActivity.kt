@@ -233,6 +233,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     var showExternalGuideConfirm by remember { mutableStateOf(false) }
     var changelogLine by remember { mutableStateOf(AppChangelog.pendingLine(context)) }
     var pendingRestart by remember { mutableStateOf<PendingRestart?>(null) }
+    var pendingReset by remember { mutableStateOf(false) }
+    var resetMessage by remember { mutableStateOf<String?>(null) }
     var configFingerprint by remember { mutableStateOf(ConfigToml.fingerprint(context)) }
     var awaitingExternalConfigEdit by rememberSaveable { mutableStateOf(false) }
     fun adoptConfigFingerprint(userInitiatedEdit: Boolean) {
@@ -412,6 +414,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     NodeControlStrip(
                         state = nodeState,
                         lastUpEpochMs = policyState.lastNetworkUpEpochMs,
+                        resetMessage = resetMessage,
                         onStartLocal = {
                             withNotificationPermission(nodeViewModel::startLocalNode)
                         },
@@ -424,6 +427,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onStop = {
                             nodeViewModel.stopNode()
                         },
+                        onReset = { pendingReset = true },
                         onCopyFingerprint = { fingerprint ->
                             copyToClipboard(context, fingerprint)
                         },
@@ -680,6 +684,32 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         )
     }
 
+    if (pendingReset) {
+        AlertDialog(
+            onDismissRequest = { pendingReset = false },
+            title = { Text(stringResource(R.string.reset_node_title)) },
+            text = { Text(stringResource(R.string.reset_node_message)) },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        pendingReset = false
+                        resetMessage = nodeViewModel.resetNode()
+                    },
+                    colors = ButtonDefaults.buttonColors(
+                        containerColor = MaterialTheme.colorScheme.error,
+                    ),
+                ) {
+                    Text(stringResource(R.string.reset_node_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingReset = false }) {
+                    Text(stringResource(R.string.restart_node_deny))
+                }
+            },
+        )
+    }
+
     if (showNoEditor) {
         AlertDialog(
             onDismissRequest = { showNoEditor = false },
@@ -729,10 +759,12 @@ private sealed class PendingRestart {
 private fun NodeControlStrip(
     state: NodeUiState,
     lastUpEpochMs: Long,
+    resetMessage: String? = null,
     onStartLocal: () -> Unit,
     onStartNetwork: () -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
+    onReset: () -> Unit,
     onCopyFingerprint: (String) -> Unit,
     onUseSavedUdp: () -> Unit,
     onUseRandomUdp: () -> Unit,
@@ -878,6 +910,24 @@ private fun NodeControlStrip(
                     Text("Start local node")
                 }
             }
+        }
+        if (!state.serviceActive) {
+            OutlinedButton(
+                enabled = NativeBridge.isLoaded,
+                onClick = onReset,
+                modifier = Modifier.fillMaxWidth(),
+                colors = ButtonDefaults.outlinedButtonColors(
+                    contentColor = MaterialTheme.colorScheme.error,
+                ),
+            ) {
+                Text(stringResource(R.string.reset_node))
+            }
+        }
+        resetMessage?.let { message ->
+            Text(
+                message,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
         if (showRiverChatInvite(state.state, state.mode)) {
             Text(

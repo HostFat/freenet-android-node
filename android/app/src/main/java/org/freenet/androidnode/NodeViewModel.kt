@@ -25,6 +25,8 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodeRepository.stop(getApplication())
     }
 
+    fun resetNode(): String = NodeReset.resetRuntimeData(getApplication())
+
     fun pauseNode() {
         NodeRepository.pause(getApplication())
     }

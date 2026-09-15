@@ -35,7 +35,8 @@ internal object ServiceReport {
     internal fun buildReportJson(context: Context, userMessage: String): JSONObject {
         val logs = collectLogs(context)
         val config = ConfigToml.read(context)
-        val (networkStatus, networkError) = collectNetworkStatus()
+        val lastState = NodeRepository.state.value
+        val (networkStatus, networkError) = collectNetworkStatus(lastState)
         val coreInfo = NativeBridge.freenetBuildInfo().getOrNull().orEmpty()
         val coreVersion = coreVersionFromBuildInfo(coreInfo) ?: "unknown"
         val message = userMessage.trim().ifEmpty { null }
@@ -77,11 +78,12 @@ internal object ServiceReport {
             }.trim().ifEmpty { null }
         }
         val fromRing = formatServiceReportLogs()
+        val merged = listOfNotNull(fromFiles, fromRing).joinToString(
+            "\n--- android adapter ring ---\n",
+        ).ifBlank { null }
         val main = when {
-            fromFiles != null && fromFiles.length > MAX_LOG_BYTES ->
-                fromFiles.takeLast(MAX_LOG_BYTES)
-            fromFiles != null -> fromFiles
-            else -> fromRing
+            merged != null && merged.length > MAX_LOG_BYTES -> merged.takeLast(MAX_LOG_BYTES)
+            else -> merged
         }
         val bytes = main?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L
         return JSONObject()
@@ -93,11 +95,14 @@ internal object ServiceReport {
             .put("error_log_original_size_bytes", 0L)
     }
 
-    private fun collectNetworkStatus(): Pair<String?, String?> {
+    private fun collectNetworkStatus(lastState: NodeUiState): Pair<String?, String?> {
+        val fallback = lastKnownStatusJson(lastState)
         if (!NativeBridge.isLoaded) {
-            return null to "Native library is not loaded"
+            return fallback to "Native library is not loaded"
         }
-        val diagnostics = NativeBridge.queryNodeDiagnostics(WS_API_PORT)
+        val diagnostics = runCatching {
+            NativeBridge.queryNodeDiagnostics(WS_API_PORT).getOrThrow()
+        }
         diagnostics.getOrNull()?.let { raw ->
             val envelope = runCatching { JSONObject(raw) }.getOrNull()
             if (envelope?.optBoolean("ok") == true) {
@@ -105,22 +110,33 @@ internal object ServiceReport {
                 return (data?.toString() ?: raw) to null
             }
             val error = envelope?.optJSONObject("error")?.optString("message")
-                ?: envelope?.optString("error")
-            if (!error.isNullOrBlank()) {
-                return null to error
-            }
+                ?.ifBlank { null }
+                ?: envelope?.optString("error")?.ifBlank { null }
+            return fallback to (error ?: "Node diagnostics unavailable")
         }
-        val status = NativeBridge.nodeStatus().getOrNull()
+        val status = runCatching { NativeBridge.nodeStatus().getOrThrow() }.getOrNull()
         if (status != null) {
             val envelope = runCatching { JSONObject(status) }.getOrNull()
             if (envelope?.optBoolean("ok") == true) {
                 return status to null
             }
-            val detail = envelope?.optJSONObject("data")?.optString("detail")
-            return null to (detail ?: "Node is not running")
         }
-        return null to (diagnostics.exceptionOrNull()?.message ?: "Node diagnostics unavailable")
+        val reason = diagnostics.exceptionOrNull()?.message
+            ?: "Node is not running or did not answer"
+        return fallback to reason
     }
+
+    internal fun lastKnownStatusJson(state: NodeUiState): String =
+        JSONObject()
+            .put("source", "android-last-known")
+            .put("state", state.state)
+            .put("detail", state.detail)
+            .put("mode", state.mode)
+            .put("peers", state.peers)
+            .put("lastNetworkError", state.lastNetworkError ?: JSONObject.NULL)
+            .put("udpPortInUse", state.udpPortInUse)
+            .put("serviceActive", state.serviceActive)
+            .toString(2)
 
     private fun postGzip(json: String): String {
         val compressed = ByteArrayOutputStream().use { bytes ->

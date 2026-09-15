@@ -249,6 +249,23 @@ object NodeRepository {
         )
     }
 
+    internal fun publishAfterReset() {
+        mutableState.value = mutableState.value.copy(
+            state = "Stopped",
+            detail = "Node data was reset. Identity and config.toml were kept.",
+            serviceActive = false,
+            startedAtElapsedRealtimeMs = null,
+            lastLifecycleResponse = "Node runtime data reset",
+            lastNetworkError = null,
+            udpPortInUse = false,
+            natHint = null,
+            peers = 0,
+            bytesSent = 0,
+            bytesReceived = 0,
+            udpPort = null,
+        )
+    }
+
     internal fun publishStopped(status: NodeStatusSnapshot, response: String) {
         mutableState.value = mutableState.value.copy(
             state = "Stopped",

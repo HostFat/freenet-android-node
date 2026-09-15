@@ -17,6 +17,32 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun nodeResetKeepsIdentityAndConfigAndRefusesALiveNode() {
+        assertEquals(true, canResetNode(serviceActive = false, nativeState = "Stopped"))
+        assertEquals(true, canResetNode(serviceActive = false, nativeState = "Failed"))
+        assertEquals(false, canResetNode(serviceActive = true, nativeState = "Stopped"))
+        assertEquals(false, canResetNode(serviceActive = false, nativeState = "RunningNetwork"))
+        assertEquals(false, canResetNode(serviceActive = false, nativeState = "RunningLocal"))
+        val files = java.io.File("/data/user/0/app/files")
+        val cache = java.io.File("/data/user/0/app/cache")
+        val paths = nodeRuntimeResetPaths(files, cache).map { it.path }
+        assertEquals(true, paths.any { it.endsWith("freenet/logs") })
+        assertEquals(true, paths.any { it.endsWith("freenet/database") })
+        assertEquals(false, paths.any { it.contains("identity") })
+        assertEquals(false, paths.any { it.contains("config") })
+    }
+
+    @Test
+    fun lastKnownStatusJsonSurvivesADeadNode() {
+        val json = lastKnownStatusJson(
+            NodeUiState(state = "Failed", detail = "native crash", lastNetworkError = "segfault"),
+        )
+        assertEquals(true, json.contains("android-last-known"))
+        assertEquals(true, json.contains("Failed"))
+        assertEquals(true, json.contains("segfault"))
+    }
+
+    @Test
     fun presetServiceReportCommentNamesTheApkAndVersion() {
         val text = presetServiceReportComment("0.2.135.1")
         assertEquals(true, text.contains(SERVICE_REPORT_REPO))

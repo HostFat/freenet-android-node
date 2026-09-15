@@ -11,6 +11,10 @@
     <string name="pause_node">Pause</string>
     <string name="resume_node">Resume</string>
     <string name="stop_node">Stop</string>
+    <string name="reset_node">Reset node</string>
+    <string name="reset_node_title">Reset node data?</string>
+    <string name="reset_node_message">Deletes the node database, contracts, logs, and cache. Identity keys and config.toml are kept, so this phone stays the same peer.\n\nAfter a crash, send a diagnostic report first if you still need the logs. Stop the node before resetting.</string>
+    <string name="reset_node_confirm">Reset</string>
     <string name="update_notification_channel_name">App updates</string>
     <string name="update_notification_channel_description">Quiet notice when a newer APK is published</string>
     <string name="update_notification_title">Freenet Android APK available</string>
