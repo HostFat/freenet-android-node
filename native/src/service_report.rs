@@ -2,7 +2,6 @@
 
 use std::time::Duration;
 
-use anyhow::{Context, Result};
 use freenet_stdlib::client_api::{
     ClientRequest, HostResponse, NodeDiagnosticsConfig, NodeQuery, QueryResponse, WebApi,
 };
@@ -16,23 +15,18 @@ pub(crate) fn query_node_diagnostics(port: u16) -> Result<String, String> {
         .build()
         .map_err(|error| format!("failed to create tokio runtime: {error}"))?;
     rt.block_on(async {
-        tokio::time::timeout(WS_TIMEOUT, query_once("127.0.0.1", port))
-            .await
-            .map_err(|_| format!("127.0.0.1:{port}: timed out after {WS_TIMEOUT:?}"))?
+        match tokio::time::timeout(WS_TIMEOUT, query_once("127.0.0.1", port)).await {
+            Ok(result) => result,
+            Err(_) => Err(format!("127.0.0.1:{port}: timed out after {WS_TIMEOUT:?}")),
+        }
     })
 }
 
 async fn query_once(host: &str, port: u16) -> Result<String, String> {
-    query_once_inner(host, port)
-        .await
-        .map_err(|error| format!("{host}:{port}: {error:#}"))
-}
-
-async fn query_once_inner(host: &str, port: u16) -> Result<String> {
     let url = format!("ws://{host}:{port}/v1/contract/command?encodingProtocol=native");
     let (stream, _) = connect_async(&url)
         .await
-        .context("Failed to connect to node WebSocket API")?;
+        .map_err(|error| format!("{host}:{port}: Failed to connect to node WebSocket API: {error}"))?;
     let mut client = WebApi::start(stream);
     let config = NodeDiagnosticsConfig {
         include_node_info: true,
@@ -48,16 +42,18 @@ async fn query_once_inner(host: &str, port: u16) -> Result<String> {
             config,
         }))
         .await
-        .context("Failed to send diagnostics query")?;
+        .map_err(|error| format!("{host}:{port}: Failed to send diagnostics query: {error}"))?;
     let response = client
         .recv()
         .await
-        .context("Failed to receive diagnostics response")?;
+        .map_err(|error| format!("{host}:{port}: Failed to receive diagnostics response: {error}"))?;
     let _ = client.send(ClientRequest::Disconnect { cause: None }).await;
     match response {
         HostResponse::QueryResponse(QueryResponse::NodeDiagnostics(diag)) => {
-            serde_json::to_string_pretty(&diag).context("Failed to serialize diagnostics")
+            serde_json::to_string_pretty(&diag).map_err(|error| {
+                format!("{host}:{port}: Failed to serialize diagnostics: {error}")
+            })
         }
-        _ => anyhow::bail!("Unexpected response from node"),
+        _ => Err(format!("{host}:{port}: Unexpected response from node")),
     }
 }
