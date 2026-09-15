@@ -17,6 +17,14 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun presetServiceReportCommentNamesTheApkAndVersion() {
+        val text = presetServiceReportComment("0.2.135.1")
+        assertEquals(true, text.contains(SERVICE_REPORT_REPO))
+        assertEquals(true, text.contains("App version: 0.2.135.1"))
+        assertEquals(true, text.contains("unofficial Android APK"))
+    }
+
+    @Test
     fun changelogShowsOnlyAfterAnUpdateNotOnFirstInstall() {
         assertEquals(null, changelogLineIfUpdated("0.2.134.10", null))
         assertEquals(null, changelogLineIfUpdated("0.2.134.10", ""))

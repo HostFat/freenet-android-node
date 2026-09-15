@@ -1583,6 +1583,12 @@ private fun DiagnosticsPanel(
             logsExportMessage = writeTextToUri(context, uri, logs)
         }
     }
+    val reportScope = rememberCoroutineScope()
+    var showReportDialog by remember { mutableStateOf(false) }
+    var reportComment by remember { mutableStateOf("") }
+    var reportSending by remember { mutableStateOf(false) }
+    var reportCode by remember { mutableStateOf<String?>(null) }
+    var reportError by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(Unit) {
         while (true) {
@@ -1710,6 +1716,99 @@ private fun DiagnosticsPanel(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.recent_logs))
+        }
+        OutlinedButton(
+            onClick = {
+                reportComment = presetServiceReportComment(appVersionName(context))
+                reportCode = null
+                reportError = null
+                reportSending = false
+                showReportDialog = true
+            },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.send_service_report))
+        }
+        if (showReportDialog) {
+            AlertDialog(
+                onDismissRequest = {
+                    if (!reportSending) showReportDialog = false
+                },
+                title = { Text(stringResource(R.string.send_service_report_title)) },
+                text = {
+                    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                        Text(
+                            stringResource(R.string.send_service_report_warning),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        val code = reportCode
+                        if (code != null) {
+                            Text(stringResource(R.string.send_service_report_code, code))
+                        } else {
+                            OutlinedTextField(
+                                value = reportComment,
+                                onValueChange = { reportComment = it },
+                                enabled = !reportSending,
+                                modifier = Modifier
+                                    .fillMaxWidth()
+                                    .height(160.dp),
+                            )
+                            reportError?.let { error ->
+                                Text(
+                                    stringResource(R.string.send_service_report_failed, error),
+                                    color = MaterialTheme.colorScheme.error,
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                            if (reportSending) {
+                                Text(
+                                    stringResource(R.string.send_service_report_sending),
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                    }
+                },
+                confirmButton = {
+                    val code = reportCode
+                    if (code != null) {
+                        TextButton(onClick = { copyToClipboard(context, code) }) {
+                            Text(stringResource(R.string.copy_report_code))
+                        }
+                    } else {
+                        TextButton(
+                            enabled = !reportSending,
+                            onClick = {
+                                reportSending = true
+                                reportError = null
+                                val comment = reportComment
+                                reportScope.launch {
+                                    val result = withContext(Dispatchers.IO) {
+                                        ServiceReport.upload(context, comment)
+                                    }
+                                    reportSending = false
+                                    result.fold(
+                                        onSuccess = { reportCode = it },
+                                        onFailure = { error ->
+                                            reportError = error.message ?: error.toString()
+                                        },
+                                    )
+                                }
+                            },
+                        ) {
+                            Text(stringResource(R.string.send_service_report_send))
+                        }
+                    }
+                },
+                dismissButton = {
+                    TextButton(
+                        enabled = !reportSending,
+                        onClick = { showReportDialog = false },
+                    ) {
+                        Text(stringResource(R.string.config_close))
+                    }
+                },
+            )
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

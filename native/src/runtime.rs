@@ -1913,7 +1913,7 @@ fn unix_time_ms() -> u64 {
         .unwrap_or(u64::MAX)
 }
 
-fn success_response<T: Serialize>(data: T) -> String {
+pub(crate) fn success_response<T: Serialize>(data: T) -> String {
     serialize_response(&ResponseEnvelope {
         ok: true,
         data: Some(data),

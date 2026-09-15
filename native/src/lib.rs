@@ -7,8 +7,9 @@ use jni::sys::{jint, jstring};
 
 mod contract_proof;
 mod runtime;
+mod service_report;
 
-use runtime::{jni_error_response, node_runtime};
+use runtime::{jni_error_response, node_runtime, success_response};
 
 const BRIDGE_VERSION: &str = env!("CARGO_PKG_VERSION");
 const FREENET_CORE_VERSION: &str = env!("FREENET_CORE_VERSION");
@@ -149,6 +150,29 @@ pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeGetContra
     _class: JClass,
 ) -> jstring {
     jni_response(&mut env, |_| node_runtime().contract_proof_status())
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeQueryNodeDiagnostics(
+    mut env: JNIEnv,
+    _class: JClass,
+    websocket_port: jint,
+) -> jstring {
+    jni_response(&mut env, |_| {
+        if websocket_port <= 0 || websocket_port > 65535 {
+            return jni_error_response(
+                "INVALID_ARGUMENT",
+                "websocketPort must be between 1 and 65535",
+            );
+        }
+        match service_report::query_node_diagnostics(websocket_port as u16) {
+            Ok(diagnostics) => match serde_json::from_str::<serde_json::Value>(&diagnostics) {
+                Ok(value) => success_response(value),
+                Err(_) => success_response(diagnostics),
+            },
+            Err(error) => jni_error_response("NODE_DIAGNOSTICS_UNAVAILABLE", error),
+        }
+    })
 }
 
 fn freenet_build_info() -> String {

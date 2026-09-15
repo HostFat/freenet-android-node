@@ -56,6 +56,14 @@
     <string name="recent_logs">Recent logs</string>
     <string name="copy_json">Copy JSON</string>
     <string name="copy_all_logs">Copy all logs</string>
+    <string name="send_service_report">Send report to Freenet developers</string>
+    <string name="send_service_report_title">Send diagnostic report</string>
+    <string name="send_service_report_warning">This is the same upload as freenet service report. It includes recent logs, config.toml, this device model, and if the node is running its peer ID, connected peers, and contracts. The server records your IP. You can edit the comment before sending. Share the report code with Freenet developers on GitHub or Matrix.</string>
+    <string name="send_service_report_send">Send report</string>
+    <string name="send_service_report_sending">Sending…</string>
+    <string name="send_service_report_code">Report code: %1$s</string>
+    <string name="copy_report_code">Copy code</string>
+    <string name="send_service_report_failed">Could not send the report: %1$s</string>
     <string name="diagnostics_json">JSON</string>
     <string name="dismiss_changelog">Got it</string>
     <string name="changelog_title">What\'s new</string>
