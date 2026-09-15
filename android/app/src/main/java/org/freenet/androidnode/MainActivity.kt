@@ -427,6 +427,9 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onStop = {
                             nodeViewModel.stopNode()
                         },
+                        onRestart = {
+                            withNotificationPermission(nodeViewModel::restartNetworkNode)
+                        },
                         onReset = { pendingReset = true },
                         onCopyFingerprint = { fingerprint ->
                             copyToClipboard(context, fingerprint)
@@ -764,6 +767,7 @@ private fun NodeControlStrip(
     onStartNetwork: () -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
+    onRestart: () -> Unit,
     onReset: () -> Unit,
     onCopyFingerprint: (String) -> Unit,
     onUseSavedUdp: () -> Unit,
@@ -911,11 +915,21 @@ private fun NodeControlStrip(
                 }
             }
         }
-        if (!state.serviceActive) {
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
+        ) {
+            OutlinedButton(
+                enabled = NativeBridge.isLoaded,
+                onClick = onRestart,
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.restart_node))
+            }
             OutlinedButton(
                 enabled = NativeBridge.isLoaded,
                 onClick = onReset,
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.outlinedButtonColors(
                     contentColor = MaterialTheme.colorScheme.error,
                 ),
