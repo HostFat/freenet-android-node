@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: send a diagnostic report to Freenet developers from For nerds, and Reset node next to Start after a crash."
+        "This update: Freenet core 0.2.136. Restart sits next to Reset, and the App and Node versions at the bottom of the menu open their GitHub repos."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
