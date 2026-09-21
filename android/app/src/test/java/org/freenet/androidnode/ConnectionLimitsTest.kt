@@ -7,7 +7,10 @@ class ConnectionLimitsTest {
     @Test
     fun panelVersionLineShowsAppAndNode() {
         assertEquals("App 0.2.134.10 · Node 0.2.134", panelVersionLine("0.2.134.10", "0.2.134"))
+        assertEquals("App 0.2.135.2" to "Node 0.2.135", panelVersionLabels("0.2.135.2", "0.2.135"))
         assertEquals("App — · Node —", panelVersionLine(null, "  "))
+        assertEquals("https://github.com/HostFat/freenet-android-node", APP_REPO_URL)
+        assertEquals("https://github.com/freenet/freenet-core", CORE_REPO_URL)
         assertEquals(
             "0.2.134",
             coreVersionFromBuildInfo(

@@ -551,8 +551,31 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     val nodeVersion = remember {
                         coreVersionFromBuildInfo(NativeBridge.freenetBuildInfo().getOrNull())
                     }
+                    val (appLabel, nodeLabel) = panelVersionLabels(appVersion, nodeVersion)
+                    val versionLink = SpanStyle(
+                        color = MaterialTheme.colorScheme.primary,
+                        textDecoration = TextDecoration.Underline,
+                    )
                     Text(
-                        panelVersionLine(appVersion, nodeVersion),
+                        buildAnnotatedString {
+                            withLink(
+                                LinkAnnotation.Url(
+                                    APP_REPO_URL,
+                                    TextLinkStyles(style = versionLink),
+                                ),
+                            ) {
+                                append(appLabel)
+                            }
+                            append(" · ")
+                            withLink(
+                                LinkAnnotation.Url(
+                                    CORE_REPO_URL,
+                                    TextLinkStyles(style = versionLink),
+                                ),
+                            ) {
+                                append(nodeLabel)
+                            }
+                        },
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                         style = MaterialTheme.typography.labelSmall,
                     )

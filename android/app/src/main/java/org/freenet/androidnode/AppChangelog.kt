@@ -2,10 +2,18 @@ package org.freenet.androidnode
 
 import android.content.Context
 
-internal fun panelVersionLine(appVersion: String?, coreVersion: String?): String {
+internal const val APP_REPO_URL = "https://github.com/HostFat/freenet-android-node"
+internal const val CORE_REPO_URL = "https://github.com/freenet/freenet-core"
+
+internal fun panelVersionLabels(appVersion: String?, coreVersion: String?): Pair<String, String> {
     val app = appVersion?.trim()?.takeIf { it.isNotEmpty() } ?: "—"
     val core = coreVersion?.trim()?.takeIf { it.isNotEmpty() } ?: "—"
-    return "App $app · Node $core"
+    return "App $app" to "Node $core"
+}
+
+internal fun panelVersionLine(appVersion: String?, coreVersion: String?): String {
+    val (app, core) = panelVersionLabels(appVersion, coreVersion)
+    return "$app · $core"
 }
 
 internal fun coreVersionFromBuildInfo(info: String?): String? =
