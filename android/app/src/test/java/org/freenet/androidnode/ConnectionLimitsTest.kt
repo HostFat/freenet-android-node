@@ -46,6 +46,18 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun crashReportIsOfferedOnlyForUnexpectedNativeFailures() {
+        assertEquals(true, shouldOfferCrashReport(false, false, false))
+        assertEquals(false, shouldOfferCrashReport(udpPortInUse = true, policyBlocked = false, userRequestedShutdown = false))
+        assertEquals(false, shouldOfferCrashReport(udpPortInUse = false, policyBlocked = true, userRequestedShutdown = false))
+        assertEquals(false, shouldOfferCrashReport(udpPortInUse = false, policyBlocked = false, userRequestedShutdown = true))
+        val comment = presetCrashReportComment("0.2.137.1")
+        assertEquals(true, comment.contains(SERVICE_REPORT_REPO))
+        assertEquals(true, comment.contains("App version: 0.2.137.1"))
+        assertEquals(true, comment.contains("crash report"))
+    }
+
+    @Test
     fun presetServiceReportCommentNamesTheApkAndVersion() {
         val text = presetServiceReportComment("0.2.135.1")
         assertEquals(true, text.contains(SERVICE_REPORT_REPO))

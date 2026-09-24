@@ -355,6 +355,14 @@ class NodeService : Service() {
             }
             if (startStatus.state !in ACTIVE_NATIVE_STATES) {
                 val policyBlocked = nativeErrorCode(response) == "NETWORK_POLICY_BLOCKED"
+                if (shouldOfferCrashReport(
+                        udpPortInUse = false,
+                        policyBlocked = policyBlocked,
+                        userRequestedShutdown = userRequestedShutdown,
+                    )
+                ) {
+                    CrashReportOffer.note(this, startStatus.detail)
+                }
                 if (
                     !policyBlocked &&
                     policy.autoRestartOnCrash &&
@@ -525,6 +533,7 @@ class NodeService : Service() {
         val detail = NodeRepository.state.value.detail.ifBlank {
             "Native node stopped unexpectedly"
         }
+        CrashReportOffer.note(this, detail)
         if (policy.autoRestartOnCrash && crashRestartAttempt < MAX_CRASH_RESTARTS) {
             scheduleCrashRestart(runningMode == "Network")
             return

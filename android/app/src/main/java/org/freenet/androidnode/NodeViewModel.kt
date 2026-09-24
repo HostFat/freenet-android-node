@@ -7,6 +7,7 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
     init {
         NodePolicyRepository.initialize(application)
         UpdateCheckRepository.initialize(application)
+        CrashReportOffer.initialize(application)
     }
 
     val state = NodeRepository.state

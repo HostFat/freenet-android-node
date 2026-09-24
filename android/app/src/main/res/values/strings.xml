@@ -12,6 +12,12 @@
     <string name="resume_node">Resume</string>
     <string name="stop_node">Stop</string>
     <string name="restart_node">Restart node</string>
+    <string name="send_crash_log">Send crash log</string>
+    <string name="send_crash_log_title">Send crash log</string>
+    <string name="send_crash_log_warning">Sends this crash to the author of this unofficial app. No account is required. The log can include the peer ID, config, and recent lines. You can edit the comment before sending.</string>
+    <string name="send_crash_log_send">Send log</string>
+    <string name="send_crash_log_sent">Log sent. Reference: %1$s</string>
+    <string name="send_crash_log_failed">Could not send the crash log: %1$s</string>
     <string name="reset_node">Reset node</string>
     <string name="reset_node_title">Reset node data?</string>
     <string name="reset_node_message">Deletes the node database, contracts, logs, and cache. Identity keys and config.toml are kept, so this phone stays the same peer.\n\nAfter a crash, send a diagnostic report first if you still need the logs. Stop the node before resetting.</string>

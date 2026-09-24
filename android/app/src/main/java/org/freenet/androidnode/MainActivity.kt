@@ -219,6 +219,7 @@ private fun AlphaDisclaimerDialog(onAccept: () -> Unit) {
 private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val context = LocalContext.current
     val nodeState by nodeViewModel.state.collectAsState()
+    val crashReportPending by CrashReportOffer.pending.collectAsState()
     val policyState by nodeViewModel.policies.collectAsState()
     val updateState by UpdateCheckRepository.state.collectAsState()
     val updateInterval by UpdateCheckRepository.interval.collectAsState()
@@ -234,6 +235,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     var changelogLine by remember { mutableStateOf(AppChangelog.pendingLine(context)) }
     var pendingRestart by remember { mutableStateOf<PendingRestart?>(null) }
     var pendingReset by remember { mutableStateOf(false) }
+    var showCrashDialog by remember { mutableStateOf(false) }
+    var crashComment by remember { mutableStateOf("") }
+    var crashSending by remember { mutableStateOf(false) }
+    var crashSentId by remember { mutableStateOf<String?>(null) }
+    var crashError by remember { mutableStateOf<String?>(null) }
     var resetMessage by remember { mutableStateOf<String?>(null) }
     var configFingerprint by remember { mutableStateOf(ConfigToml.fingerprint(context)) }
     var awaitingExternalConfigEdit by rememberSaveable { mutableStateOf(false) }
@@ -431,6 +437,14 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             withNotificationPermission(nodeViewModel::restartNetworkNode)
                         },
                         onReset = { pendingReset = true },
+                        crashReportPending = crashReportPending,
+                        onSendCrashLog = {
+                            crashComment = presetCrashReportComment(appVersionName(context))
+                            crashSentId = null
+                            crashError = null
+                            crashSending = false
+                            showCrashDialog = true
+                        },
                         onCopyFingerprint = { fingerprint ->
                             copyToClipboard(context, fingerprint)
                         },
@@ -710,6 +724,78 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         )
     }
 
+    if (showCrashDialog) {
+        AlertDialog(
+            onDismissRequest = { if (!crashSending) showCrashDialog = false },
+            title = { Text(stringResource(R.string.send_crash_log_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.send_crash_log_warning),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    val sentId = crashSentId
+                    if (sentId != null) {
+                        Text(stringResource(R.string.send_crash_log_sent, sentId))
+                    } else {
+                        OutlinedTextField(
+                            value = crashComment,
+                            onValueChange = { crashComment = it },
+                            enabled = !crashSending,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .height(160.dp),
+                        )
+                        crashError?.let { error ->
+                            Text(
+                                stringResource(R.string.send_crash_log_failed, error),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                if (crashSentId == null) {
+                    TextButton(
+                        enabled = !crashSending,
+                        onClick = {
+                            crashSending = true
+                            crashError = null
+                            val comment = crashComment
+                            scope.launch {
+                                val result = withContext(Dispatchers.IO) {
+                                    CrashInbox.upload(context, comment)
+                                }
+                                crashSending = false
+                                result.fold(
+                                    onSuccess = { id ->
+                                        crashSentId = id
+                                        CrashReportOffer.clear(context)
+                                    },
+                                    onFailure = { error ->
+                                        crashError = error.message ?: error.toString()
+                                    },
+                                )
+                            }
+                        },
+                    ) {
+                        Text(stringResource(R.string.send_crash_log_send))
+                    }
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    enabled = !crashSending,
+                    onClick = { showCrashDialog = false },
+                ) {
+                    Text(stringResource(R.string.config_close))
+                }
+            },
+        )
+    }
+
     if (pendingReset) {
         AlertDialog(
             onDismissRequest = { pendingReset = false },
@@ -792,6 +878,8 @@ private fun NodeControlStrip(
     onStop: () -> Unit,
     onRestart: () -> Unit,
     onReset: () -> Unit,
+    crashReportPending: Boolean = false,
+    onSendCrashLog: () -> Unit = {},
     onCopyFingerprint: (String) -> Unit,
     onUseSavedUdp: () -> Unit,
     onUseRandomUdp: () -> Unit,
@@ -901,6 +989,14 @@ private fun NodeControlStrip(
                 color = MaterialTheme.colorScheme.error,
                 style = MaterialTheme.typography.bodySmall,
             )
+        }
+        if (crashReportPending) {
+            Button(
+                onClick = onSendCrashLog,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.send_crash_log))
+            }
         }
         Row(
             modifier = Modifier.fillMaxWidth(),

@@ -624,6 +624,7 @@ jobs:
           RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
           RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
           RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          CRASH_REPORT_TOKEN: ${{ secrets.CRASH_REPORT_TOKEN }}
         run: |
           docker run --rm \
             --user "$(id -u):$(id -g)" \
@@ -642,6 +643,7 @@ jobs:
             --env RELEASE_KEY_PASSWORD="${RELEASE_KEY_PASSWORD}" \
             --env APP_VERSION_CODE="${{ github.run_number }}" \
             --env APP_VERSION_NAME="${{ github.event.inputs.release_version }}" \
+            --env CRASH_REPORT_TOKEN="${CRASH_REPORT_TOKEN}" \
             "${{ env.DOCKER_IMAGE }}" \
             bash -lc '
               set -euo pipefail

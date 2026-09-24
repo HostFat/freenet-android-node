@@ -11,6 +11,9 @@ fi
 if [[ -n "${APP_VERSION_NAME:-}" ]]; then
   gradle_version_args+=("-PappVersionName=${APP_VERSION_NAME}")
 fi
+if [[ -n "${CRASH_REPORT_TOKEN:-}" ]]; then
+  gradle_version_args+=("-PcrashReportToken=${CRASH_REPORT_TOKEN}")
+fi
 
 "${repo_root}/scripts/build-native.sh"
 "${repo_root}/android/gradlew" \

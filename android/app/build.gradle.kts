@@ -22,6 +22,11 @@ android {
         ndk {
             abiFilters += listOf("arm64-v8a", "x86_64")
         }
+
+        val crashReportToken = (project.findProperty("crashReportToken") as String?)
+            ?: System.getenv("CRASH_REPORT_TOKEN")
+            ?: ""
+        buildConfigField("String", "CRASH_REPORT_TOKEN", "\"${crashReportToken.replace("\"", "")}\"")
     }
 
     signingConfigs {
@@ -55,6 +60,7 @@ android {
 
     buildFeatures {
         compose = true
+        buildConfig = true
     }
 
     packaging {
