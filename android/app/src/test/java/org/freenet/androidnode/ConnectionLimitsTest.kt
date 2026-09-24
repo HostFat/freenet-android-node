@@ -46,6 +46,15 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun crashReportIsUsefulOnlyWithAReasonOrLogs() {
+        assertEquals(false, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "", null))
+        assertEquals(false, crashSnapshotIsUseful("", "", ""))
+        assertEquals(true, crashSnapshotIsUseful("Native node stopped unexpectedly", "", null))
+        assertEquals(true, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "ERROR panic", null))
+        assertEquals(true, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "", "log line"))
+    }
+
+    @Test
     fun crashReportIsOfferedOnlyForUnexpectedNativeFailures() {
         assertEquals(true, shouldOfferCrashReport(false, false, false))
         assertEquals(false, shouldOfferCrashReport(udpPortInUse = true, policyBlocked = false, userRequestedShutdown = false))

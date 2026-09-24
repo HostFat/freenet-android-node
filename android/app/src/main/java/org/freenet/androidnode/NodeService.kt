@@ -361,7 +361,7 @@ class NodeService : Service() {
                         userRequestedShutdown = userRequestedShutdown,
                     )
                 ) {
-                    CrashReportOffer.note(this, startStatus.detail)
+                    CrashReportOffer.note(this, startStatus.detail, formatServiceReportLogs())
                 }
                 if (
                     !policyBlocked &&
@@ -533,7 +533,7 @@ class NodeService : Service() {
         val detail = NodeRepository.state.value.detail.ifBlank {
             "Native node stopped unexpectedly"
         }
-        CrashReportOffer.note(this, detail)
+        CrashReportOffer.note(this, detail, formatServiceReportLogs())
         if (policy.autoRestartOnCrash && crashRestartAttempt < MAX_CRASH_RESTARTS) {
             scheduleCrashRestart(runningMode == "Network")
             return

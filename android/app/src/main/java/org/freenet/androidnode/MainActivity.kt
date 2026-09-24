@@ -108,6 +108,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
+import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
@@ -725,11 +726,26 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     }
 
     if (showCrashDialog) {
-        AlertDialog(
+        Dialog(
             onDismissRequest = { if (!crashSending) showCrashDialog = false },
-            title = { Text(stringResource(R.string.send_crash_log_title)) },
-            text = {
-                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            properties = DialogProperties(usePlatformDefaultWidth = false),
+        ) {
+            Surface(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(16.dp),
+                shape = MaterialTheme.shapes.extraLarge,
+            ) {
+                Column(
+                    modifier = Modifier
+                        .verticalScroll(rememberScrollState())
+                        .padding(24.dp),
+                    verticalArrangement = Arrangement.spacedBy(12.dp),
+                ) {
+                    Text(
+                        stringResource(R.string.send_crash_log_title),
+                        style = MaterialTheme.typography.titleLarge,
+                    )
                     Text(
                         stringResource(R.string.send_crash_log_warning),
                         style = MaterialTheme.typography.bodySmall,
@@ -742,9 +758,9 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             value = crashComment,
                             onValueChange = { crashComment = it },
                             enabled = !crashSending,
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .height(160.dp),
+                            label = { Text(stringResource(R.string.crash_comment_label)) },
+                            minLines = 6,
+                            modifier = Modifier.fillMaxWidth(),
                         )
                         crashError?.let { error ->
                             Text(
@@ -754,46 +770,47 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             )
                         }
                     }
-                }
-            },
-            confirmButton = {
-                if (crashSentId == null) {
-                    TextButton(
-                        enabled = !crashSending,
-                        onClick = {
-                            crashSending = true
-                            crashError = null
-                            val comment = crashComment
-                            scope.launch {
-                                val result = withContext(Dispatchers.IO) {
-                                    CrashInbox.upload(context, comment)
-                                }
-                                crashSending = false
-                                result.fold(
-                                    onSuccess = { id ->
-                                        crashSentId = id
-                                        CrashReportOffer.clear(context)
-                                    },
-                                    onFailure = { error ->
-                                        crashError = error.message ?: error.toString()
-                                    },
-                                )
-                            }
-                        },
+                    Row(
+                        modifier = Modifier.fillMaxWidth(),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
                     ) {
-                        Text(stringResource(R.string.send_crash_log_send))
+                        TextButton(
+                            enabled = !crashSending,
+                            onClick = { showCrashDialog = false },
+                        ) {
+                            Text(stringResource(R.string.config_close))
+                        }
+                        if (crashSentId == null) {
+                            Button(
+                                enabled = !crashSending,
+                                onClick = {
+                                    crashSending = true
+                                    crashError = null
+                                    val comment = crashComment
+                                    scope.launch {
+                                        val result = withContext(Dispatchers.IO) {
+                                            CrashInbox.upload(context, comment)
+                                        }
+                                        crashSending = false
+                                        result.fold(
+                                            onSuccess = { id ->
+                                                crashSentId = id
+                                                CrashReportOffer.clear(context)
+                                            },
+                                            onFailure = { error ->
+                                                crashError = error.message ?: error.toString()
+                                            },
+                                        )
+                                    }
+                                },
+                            ) {
+                                Text(stringResource(R.string.send_crash_log_send))
+                            }
+                        }
                     }
                 }
-            },
-            dismissButton = {
-                TextButton(
-                    enabled = !crashSending,
-                    onClick = { showCrashDialog = false },
-                ) {
-                    Text(stringResource(R.string.config_close))
-                }
-            },
-        )
+            }
+        }
     }
 
     if (pendingReset) {

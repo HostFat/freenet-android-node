@@ -18,7 +18,48 @@ internal object CrashInbox {
     fun upload(context: android.content.Context, userMessage: String): Result<String> = runCatching {
         val token = BuildConfig.CRASH_REPORT_TOKEN.trim()
         require(token.isNotEmpty()) { "Crash reports are not configured in this build" }
-        val json = ServiceReport.buildReportJson(context, userMessage).toString()
+        val detail = CrashReportOffer.detail(context)
+        val ring = CrashReportOffer.ring(context)
+        val fileLog = ServiceReport.readFileLogs(context)
+        if (!crashSnapshotIsUseful(detail, ring, fileLog)) {
+            error("Nothing useful to send")
+        }
+        val notedAt = CrashReportOffer.notedAtEpochMs(context)
+        val jsonObject = ServiceReport.buildReportJson(context, userMessage)
+        val body = buildString {
+            append("Crash detail:\n")
+            append(detail.ifBlank { "(none)" })
+            append("\n\n")
+            if (fileLog.isNullOrBlank()) {
+                append("No log files were on disk.\n")
+            } else {
+                append(fileLog)
+            }
+            if (ring.isNotBlank()) {
+                append("\n--- ring captured at crash ---\n")
+                append(ring)
+            }
+        }
+        jsonObject.put(
+            "logs",
+            org.json.JSONObject()
+                .put("main_log", body)
+                .put("error_log", org.json.JSONObject.NULL)
+                .put("main_log_size_bytes", body.toByteArray(Charsets.UTF_8).size)
+                .put("error_log_size_bytes", 0)
+                .put("main_log_original_size_bytes", body.toByteArray(Charsets.UTF_8).size)
+                .put("error_log_original_size_bytes", 0),
+        )
+        jsonObject.put(
+            "network_status",
+            org.json.JSONObject()
+                .put("source", "crash-snapshot")
+                .put("detail", detail)
+                .put("notedAtEpochMs", notedAt)
+                .toString(2),
+        )
+        jsonObject.put("network_status_error", org.json.JSONObject.NULL)
+        val json = jsonObject.toString()
         val compressed = ByteArrayOutputStream().use { bytes ->
             GZIPOutputStream(bytes).use { gzip ->
                 gzip.write(json.toByteArray(Charsets.UTF_8))

@@ -14,7 +14,8 @@
     <string name="restart_node">Restart node</string>
     <string name="send_crash_log">Send crash log</string>
     <string name="send_crash_log_title">Send crash log</string>
-    <string name="send_crash_log_warning">Sends this crash to the author of this unofficial app. No account is required. The log can include the peer ID, config, and recent lines. You can edit the comment before sending.</string>
+    <string name="send_crash_log_warning">Sends this crash to the author of this unofficial app. No account is required. The log can include the peer ID, config, and recent lines.</string>
+    <string name="crash_comment_label">Comment</string>
     <string name="send_crash_log_send">Send log</string>
     <string name="send_crash_log_sent">Log sent. Reference: %1$s</string>
     <string name="send_crash_log_failed">Could not send the crash log: %1$s</string>

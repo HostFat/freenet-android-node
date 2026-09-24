@@ -64,7 +64,14 @@ internal object ServiceReport {
             .put("user_message", message ?: JSONObject.NULL)
     }
 
-    private fun collectLogs(context: Context): JSONObject {
+    internal fun hasLogFiles(context: Context): Boolean {
+        val logDir = File(context.filesDir, "freenet/logs")
+        return logDir.listFiles()?.any { file ->
+            file.isFile && file.name.startsWith("freenet") && file.name.endsWith(".log") && file.length() > 0L
+        } == true
+    }
+
+    internal fun readFileLogs(context: Context): String? {
         val logDir = File(context.filesDir, "freenet/logs")
         val files = logDir.listFiles()
             ?.filter { it.isFile && it.name.startsWith("freenet") && it.name.endsWith(".log") }
@@ -77,6 +84,11 @@ internal object ServiceReport {
                 runCatching { file.readText() }.getOrDefault("")
             }.trim().ifEmpty { null }
         }
+        return fromFiles
+    }
+
+    private fun collectLogs(context: Context): JSONObject {
+        val fromFiles = readFileLogs(context)
         val fromRing = formatServiceReportLogs()
         val merged = listOfNotNull(fromFiles, fromRing).joinToString(
             "\n--- android adapter ring ---\n",
