@@ -16,7 +16,11 @@ This fork rebuilds a signed Android APK whenever Freenet core publishes a new
    - checks out that core tag next to this repo
    - runs `cargo update` in `native/` so `Cargo.lock` matches the new crate graph
    - rewrites the documented pins (`README`, `docs/BASELINE.md`, CI default, …)
-   - pushes a `[skip ci]` commit
+   - pushes a `[skip ci]` commit. Updating `.github/workflows/ci.yml` needs the
+     `workflows` permission on `GITHUB_TOKEN`. If GitHub rejects that push, the
+     job commits the lockfile and docs without `ci.yml` and still dispatches
+     the release: `freenet_core_version` is passed as a workflow input, so the
+     APK does not depend on the default written in the file
    - dispatches [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) with
      `skip_prechecks=true` so the signed APK is built once, not three times
 5. On success CI publishes `freenet-android-node-release.apk` and
