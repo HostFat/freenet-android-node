@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: if the node crashes, send the crash log to the app author without an account."
+        "This update: the crash-log comment field is visible, and a report is sent only when there is a real crash reason or log text."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
