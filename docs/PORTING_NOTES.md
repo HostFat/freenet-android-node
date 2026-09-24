@@ -197,6 +197,13 @@ The JNI adapter was re-resolved against sibling `freenet-core` tag `v0.2.136`
 `Cargo.lock` was refreshed with `cargo update`. No adapter source changes.
 The first APK for this core is tagged `v0.2.136`, not `v0.2.136.1`.
 
+## Core 0.2.137 adapter bump
+
+The JNI adapter was re-resolved against sibling `freenet-core` tag `v0.2.137`
+(`10e859e256a6c2bef6c279f117d289ded7264188`). `freenet-stdlib` stays 0.10.0.
+`Cargo.lock` was refreshed with `cargo update`. No adapter source changes.
+The first APK for this core is tagged `v0.2.137`.
+
 ## Blocker template
 
 ```text
