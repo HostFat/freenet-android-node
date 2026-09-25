@@ -1104,6 +1104,10 @@ impl NodeRuntime {
         success_response(lock_recover(&self.shared.inner).contract_proof.clone())
     }
 
+    pub(crate) fn append_info_log(&self, message: &str) {
+        self.shared.log("INFO", message);
+    }
+
     pub(crate) fn recent_logs(&self, max_entries: i32) -> String {
         if max_entries <= 0 {
             return error_response(NodeError::new(

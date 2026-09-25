@@ -153,6 +153,24 @@ pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeGetContra
 }
 
 #[unsafe(no_mangle)]
+pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeAppendInfoLog(
+    mut env: JNIEnv,
+    _class: JClass,
+    message: JString,
+) -> jstring {
+    jni_response(&mut env, |env| match env.get_string(&message) {
+        Ok(text) => {
+            node_runtime().append_info_log(&text.to_string_lossy());
+            success_response("logged")
+        }
+        Err(error) => jni_error_response(
+            "INVALID_ARGUMENT",
+            format!("Failed to read the log message from JNI: {error}"),
+        ),
+    })
+}
+
+#[unsafe(no_mangle)]
 pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeQueryNodeDiagnostics(
     mut env: JNIEnv,
     _class: JClass,

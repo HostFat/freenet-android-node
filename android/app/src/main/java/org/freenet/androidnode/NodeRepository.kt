@@ -199,6 +199,7 @@ object NodeRepository {
             peers = 0,
             startedAtElapsedRealtimeMs = null,
             lastLifecycleResponse = detail,
+            lastNetworkError = null,
         )
     }
 
@@ -300,6 +301,7 @@ object NodeRepository {
             serviceActive = false,
             startedAtElapsedRealtimeMs = null,
             lastLifecycleResponse = response,
+            lastNetworkError = detail,
             udpPortInUse = false,
         )
     }

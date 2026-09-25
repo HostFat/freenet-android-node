@@ -37,6 +37,8 @@ object NativeBridge {
 
     external fun nativeGetContractProofStatus(): String
 
+    external fun nativeAppendInfoLog(message: String): String
+
     external fun nativeQueryNodeDiagnostics(websocketPort: Int): String
 
     fun ping(): Result<String> = withLoadedLibrary(::nativePing)
@@ -74,6 +76,9 @@ object NativeBridge {
 
     fun queryNodeDiagnostics(websocketPort: Int): Result<String> =
         withLoadedLibrary { nativeQueryNodeDiagnostics(websocketPort) }
+
+    fun appendInfoLog(message: String): Result<String> =
+        withLoadedLibrary { nativeAppendInfoLog(message) }
 
     private inline fun <T> withLoadedLibrary(block: () -> T): Result<T> {
         return loadResult.fold(

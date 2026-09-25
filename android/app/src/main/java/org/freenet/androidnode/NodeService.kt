@@ -284,6 +284,7 @@ class NodeService : Service() {
                 shutDownNode(startId, policyReason = reason)
             } else if (explicitStart) {
                 NodeRepository.publishFailure(reason, "NETWORK_POLICY_BLOCKED: $reason")
+                logControllerDetail(reason)
                 shutdownCompleted = true
                 finishService(startId)
             } else {
@@ -314,6 +315,7 @@ class NodeService : Service() {
                 publishControllerState(detail)
             } else {
                 NodeRepository.publishFailure(detail, "NETWORK_POLICY_BLOCKED: $detail")
+                logControllerDetail(detail)
                 shutdownCompleted = true
                 finishService(startId)
             }
@@ -585,11 +587,20 @@ class NodeService : Service() {
         }
     }
 
+    private var lastLoggedControllerDetail: String? = null
+
     private fun publishControllerState(detail: String, paused: Boolean = false) {
         startedAtElapsedRealtimeMs = null
         shutdownCompleted = true
         NodeRepository.publishWaiting(detail, paused)
         nodeNotificationManager.update(NodeRepository.state.value)
+        logControllerDetail(detail)
+    }
+
+    private fun logControllerDetail(detail: String) {
+        if (detail == lastLoggedControllerDetail) return
+        lastLoggedControllerDetail = detail
+        NativeBridge.appendInfoLog(detail)
     }
 
     private fun nativeStatus(fallback: String): NodeStatusSnapshot = NativeBridge.nodeStatus()

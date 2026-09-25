@@ -366,14 +366,15 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         drawerState = drawerState,
         gesturesEnabled = drawerState.isOpen,
         drawerContent = {
-            ModalDrawerSheet {
+            ModalDrawerSheet(modifier = Modifier.fillMaxHeight()) {
                 Column(
                     modifier = Modifier
+                        .fillMaxHeight()
                         .windowInsetsPadding(
                             WindowInsets.safeDrawing.only(WindowInsetsSides.Horizontal),
                         )
-                        .padding(16.dp)
-                        .verticalScroll(rememberScrollState()),
+                        .verticalScroll(rememberScrollState())
+                        .padding(16.dp),
                     verticalArrangement = Arrangement.spacedBy(12.dp),
                 ) {
                     Row(
@@ -921,6 +922,16 @@ private fun NodeControlStrip(
                 "Node: $status"
             },
         )
+        if (
+            (status == "Waiting" || status == "Paused") &&
+            state.detail.isNotBlank()
+        ) {
+            Text(
+                state.detail,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         if (status == "Connected") {
             Text(
                 stringResource(R.string.peer_count_accuracy_hint),
