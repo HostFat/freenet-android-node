@@ -1665,7 +1665,7 @@ dependencies = [
  "filetime",
  "flatbuffers 25.12.19",
  "flate2",
- "freenet-stdlib 0.12.0",
+ "freenet-stdlib",
  "futures",
  "headers",
  "hex",
@@ -1736,7 +1736,7 @@ name = "freenet-android"
 version = "0.1.0"
 dependencies = [
  "freenet",
- "freenet-stdlib 0.10.0",
+ "freenet-stdlib",
  "getrandom 0.3.4",
  "jni 0.21.1",
  "serde",
@@ -1745,17 +1745,6 @@ dependencies = [
  "tokio",
  "tokio-tungstenite 0.27.0",
  "zeroize",
-]
-
-[[package]]
-name = "freenet-macros"
-version = "0.2.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "d26e5c6bee9ffa0e2683bc8b41a7bd9f1e57e7fd49ac4f6ae433e5a82e9006df"
-dependencies = [
- "proc-macro2",
- "quote",
- "syn 2.0.119",
 ]
 
 [[package]]
@@ -1771,36 +1760,6 @@ dependencies = [
 
 [[package]]
 name = "freenet-stdlib"
-version = "0.10.0"
-source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "292b74aee3af1918f555051bb404010e89fdb8e77080b0056f564681bec58b35"
-dependencies = [
- "bincode",
- "blake3",
- "bs58",
- "byteorder",
- "bytes",
- "chrono",
- "flatbuffers 24.12.23",
- "freenet-macros 0.2.0",
- "futures",
- "js-sys",
- "semver",
- "serde",
- "serde-wasm-bindgen",
- "serde_json",
- "serde_with",
- "thiserror 2.0.21",
- "tokio",
- "tokio-tungstenite 0.27.0",
- "tracing",
- "tracing-subscriber",
- "wasm-bindgen",
- "web-sys",
-]
-
-[[package]]
-name = "freenet-stdlib"
 version = "0.12.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
 checksum = "865beab617d59ebf0f6c112f3fbaa98c791a5ccfc9d9db71be3e1e5b6e62a0fc"
@@ -1812,7 +1771,7 @@ dependencies = [
  "bytes",
  "chrono",
  "flatbuffers 24.12.23",
- "freenet-macros 0.3.0",
+ "freenet-macros",
  "futures",
  "js-sys",
  "semver",

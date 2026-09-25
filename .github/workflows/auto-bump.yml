@@ -88,6 +88,33 @@ jobs:
         with:
           toolchain: "1.94.0"
 
+      - name: Align freenet-stdlib with the core workspace
+        if: steps.skip.outputs.already != 'true'
+        working-directory: freenet-android-node
+        run: |
+          set -euo pipefail
+          python3 - <<'PY'
+          import re
+          from pathlib import Path
+          core = Path("../freenet-core/Cargo.toml").read_text(encoding="utf-8")
+          match = re.search(r'(?m)^freenet-stdlib\s*=\s*"([^"]+)"', core)
+          if not match:
+              raise SystemExit("freenet-core Cargo.toml has no workspace freenet-stdlib pin")
+          version = match.group(1)
+          path = Path("native/Cargo.toml")
+          text = path.read_text(encoding="utf-8")
+          new, count = re.subn(
+              r'freenet-stdlib\s*=\s*\{\s*version\s*=\s*"[^"]+"',
+              f'freenet-stdlib = {{ version = "{version}"',
+              text,
+              count=1,
+          )
+          if count != 1:
+              raise SystemExit(f"native/Cargo.toml stdlib pin not rewritten ({count})")
+          path.write_text(new, encoding="utf-8")
+          print(f"native freenet-stdlib pinned to {version}")
+          PY
+
       - name: Refresh native Cargo.lock against the new core
         if: steps.skip.outputs.already != 'true'
         working-directory: freenet-android-node/native
@@ -122,6 +149,7 @@ jobs:
             docs/BASELINE.md \
             docs/RELEASING.md \
             scripts/cut-release.sh \
+            native/Cargo.toml \
             native/Cargo.lock
           if git diff --cached --quiet; then
             echo "Pins already matched ${{ steps.core.outputs.tag }}; dispatching build anyway."
