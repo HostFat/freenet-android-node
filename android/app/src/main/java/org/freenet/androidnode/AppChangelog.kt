@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: while Waiting, the menu and logs say why, for example when the network is metered. The settings menu scrolls."
+        "This update: the dashboard stays where you scrolled while it refreshes, and Dashboard brings you back from Apps and permissions."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
