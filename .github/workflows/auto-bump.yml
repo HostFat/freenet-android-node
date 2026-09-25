@@ -56,12 +56,9 @@ jobs:
             exit 0
           fi
 
-          inflight="$(gh run list --workflow ci.yml --limit 20 --json status,event,displayTitle,databaseId --jq \
-            --arg tag "$tag" \
-            '[.[] | select((.status=="in_progress" or .status=="queued") and .event=="workflow_dispatch" and (.displayTitle | test($tag; "i")))] | length')" || inflight=0
-          if [[ "${inflight}" != "0" ]]; then
+          if gh run list --workflow ci.yml --status in_progress --limit 5 --json event --jq '.[] | .event' | grep -qx workflow_dispatch; then
             echo "already=true" >> "$GITHUB_OUTPUT"
-            echo "A CI dispatch for ${tag} is already running; not starting another."
+            echo "A signed CI dispatch is already running; not starting another."
             exit 0
           fi
 
