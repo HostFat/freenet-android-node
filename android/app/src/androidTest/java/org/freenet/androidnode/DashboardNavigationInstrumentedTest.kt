@@ -28,6 +28,13 @@ class DashboardNavigationInstrumentedTest {
     }
 
     @Test
+    fun dashboardHomeIsOnlyTheLoopbackRoot() {
+        assertTrue(isDashboardHome(Uri.parse("http://127.0.0.1:7509/")))
+        assertTrue(isDashboardHome(Uri.parse("http://127.0.0.1:7509")))
+        assertFalse(isDashboardHome(Uri.parse("http://127.0.0.1:7509/permission/apps")))
+    }
+
+    @Test
     fun dashboardRoutesSubresourcesAndRedirectsStaySandboxed() {
         assertFalse(
             shouldOpenInExternalBrowser(
