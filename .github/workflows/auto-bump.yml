@@ -2,8 +2,9 @@ name: Auto bump Freenet core
 
 on:
   schedule:
-    # Every 6 hours; GitHub may delay cron a bit.
-    - cron: "17 */6 * * *"
+    # Fastest useful poll. GitHub will not fire on another repo's release,
+    # and may delay cron by a few minutes on a public repository.
+    - cron: "*/10 * * * *"
   workflow_dispatch:
 
 concurrency:
@@ -14,8 +15,6 @@ permissions:
   contents: write
   actions: write
   issues: write
-  # Needed to commit the freenet-core pin inside .github/workflows/ci.yml.
-  workflows: write
 
 jobs:
   bump:
@@ -54,10 +53,20 @@ jobs:
           if printf '%s\n' "$tags" | python3 scripts/apk_covers_core.py --core "$tag"; then
             echo "already=true" >> "$GITHUB_OUTPUT"
             echo "An APK for ${tag} already exists (exact tag or ${tag}.*); nothing to do."
-          else
-            echo "already=false" >> "$GITHUB_OUTPUT"
-            echo "No ${tag} or ${tag}.* APK release yet; will bump and build."
+            exit 0
           fi
+
+          inflight="$(gh run list --workflow ci.yml --limit 20 --json status,event,displayTitle,databaseId --jq \
+            --arg tag "$tag" \
+            '[.[] | select((.status=="in_progress" or .status=="queued") and .event=="workflow_dispatch" and (.displayTitle | test($tag; "i")))] | length')" || inflight=0
+          if [[ "${inflight}" != "0" ]]; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "A CI dispatch for ${tag} is already running; not starting another."
+            exit 0
+          fi
+
+          echo "already=false" >> "$GITHUB_OUTPUT"
+          echo "No ${tag} or ${tag}.* APK release yet; will bump and build."
 
       - name: Checkout matching freenet-core
         if: steps.skip.outputs.already != 'true'
@@ -102,6 +111,7 @@ jobs:
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git pull --rebase origin HEAD
           commit_msg="$(cat <<EOF
           chore: bump freenet-core to ${{ steps.core.outputs.tag }} [skip ci]
 
@@ -109,8 +119,9 @@ jobs:
           against the new core without a stale Cargo.lock.
           EOF
           )"
+          # Never stage workflow files. GITHUB_TOKEN cannot push them, and CI
+          # already receives freenet_core_version as a workflow_dispatch input.
           git add \
-            .github/workflows/ci.yml \
             README.md \
             docs/BASELINE.md \
             docs/RELEASING.md \
@@ -120,24 +131,7 @@ jobs:
             echo "Pins already matched ${{ steps.core.outputs.tag }}; dispatching build anyway."
           else
             git commit -m "${commit_msg}"
-            if ! git push origin HEAD:main; then
-              echo "Push of the workflow pin was rejected; retrying without .github/workflows/ci.yml."
-              echo "The dispatched build still receives freenet_core_version as an input."
-              git reset --mixed HEAD~1
-              git checkout HEAD -- .github/workflows/ci.yml
-              git add \
-                README.md \
-                docs/BASELINE.md \
-                docs/RELEASING.md \
-                scripts/cut-release.sh \
-                native/Cargo.lock
-              if git diff --cached --quiet; then
-                echo "No non-workflow files changed; cannot publish the lockfile."
-                exit 1
-              fi
-              git commit -m "${commit_msg}"
-              git push origin HEAD:main
-            fi
+            git push origin HEAD:main
           fi
 
       - name: Dispatch signed APK release

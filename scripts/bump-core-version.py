@@ -43,21 +43,8 @@ def main() -> None:
     version = args.tag[1:]
     repo = Path(__file__).resolve().parent.parent
 
-    replace_all(
-        repo / ".github/workflows/ci.yml",
-        r'(freenet-core ref to build against \(e\.g\. )v\d+\.\d+\.\d+',
-        rf"\g<1>{args.tag}",
-    )
-    replace_once(
-        repo / ".github/workflows/ci.yml",
-        r'(default: ")v\d+\.\d+\.\d+(")',
-        rf"\g<1>{args.tag}\2",
-    )
-    replace_once(
-        repo / ".github/workflows/ci.yml",
-        r'(FREENET_CORE_VERSION: ")v\d+\.\d+\.\d+(")',
-        rf"\g<1>{args.tag}\2",
-    )
+    # Do not touch .github/workflows/*. GITHUB_TOKEN cannot push workflow
+    # files, and CI already receives the core tag as a workflow_dispatch input.
     replace_once(
         repo / "README.md",
         r"(currently core )\d+\.\d+\.\d+",

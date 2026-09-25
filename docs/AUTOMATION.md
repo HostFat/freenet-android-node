@@ -5,8 +5,10 @@ This fork rebuilds a signed Android APK whenever Freenet core publishes a new
 
 ## What happens
 
-1. [`.github/workflows/auto-bump.yml`](../.github/workflows/auto-bump.yml) runs
-   every six hours (and on demand).
+1. [`.github/workflows/auto-bump.yml`](../.github/workflows/auto-bump.yml) polls
+   Freenet core every **10 minutes** (and on demand). GitHub cannot subscribe to
+   another repository's releases, so this is a poll, not a webhook. Cron on a
+   public repo can slip by a few minutes.
 2. It reads `https://github.com/freenet/freenet-core/releases/latest`.
 3. If this repository already has a GitHub Release for that core — the exact
    tag `vX.Y.Z` **or** a fork suffix `vX.Y.Z.N` such as `v0.2.135.1` — it
@@ -15,12 +17,11 @@ This fork rebuilds a signed Android APK whenever Freenet core publishes a new
 4. Otherwise it:
    - checks out that core tag next to this repo
    - runs `cargo update` in `native/` so `Cargo.lock` matches the new crate graph
-   - rewrites the documented pins (`README`, `docs/BASELINE.md`, CI default, …)
-   - pushes a `[skip ci]` commit. Updating `.github/workflows/ci.yml` needs the
-     `workflows` permission on `GITHUB_TOKEN`. If GitHub rejects that push, the
-     job commits the lockfile and docs without `ci.yml` and still dispatches
-     the release: `freenet_core_version` is passed as a workflow input, so the
-     APK does not depend on the default written in the file
+   - rewrites the documented pins (`README`, `docs/BASELINE.md`, …)
+   - pushes a `[skip ci]` commit that **does not touch** `.github/workflows/`.
+     `GITHUB_TOKEN` is not allowed to update workflow files. The APK job gets
+     the core tag as `freenet_core_version`, so the default written in `ci.yml`
+     is irrelevant.
    - dispatches [`.github/workflows/ci.yml`](../.github/workflows/ci.yml) with
      `skip_prechecks=true` so the signed APK is built once, not three times
 5. On success CI publishes `freenet-android-node-release.apk` and
