@@ -1635,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "freenet"
-version = "0.2.137"
+version = "0.2.138"
 dependencies = [
  "aes-gcm",
  "ahash",
@@ -1665,7 +1665,7 @@ dependencies = [
  "filetime",
  "flatbuffers 25.12.19",
  "flate2",
- "freenet-stdlib",
+ "freenet-stdlib 0.12.0",
  "futures",
  "headers",
  "hex",
@@ -1736,7 +1736,7 @@ name = "freenet-android"
 version = "0.1.0"
 dependencies = [
  "freenet",
- "freenet-stdlib",
+ "freenet-stdlib 0.10.0",
  "getrandom 0.3.4",
  "jni 0.21.1",
  "serde",
@@ -1759,6 +1759,17 @@ dependencies = [
 ]
 
 [[package]]
+name = "freenet-macros"
+version = "0.3.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "9693bea7cfcb44b5e821f3901f5e46e9101fb44b9f1e047adbd36ff7d123f52c"
+dependencies = [
+ "proc-macro2",
+ "quote",
+ "syn 2.0.119",
+]
+
+[[package]]
 name = "freenet-stdlib"
 version = "0.10.0"
 source = "registry+https://github.com/rust-lang/crates.io-index"
@@ -1771,7 +1782,37 @@ dependencies = [
  "bytes",
  "chrono",
  "flatbuffers 24.12.23",
- "freenet-macros",
+ "freenet-macros 0.2.0",
+ "futures",
+ "js-sys",
+ "semver",
+ "serde",
+ "serde-wasm-bindgen",
+ "serde_json",
+ "serde_with",
+ "thiserror 2.0.21",
+ "tokio",
+ "tokio-tungstenite 0.27.0",
+ "tracing",
+ "tracing-subscriber",
+ "wasm-bindgen",
+ "web-sys",
+]
+
+[[package]]
+name = "freenet-stdlib"
+version = "0.12.0"
+source = "registry+https://github.com/rust-lang/crates.io-index"
+checksum = "865beab617d59ebf0f6c112f3fbaa98c791a5ccfc9d9db71be3e1e5b6e62a0fc"
+dependencies = [
+ "bincode",
+ "blake3",
+ "bs58",
+ "byteorder",
+ "bytes",
+ "chrono",
+ "flatbuffers 24.12.23",
+ "freenet-macros 0.3.0",
  "futures",
  "js-sys",
  "semver",
@@ -2226,9 +2267,9 @@ dependencies = [
 
 [[package]]
 name = "headers"
-version = "0.4.1"
+version = "0.4.2"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "b3314d5adb5d94bcdf56771f2e50dbbc80bb4bdf88967526706205ac9eff24eb"
+checksum = "fc2700e3fe555c3310aa7286cac6167449f2c87e0eb58769c9208a1c58a1d106"
 dependencies = [
  "base64 0.22.1",
  "bytes",
@@ -2479,16 +2520,17 @@ dependencies = [
 
 [[package]]
 name = "hyper-util"
-version = "0.1.20"
+version = "0.1.21"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "96547c2556ec9d12fb1578c4eaf448b04993e7fb79cbaad930a656880a6bdfa0"
+checksum = "ddc03d96684f9226b8a787cdb71488417b53ab5ea8fdb1dac946cb9431cc8bff"
 dependencies = [
- "base64 0.22.1",
+ "base64 0.23.1",
  "bytes",
  "futures-channel",
  "futures-util",
  "http",
  "http-body",
+ "httparse",
  "hyper",
  "ipnet",
  "libc",
