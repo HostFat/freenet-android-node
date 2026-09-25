@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: the crash-log comment field is visible, and a report is sent only when there is a real crash reason or log text."
+        "This update: while Waiting, the menu and logs say why, for example when the network is metered. The settings menu scrolls."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
