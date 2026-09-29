@@ -263,7 +263,7 @@ class NodeService : Service() {
         }
 
         if (policy.automatic && !policy.powerEligible(batteryManager.isCharging)) {
-            val reason = "Waiting for the device to charge"
+            val reason = "The node is waiting until the phone is charging."
             if (active) {
                 shutDownNode(startId, keepController = true, waitingDetail = reason)
             } else {

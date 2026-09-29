@@ -20,6 +20,8 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
@@ -57,7 +59,6 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
-import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -95,6 +96,8 @@ import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
@@ -362,9 +365,29 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         }
     }
 
+    val menuSeen = remember { mutableStateOf(MenuEdgeHint.hasOpened(context)) }
+    val menuPeek = remember { Animatable(0f) }
+    LaunchedEffect(drawerState.currentValue) {
+        if (drawerState.currentValue == DrawerValue.Open) {
+            MenuEdgeHint.markOpened(context)
+            menuSeen.value = true
+            menuPeek.snapTo(0f)
+        }
+    }
+    LaunchedEffect(menuSeen.value, showDiagnostics, showConfigEditor, changelogLine) {
+        if (menuSeen.value || showDiagnostics || showConfigEditor || changelogLine != null) {
+            return@LaunchedEffect
+        }
+        delay(600)
+        if (drawerState.isOpen || MenuEdgeHint.hasOpened(context)) return@LaunchedEffect
+        menuPeek.animateTo(40f, tween(320))
+        delay(450)
+        menuPeek.animateTo(0f, tween(280))
+    }
+
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = drawerState.isOpen,
+        gesturesEnabled = !showDiagnostics && !showConfigEditor,
         drawerContent = {
             ModalDrawerSheet(modifier = Modifier.fillMaxHeight()) {
                 Column(
@@ -394,6 +417,25 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                                 fontWeight = FontWeight.Bold,
                             )
                         }
+                    }
+                    val blockReason = menuBlockReason(
+                        status = networkStatusLabel(
+                            nodeState.state,
+                            nodeState.mode,
+                            nodeState.peers,
+                            nodeState.serviceActive,
+                            nodeState.natHint,
+                        ),
+                        detail = nodeState.detail,
+                        lastNetworkError = nodeState.lastNetworkError,
+                        udpPortInUse = nodeState.udpPortInUse,
+                    )
+                    if (blockReason != null) {
+                        Text(
+                            blockReason,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
                     }
                     OutlinedButton(
                         onClick = {
@@ -646,22 +688,51 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            if (drawerState.isClosed && !showDiagnostics && !showConfigEditor) {
-                Surface(
+            if (
+                menuPeek.value > 0.5f &&
+                drawerState.isClosed &&
+                !showDiagnostics &&
+                !showConfigEditor
+            ) {
+                Box(
                     modifier = Modifier
-                        .align(Alignment.TopStart)
-                        .padding(
-                            start = 8.dp,
-                            top = 8.dp + 48.dp + 12.dp,
-                            end = 8.dp,
-                            bottom = 8.dp,
-                        ),
-                    shape = MaterialTheme.shapes.medium,
+                        .align(Alignment.CenterStart)
+                        .fillMaxHeight()
+                        .width(menuPeek.value.dp)
+                        .background(MaterialTheme.colorScheme.surfaceContainerLow),
+                )
+            }
+            if (drawerState.isClosed && !showDiagnostics && !showConfigEditor) {
+                val openMenu = stringResource(R.string.open_menu)
+                Surface(
+                    onClick = { scope.launch { drawerState.open() } },
+                    modifier = Modifier
+                        .align(Alignment.CenterStart)
+                        .offset(x = menuPeek.value.dp)
+                        .width(24.dp)
+                        .height(56.dp)
+                        .semantics { contentDescription = openMenu },
+                    shape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp),
+                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                    shadowElevation = 6.dp,
                     tonalElevation = 6.dp,
-                    shadowElevation = 4.dp,
                 ) {
-                    IconButton(onClick = { scope.launch { drawerState.open() } }) {
-                        Text("☰", style = MaterialTheme.typography.titleLarge)
+                    Column(
+                        modifier = Modifier.fillMaxSize(),
+                        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                    ) {
+                        repeat(3) {
+                            Box(
+                                modifier = Modifier
+                                    .width(10.dp)
+                                    .height(2.dp)
+                                    .background(
+                                        MaterialTheme.colorScheme.onSurface,
+                                        RoundedCornerShape(1.dp),
+                                    ),
+                            )
+                        }
                     }
                 }
             }
@@ -923,16 +994,6 @@ private fun NodeControlStrip(
                 "Node: $status"
             },
         )
-        if (
-            (status == "Waiting" || status == "Paused") &&
-            state.detail.isNotBlank()
-        ) {
-            Text(
-                state.detail,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
         if (status == "Connected") {
             Text(
                 stringResource(R.string.peer_count_accuracy_hint),
@@ -1012,7 +1073,10 @@ private fun NodeControlStrip(
                     Text(stringResource(R.string.udp_use_random))
                 }
             }
-        } else if (state.lastNetworkError != null) {
+        } else if (
+            state.lastNetworkError != null &&
+            menuBlockReason(status, state.detail, state.lastNetworkError, state.udpPortInUse) == null
+        ) {
             Text(
                 text = state.lastNetworkError,
                 color = MaterialTheme.colorScheme.error,
@@ -1605,7 +1669,19 @@ private fun DashboardPanel(state: NodeUiState, modifier: Modifier = Modifier) {
                 if (state.state == "Starting" || state.state == "Stopping") {
                     CircularProgressIndicator()
                 }
-                Text(state.detail)
+                val blockReason = menuBlockReason(
+                    status = networkStatusLabel(
+                        state.state,
+                        state.mode,
+                        state.peers,
+                        state.serviceActive,
+                        state.natHint,
+                    ),
+                    detail = state.detail,
+                    lastNetworkError = state.lastNetworkError,
+                    udpPortInUse = state.udpPortInUse,
+                )
+                Text(blockReason ?: state.detail)
                 Text(
                     "The core dashboard becomes available at 127.0.0.1:7509 while the node runs.",
                     style = MaterialTheme.typography.bodySmall,

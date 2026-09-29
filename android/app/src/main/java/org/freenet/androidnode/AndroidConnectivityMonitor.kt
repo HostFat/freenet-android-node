@@ -25,10 +25,10 @@ internal data class ConnectivitySnapshot(
     fun policyBlockReason(
         policy: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
     ): String = when {
-        !available -> "No active network is available"
-        !validated -> "The active network has not validated internet access"
+        !available -> "The node is waiting because there is no network."
+        !validated -> "The node is waiting because this network has no confirmed internet."
         metered && policy == NetworkDataPolicy.UnmeteredOnly ->
-            "The active network is metered; the node requires an unmetered network"
+            "The node is waiting because this network is metered. Network data is set to Unmetered only."
         else -> "Network mode is allowed"
     }
 

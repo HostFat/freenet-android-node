@@ -1,6 +1,7 @@
 package org.freenet.androidnode
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Test
 
 class ConnectionLimitsTest {
@@ -151,6 +152,29 @@ class ConnectionLimitsTest {
                 true,
                 "Only connected to gateways — no peer-to-peer connections yet",
             ),
+        )
+    }
+
+    @Test
+    fun menuSaysWhyTheNodeIsWaitingAndStaysQuietWhenItIsSimplyOff() {
+        assertEquals(
+            "The node is waiting because this network is metered. Network data is set to Unmetered only.",
+            menuBlockReason(
+                "Waiting",
+                "The node is waiting because this network is metered. Network data is set to Unmetered only.",
+                null,
+            ),
+        )
+        assertEquals("paused by the user", menuBlockReason("Paused", "paused by the user", null))
+        assertEquals(
+            "The node is waiting because there is no network.",
+            menuBlockReason("Stopped", "idle", "The node is waiting because there is no network."),
+        )
+        assertNull(menuBlockReason("Stopped", "The foreground service is not running", null))
+        assertNull(menuBlockReason("Connected", "running", null))
+        assertNull(menuBlockReason("Waiting", "  ", null))
+        assertNull(
+            menuBlockReason("Stopped", "port in use", "port in use", udpPortInUse = true),
         )
     }
 

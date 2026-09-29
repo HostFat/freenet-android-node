@@ -101,6 +101,22 @@ internal fun networkStatusLabel(
         else -> state
     }
 
+internal fun menuBlockReason(
+    status: String,
+    detail: String,
+    lastNetworkError: String?,
+    udpPortInUse: Boolean = false,
+): String? {
+    if (udpPortInUse) return null
+    val cleanDetail = detail.trim()
+    val cleanError = lastNetworkError?.trim().orEmpty()
+    return when (status) {
+        "Waiting", "Paused" -> cleanDetail.ifEmpty { null }
+        "Stopped" -> cleanError.ifEmpty { null }
+        else -> null
+    }
+}
+
 internal fun formatTrafficBytes(bytes: Long): String {
     if (bytes < 1024L) return "$bytes B"
     val kb = bytes / 1024.0
