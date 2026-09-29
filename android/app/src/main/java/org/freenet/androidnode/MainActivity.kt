@@ -27,6 +27,10 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.layout.systemGestures
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
@@ -84,6 +88,8 @@ import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.input.pointer.PointerEventPass
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.foundation.isSystemInDarkTheme
@@ -91,6 +97,7 @@ import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.platform.LocalFocusManager
+import androidx.compose.ui.platform.LocalLayoutDirection
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.painterResource
@@ -116,11 +123,19 @@ import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import java.io.ByteArrayInputStream
+import kotlin.math.abs
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import org.json.JSONObject
+
+// Android honors at most 200dp of a left-edge exclusion, and only the bottom
+// part of anything taller, so the band stays this tall and centered on the tab.
+private val MenuEdgeBandHeight = 200.dp
+private val MenuEdgeBandMinWidth = 24.dp
+private val MenuEdgeBandMaxWidth = 48.dp
+private val MenuEdgeOpenDrag = 24.dp
 
 class MainActivity : ComponentActivity() {
     private val nodeViewModel: NodeViewModel by viewModels()
@@ -703,35 +718,82 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 )
             }
             if (drawerState.isClosed && !showDiagnostics && !showConfigEditor) {
+                val density = LocalDensity.current
+                val gestureInset = with(density) {
+                    WindowInsets.systemGestures
+                        .getLeft(this, LocalLayoutDirection.current)
+                        .toDp()
+                }
+                val stripWidth = gestureInset.coerceIn(MenuEdgeBandMinWidth, MenuEdgeBandMaxWidth)
                 val openMenu = stringResource(R.string.open_menu)
-                Surface(
-                    onClick = { scope.launch { drawerState.open() } },
+                Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
-                        .offset(x = menuPeek.value.dp)
-                        .width(24.dp)
-                        .height(56.dp)
-                        .semantics { contentDescription = openMenu },
-                    shape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp),
-                    color = MaterialTheme.colorScheme.surfaceContainerHigh,
-                    shadowElevation = 6.dp,
-                    tonalElevation = 6.dp,
+                        .width(stripWidth)
+                        .height(MenuEdgeBandHeight)
+                        .systemGestureExclusion()
+                        .pointerInput(drawerState) {
+                            val openDrag = MenuEdgeOpenDrag.toPx()
+                            awaitEachGesture {
+                                val down = awaitFirstDown(
+                                    requireUnconsumed = false,
+                                    pass = PointerEventPass.Initial,
+                                )
+                                down.consume()
+                                val origin = down.position
+                                var opened = false
+                                while (true) {
+                                    val event = awaitPointerEvent(PointerEventPass.Initial)
+                                    val change = event.changes.firstOrNull { it.id == down.id }
+                                        ?: break
+                                    change.consume()
+                                    if (!change.pressed) {
+                                        val dx = change.position.x - origin.x
+                                        val dy = change.position.y - origin.y
+                                        if (!opened && abs(dx) < openDrag && abs(dy) < openDrag) {
+                                            scope.launch { drawerState.open() }
+                                        }
+                                        break
+                                    }
+                                    val dx = change.position.x - origin.x
+                                    val dy = change.position.y - origin.y
+                                    if (!opened && dx >= openDrag && dx > abs(dy)) {
+                                        opened = true
+                                        scope.launch { drawerState.open() }
+                                    }
+                                }
+                            }
+                        },
                 ) {
-                    Column(
-                        modifier = Modifier.fillMaxSize(),
-                        verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
-                        horizontalAlignment = Alignment.CenterHorizontally,
+                    Surface(
+                        onClick = { scope.launch { drawerState.open() } },
+                        modifier = Modifier
+                            .align(Alignment.CenterStart)
+                            .offset(x = menuPeek.value.dp)
+                            .width(24.dp)
+                            .height(56.dp)
+                            .semantics { contentDescription = openMenu },
+                        shape = RoundedCornerShape(topEnd = 14.dp, bottomEnd = 14.dp),
+                        color = MaterialTheme.colorScheme.surfaceContainerHigh,
+                        shadowElevation = 6.dp,
+                        tonalElevation = 6.dp,
                     ) {
-                        repeat(3) {
-                            Box(
-                                modifier = Modifier
-                                    .width(10.dp)
-                                    .height(2.dp)
-                                    .background(
-                                        MaterialTheme.colorScheme.onSurface,
-                                        RoundedCornerShape(1.dp),
-                                    ),
-                            )
+                        Column(
+                            modifier = Modifier.fillMaxSize(),
+                            verticalArrangement = Arrangement.spacedBy(4.dp, Alignment.CenterVertically),
+                            horizontalAlignment = Alignment.CenterHorizontally,
+                        ) {
+                            repeat(3) {
+                                Box(
+                                    modifier = Modifier
+                                        .width(10.dp)
+                                        .height(2.dp)
+                                        .background(
+                                            MaterialTheme.colorScheme.onSurface,
+                                            RoundedCornerShape(1.dp),
+                                        ),
+                                )
+                            }
                         }
                     }
                 }

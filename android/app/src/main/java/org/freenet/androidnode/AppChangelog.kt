@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: the menu says why the node is waiting. A tab on the left edge opens the menu, and you can also drag in from that edge."
+        "This update: a swipe along the middle of the left edge opens the menu. Missing the tab no longer shrinks or closes the app."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
