@@ -401,7 +401,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                                 drawerState.close()
                                 showDiagnostics = false
                                 showConfigEditor = false
-                                DashboardController.openHome()
                             }
                         },
                         modifier = Modifier.fillMaxWidth(),
@@ -1652,14 +1651,7 @@ private fun CoreDashboardWebView(reloadKey: String, modifier: Modifier = Modifie
     }
 
     DisposableEffect(webView) {
-        DashboardController.openHome = {
-            val current = runCatching { Uri.parse(webView.url.orEmpty()) }.getOrNull()
-            if (current == null || !isDashboardHome(current)) {
-                webView.loadUrl(DASHBOARD_URL)
-            }
-        }
         onDispose {
-            DashboardController.openHome = {}
             webView.stopLoading()
             webView.webViewClient = WebViewClient()
             webView.loadUrl("about:blank")
@@ -1713,11 +1705,6 @@ private class LoopbackDashboardClient(
     override fun onPageFinished(view: WebView?, url: String?) {
         if (url?.let(::isAllowedDashboardUri) == true) {
             view?.evaluateJavascript(DASHBOARD_SCROLL_LOCK_JS, null)
-            if (url.let { runCatching { Uri.parse(it).path }.getOrNull() }
-                    ?.startsWith("/permission/") == true
-            ) {
-                view?.evaluateJavascript(PERMISSION_PAGE_HOME_LINK_JS, null)
-            }
             onReady()
         }
     }
@@ -2240,16 +2227,6 @@ private fun isAllowedDashboardUri(uri: Uri): Boolean =
         uri.host == DASHBOARD_HOST &&
         uri.port == DASHBOARD_PORT
 
-internal fun isDashboardHome(uri: Uri): Boolean {
-    if (!isAllowedDashboardUri(uri)) return false
-    val path = uri.path
-    return path.isNullOrEmpty() || path == "/"
-}
-
-private object DashboardController {
-    var openHome: () -> Unit = {}
-}
-
 private const val DASHBOARD_SCROLL_LOCK_JS = """
 (function() {
   if (window.__freenetAndroidScrollLock) return;
@@ -2269,20 +2246,6 @@ private const val DASHBOARD_SCROLL_LOCK_JS = """
   }
   var root = document.querySelector('main') || document.documentElement;
   new MutationObserver(function() { pin(); }).observe(root, {childList: true, subtree: true});
-})();
-"""
-
-private const val PERMISSION_PAGE_HOME_LINK_JS = """
-(function() {
-  if (document.getElementById('android-dashboard-home')) return;
-  var link = document.createElement('a');
-  link.id = 'android-dashboard-home';
-  link.href = '/';
-  link.textContent = 'Dashboard';
-  link.style.display = 'inline-block';
-  link.style.margin = '0 0 16px 0';
-  var card = document.querySelector('.card') || document.body;
-  card.insertBefore(link, card.firstChild);
 })();
 """
 
