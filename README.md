@@ -35,7 +35,7 @@ build the same app yourself and read every line that goes into it:
 git clone https://github.com/HostFat/freenet-android-node.git
 git clone https://github.com/freenet/freenet-core.git
 cd freenet-android-node
-git checkout v0.2.139   # optional: build the exact commit behind a specific release
+git checkout v0.2.139.5   # optional: this app release; the bundled core is v0.2.139
 docker compose build dev
 docker compose run --rm dev scripts/build-debug.sh
 adb install -r artifacts/apk/freenet-android-node-debug.apk
@@ -53,9 +53,9 @@ other if you already sideloaded the release build.
 
 ## What the buttons do
 
-Everything Android-specific lives behind the hamburger menu (☰) in the
-top-left; the rest of the screen is Freenet core's own dashboard once a node
-is running.
+Android controls live in the side menu. A tab on the left edge opens it, and
+you can also drag in from that tab. Once a node is running, the rest of the
+screen is Freenet core's own dashboard.
 
 **Starting the node**
 - **Start network node** — joins the real Freenet network, subject to the
@@ -68,8 +68,9 @@ is running.
 - **Pause node** — gracefully shuts the node down but remembers your **Node
   runs when** choice, so an automatic mode will pick back up on its own.
 - **Resume node** — restarts after a pause.
-- **Stop node** — gracefully shuts the node down and resets **Node runs
-  when** to Manual, so it won't restart on its own.
+- **Stop node** — gracefully shuts the node down. In Manual, Charging, and
+  Always this also sets **Node runs when** back to Manual. In Schedule it
+  only ends the current session and keeps the schedule.
 
 **Node runs when** — when the node should start automatically:
 - **Manual** — only when you press Start.
@@ -79,6 +80,13 @@ is running.
   force-stop, OEM background limits). The drawer has a control that
   opens Android and vendor settings so you can remove those limits; the
   app never silently grants itself an exemption.
+- **Schedule** — stays on for the minutes you choose (5 to 30), then waits
+  the hours you choose (1 to 24). The minutes start when the app shows
+  Connected, including a gateway. Time with no open connection does not
+  count. If nothing connects, the node still turns off after those minutes.
+  **Connect now**, shown while it is waiting, starts one session immediately.
+  Android can delay the next start. Schedule does not require the phone to
+  be charging. The **Network data** policy still applies.
 
 Automatic modes keep a lightweight controller and notification alive while
 waiting for eligible conditions, and the chosen policy survives app and
