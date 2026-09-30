@@ -286,8 +286,20 @@ class ConnectionLimitsTest {
             scheduleOnMinutes = 5,
             scheduleWindowStartedEpochMs = start,
         )
-        val line = scheduleMenuLine(start + 60_000L, policy)
-        assertEquals(true, line != null && line.contains("stays on until"))
+        val waiting = scheduleMenuLine(start + 60_000L, policy)
+        assertEquals(true, waiting != null && waiting.startsWith("Waiting for a connection until"))
+        val connectedAt = start + 4 * 60_000L
+        val duringConnected = schedulePhase(start + 6 * 60_000L, 1, 5, start, 0L, connectedAt)
+        assertEquals(SchedulePhase.StayOn, duringConnected.phase)
+        assertEquals(connectedAt + onMs, duringConnected.transitionAtEpochMs)
+        val connectedDone = schedulePhase(connectedAt + onMs, 1, 5, start, 0L, connectedAt)
+        assertEquals(SchedulePhase.Wait, connectedDone.phase)
+        assertEquals(connectedAt + onMs + offMs, connectedDone.transitionAtEpochMs)
+        val stayLine = scheduleMenuLine(
+            start + 6 * 60_000L,
+            policy.copy(scheduleConnectedSinceEpochMs = connectedAt),
+        )
+        assertEquals(true, stayLine != null && stayLine.contains("stays on until"))
         assertEquals(null, scheduleMenuLine(start, policy.copy(suspendedByUser = true)))
     }
 }

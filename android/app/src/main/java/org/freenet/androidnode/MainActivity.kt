@@ -25,6 +25,7 @@ import androidx.compose.animation.core.tween
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
+import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
@@ -38,6 +39,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
+import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -106,6 +108,7 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -391,6 +394,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         policyState.scheduleOnMinutes,
         policyState.scheduleWindowStartedEpochMs,
         policyState.scheduleWindowEndedEpochMs,
+        policyState.scheduleConnectedSinceEpochMs,
         policyState.suspendedByUser,
     ) {
         if (policyState.power != NodePowerPolicy.Schedule) return@LaunchedEffect
@@ -474,7 +478,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     if (
                         scheduleLine != null &&
                         scheduleLine != blockReason &&
-                        scheduleLine.startsWith("The node stays on")
+                        (scheduleLine.startsWith("The node stays on") ||
+                            scheduleLine.startsWith("Waiting for a connection"))
                     ) {
                         Text(
                             scheduleLine,
@@ -1330,6 +1335,64 @@ private fun IntStepper(
 }
 
 @Composable
+private fun PowerChoiceRow(
+    selected: NodePowerPolicy,
+    onSelect: (NodePowerPolicy) -> Unit,
+) {
+    val options = NodePowerPolicy.entries
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(40.dp),
+        horizontalArrangement = Arrangement.spacedBy((-1).dp),
+    ) {
+        options.forEachIndexed { index, option ->
+            val isSelected = selected == option
+            Surface(
+                onClick = { onSelect(option) },
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxHeight()
+                    .semantics {
+                        role = Role.RadioButton
+                        selected = isSelected
+                    },
+                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
+                color = if (isSelected) {
+                    MaterialTheme.colorScheme.secondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.surface
+                },
+                contentColor = if (isSelected) {
+                    MaterialTheme.colorScheme.onSecondaryContainer
+                } else {
+                    MaterialTheme.colorScheme.onSurface
+                },
+                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
+            ) {
+                Row(
+                    modifier = Modifier.padding(horizontal = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.Center,
+                ) {
+                    if (isSelected) {
+                        Text("✓", style = MaterialTheme.typography.labelMedium)
+                        Spacer(Modifier.width(2.dp))
+                    }
+                    Text(
+                        option.shortLabel,
+                        maxLines = 1,
+                        softWrap = false,
+                        overflow = TextOverflow.Clip,
+                        style = MaterialTheme.typography.labelMedium,
+                    )
+                }
+            }
+        }
+    }
+}
+
+@Composable
 private fun <T> CompactChoiceRow(
     options: List<T>,
     selected: T,
@@ -1408,10 +1471,8 @@ private fun PolicyControls(
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.node_runs_when), style = MaterialTheme.typography.titleMedium)
-        CompactChoiceRow(
-            options = NodePowerPolicy.entries,
+        PowerChoiceRow(
             selected = policies.power,
-            label = { it.shortLabel },
             onSelect = onPowerPolicy,
         )
         Text(

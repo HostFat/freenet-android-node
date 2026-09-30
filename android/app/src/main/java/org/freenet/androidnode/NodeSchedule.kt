@@ -32,17 +32,28 @@ internal data class ScheduleView(
     val transitionAtEpochMs: Long,
 )
 
+internal fun scheduleOnUntilMs(
+    onMinutes: Int,
+    windowStartedMs: Long,
+    connectedSinceMs: Long,
+): Long {
+    val onMs = ConnectionSchedule.coerceMinutes(onMinutes) * 60_000L
+    val origin = if (connectedSinceMs > 0L) connectedSinceMs else windowStartedMs
+    return origin + onMs
+}
+
 internal fun schedulePhase(
     nowMs: Long,
     everyHours: Int,
     onMinutes: Int,
     windowStartedMs: Long,
     windowEndedMs: Long,
+    connectedSinceMs: Long = 0L,
 ): ScheduleView {
     val onMs = ConnectionSchedule.coerceMinutes(onMinutes) * 60_000L
     val offMs = ConnectionSchedule.coerceHours(everyHours) * 3_600_000L
     if (windowStartedMs > 0L) {
-        val onUntil = windowStartedMs + onMs
+        val onUntil = scheduleOnUntilMs(onMinutes, windowStartedMs, connectedSinceMs)
         if (nowMs < onUntil) return ScheduleView(SchedulePhase.StayOn, onUntil)
         val ended = if (windowEndedMs >= onUntil) windowEndedMs else onUntil
         val next = ended + offMs
@@ -64,12 +75,18 @@ internal fun scheduleMenuLine(nowMs: Long, policy: NodePolicyState): String? {
         policy.scheduleOnMinutes,
         policy.scheduleWindowStartedEpochMs,
         policy.scheduleWindowEndedEpochMs,
+        policy.scheduleConnectedSinceEpochMs,
     )
     val whenText = scheduleClockText(nowMs, phase.transitionAtEpochMs)
+    val hours = hourLabel(policy.scheduleEveryHours)
     return when (phase.phase) {
         SchedulePhase.StartWindow -> null
         SchedulePhase.StayOn ->
-            "The node stays on until $whenText, then waits ${hourLabel(policy.scheduleEveryHours)}."
+            if (policy.scheduleConnectedSinceEpochMs > 0L) {
+                "The node stays on until $whenText, then waits $hours."
+            } else {
+                "Waiting for a connection until $whenText. Then it waits $hours."
+            }
         SchedulePhase.Wait ->
             "The node is waiting until $whenText to connect again."
     }

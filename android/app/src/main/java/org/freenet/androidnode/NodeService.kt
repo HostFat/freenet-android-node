@@ -299,15 +299,19 @@ class NodeService : Service() {
                 current.scheduleOnMinutes,
                 current.scheduleWindowStartedEpochMs,
                 current.scheduleWindowEndedEpochMs,
+                current.scheduleConnectedSinceEpochMs,
             )
             if (
                 phase.phase == SchedulePhase.Wait &&
                 current.scheduleWindowStartedEpochMs > 0L
             ) {
-                val onMs = ConnectionSchedule.coerceMinutes(current.scheduleOnMinutes) * 60_000L
                 NodePolicyRepository.finishScheduleWindow(
                     this,
-                    current.scheduleWindowStartedEpochMs + onMs,
+                    scheduleOnUntilMs(
+                        current.scheduleOnMinutes,
+                        current.scheduleWindowStartedEpochMs,
+                        current.scheduleConnectedSinceEpochMs,
+                    ),
                 )
                 current = NodePolicyRepository.state.value
                 phase = schedulePhase(
@@ -316,6 +320,7 @@ class NodeService : Service() {
                     current.scheduleOnMinutes,
                     current.scheduleWindowStartedEpochMs,
                     current.scheduleWindowEndedEpochMs,
+                    current.scheduleConnectedSinceEpochMs,
                 )
             }
             if (phase.phase == SchedulePhase.StartWindow) {
@@ -391,6 +396,7 @@ class NodeService : Service() {
             policy.scheduleOnMinutes,
             policy.scheduleWindowStartedEpochMs,
             policy.scheduleWindowEndedEpochMs,
+            policy.scheduleConnectedSinceEpochMs,
         )
         val waitMs = (phase.transitionAtEpochMs - now).coerceAtLeast(1_000L)
         NodeScheduleAlarm.set(this, now + waitMs)
@@ -526,10 +532,17 @@ class NodeService : Service() {
                     if (natTick == 1 || natTick % 32 == 0) {
                         NodeRepository.publishNatHint(DashboardHints.natHint())
                     }
-                    if (!notifiedConnectedThisRun && state.peers > 0) {
-                        notifiedConnectedThisRun = true
-                        if (NodePolicyRepository.state.value.notifyConnected) {
-                            nodeNotificationManager.notifyConnected(state.peers)
+                    if (state.peers > 0) {
+                        val stamped = NodePolicyRepository.noteScheduleConnected(
+                            this@NodeService,
+                            System.currentTimeMillis(),
+                        )
+                        if (stamped) armSchedule()
+                        if (!notifiedConnectedThisRun) {
+                            notifiedConnectedThisRun = true
+                            if (NodePolicyRepository.state.value.notifyConnected) {
+                                nodeNotificationManager.notifyConnected(state.peers)
+                            }
                         }
                     }
                 } else {

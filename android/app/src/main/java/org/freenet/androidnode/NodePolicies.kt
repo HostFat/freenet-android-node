@@ -182,6 +182,7 @@ data class NodePolicyState(
     val scheduleOnMinutes: Int = ConnectionSchedule.DefaultMinutes,
     val scheduleWindowStartedEpochMs: Long = 0L,
     val scheduleWindowEndedEpochMs: Long = 0L,
+    val scheduleConnectedSinceEpochMs: Long = 0L,
 ) {
     val automatic: Boolean
         get() = power != NodePowerPolicy.Manual
@@ -219,6 +220,7 @@ object NodePolicyRepository {
     private const val SCHEDULE_ON_MINUTES_KEY = "schedule_on_minutes"
     private const val SCHEDULE_WINDOW_STARTED_KEY = "schedule_window_started_ms"
     private const val SCHEDULE_WINDOW_ENDED_KEY = "schedule_window_ended_ms"
+    private const val SCHEDULE_CONNECTED_SINCE_KEY = "schedule_connected_since_ms"
 
     private val mutableState = MutableStateFlow(NodePolicyState())
     val state: StateFlow<NodePolicyState> = mutableState.asStateFlow()
@@ -268,6 +270,7 @@ object NodePolicyRepository {
             ),
             scheduleWindowStartedEpochMs = preferences.getLong(SCHEDULE_WINDOW_STARTED_KEY, 0L),
             scheduleWindowEndedEpochMs = preferences.getLong(SCHEDULE_WINDOW_ENDED_KEY, 0L),
+            scheduleConnectedSinceEpochMs = preferences.getLong(SCHEDULE_CONNECTED_SINCE_KEY, 0L),
         )
         initialized = true
     }
@@ -283,6 +286,7 @@ object NodePolicyRepository {
                 suspendedByUser = false,
                 scheduleWindowStartedEpochMs = if (enteringSchedule) 0L else current.scheduleWindowStartedEpochMs,
                 scheduleWindowEndedEpochMs = if (enteringSchedule) 0L else current.scheduleWindowEndedEpochMs,
+                scheduleConnectedSinceEpochMs = if (enteringSchedule) 0L else current.scheduleConnectedSinceEpochMs,
             ),
         )
         if (power != NodePowerPolicy.Schedule) NodeScheduleAlarm.cancel(context)
@@ -304,6 +308,22 @@ object NodePolicyRepository {
         )
     }
 
+    fun noteScheduleConnected(context: Context, nowMs: Long): Boolean {
+        initialize(context)
+        val current = mutableState.value
+        if (current.power != NodePowerPolicy.Schedule || current.suspendedByUser) return false
+        if (current.scheduleWindowStartedEpochMs <= 0L) return false
+        if (current.scheduleConnectedSinceEpochMs > 0L) return false
+        val giveUpAt = scheduleOnUntilMs(
+            current.scheduleOnMinutes,
+            current.scheduleWindowStartedEpochMs,
+            connectedSinceMs = 0L,
+        )
+        if (nowMs >= giveUpAt) return false
+        persist(context, current.copy(scheduleConnectedSinceEpochMs = nowMs))
+        return true
+    }
+
     fun beginScheduleWindow(context: Context, nowMs: Long) {
         initialize(context)
         persist(
@@ -311,6 +331,7 @@ object NodePolicyRepository {
             mutableState.value.copy(
                 scheduleWindowStartedEpochMs = nowMs,
                 scheduleWindowEndedEpochMs = 0L,
+                scheduleConnectedSinceEpochMs = 0L,
             ),
         )
     }
@@ -322,6 +343,7 @@ object NodePolicyRepository {
             mutableState.value.copy(
                 scheduleWindowStartedEpochMs = 0L,
                 scheduleWindowEndedEpochMs = plannedEndMs,
+                scheduleConnectedSinceEpochMs = 0L,
             ),
         )
     }
@@ -438,6 +460,7 @@ object NodePolicyRepository {
             .putInt(SCHEDULE_ON_MINUTES_KEY, next.scheduleOnMinutes)
             .putLong(SCHEDULE_WINDOW_STARTED_KEY, next.scheduleWindowStartedEpochMs)
             .putLong(SCHEDULE_WINDOW_ENDED_KEY, next.scheduleWindowEndedEpochMs)
+            .putLong(SCHEDULE_CONNECTED_SINCE_KEY, next.scheduleConnectedSinceEpochMs)
             .apply()
         mutableState.value = next
     }
