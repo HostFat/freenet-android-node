@@ -67,6 +67,18 @@ internal fun schedulePhase(
     return ScheduleView(SchedulePhase.StartWindow, nowMs + onMs)
 }
 
+internal fun scheduleConnectNowVisible(nowMs: Long, policy: NodePolicyState): Boolean {
+    if (policy.power != NodePowerPolicy.Schedule || policy.suspendedByUser) return false
+    return schedulePhase(
+        nowMs,
+        policy.scheduleEveryHours,
+        policy.scheduleOnMinutes,
+        policy.scheduleWindowStartedEpochMs,
+        policy.scheduleWindowEndedEpochMs,
+        policy.scheduleConnectedSinceEpochMs,
+    ).phase == SchedulePhase.Wait
+}
+
 internal fun scheduleMenuLine(nowMs: Long, policy: NodePolicyState): String? {
     if (policy.power != NodePowerPolicy.Schedule || policy.suspendedByUser) return null
     val phase = schedulePhase(

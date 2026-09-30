@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: the minutes you choose start once the node shows Connected, including a gateway. If nothing connects, it still turns off after those minutes. The check mark sits beside Manual, Charging, Always, and Schedule."
+        "This update: the minutes you choose start once the node shows Connected, including a gateway. If nothing connects, it still turns off after those minutes. Connect now starts a session while Schedule is waiting. The check mark sits beside Manual, Charging, Always, and Schedule."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

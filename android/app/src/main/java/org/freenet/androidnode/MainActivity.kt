@@ -562,6 +562,10 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
                         onScheduleEveryHours = nodeViewModel::setScheduleEveryHours,
                         onScheduleOnMinutes = nodeViewModel::setScheduleOnMinutes,
+                        scheduleWaiting = scheduleConnectNowVisible(scheduleNowMs, policyState),
+                        onConnectNow = {
+                            withNotificationPermission(nodeViewModel::startNetworkNode)
+                        },
                         onSaveConnectionLimits = ::saveConnectionLimits,
                         onSaveUdpPortSettings = ::saveUdpPortSettings,
                         onUseSavedUdp = { applyUdpFallback(UdpPortMode.Saved) },
@@ -1429,6 +1433,8 @@ private fun PolicyControls(
     onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
     onScheduleEveryHours: (Int) -> Unit,
     onScheduleOnMinutes: (Int) -> Unit,
+    scheduleWaiting: Boolean,
+    onConnectNow: () -> Unit,
     onSaveConnectionLimits: (Int, Int) -> Unit,
     onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
     onUseSavedUdp: () -> Unit,
@@ -1500,6 +1506,15 @@ private fun PolicyControls(
                 stringResource(R.string.schedule_hint),
                 style = MaterialTheme.typography.bodySmall,
             )
+            if (scheduleWaiting) {
+                Button(
+                    onClick = onConnectNow,
+                    enabled = NativeBridge.isLoaded,
+                    modifier = Modifier.fillMaxWidth(),
+                ) {
+                    Text(stringResource(R.string.schedule_connect_now))
+                }
+            }
         }
         Row(
             modifier = Modifier

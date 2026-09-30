@@ -301,5 +301,28 @@ class ConnectionLimitsTest {
         )
         assertEquals(true, stayLine != null && stayLine.contains("stays on until"))
         assertEquals(null, scheduleMenuLine(start, policy.copy(suspendedByUser = true)))
+        assertEquals(false, scheduleConnectNowVisible(start + 60_000L, policy))
+        assertEquals(true, scheduleConnectNowVisible(start + onMs, policy))
+        assertEquals(
+            false,
+            scheduleConnectNowVisible(
+                start + 6 * 60_000L,
+                policy.copy(scheduleConnectedSinceEpochMs = connectedAt),
+            ),
+        )
+        assertEquals(
+            false,
+            scheduleConnectNowVisible(start + onMs, policy.copy(suspendedByUser = true)),
+        )
+        assertEquals(
+            true,
+            scheduleConnectNowVisible(
+                start + onMs + 60_000L,
+                policy.copy(
+                    scheduleWindowStartedEpochMs = 0L,
+                    scheduleWindowEndedEpochMs = start + onMs,
+                ),
+            ),
+        )
     }
 }

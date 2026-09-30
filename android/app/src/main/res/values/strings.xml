@@ -85,6 +85,7 @@
     <string name="schedule_wait_label">Wait between connections</string>
     <string name="schedule_on_label">Stay on</string>
     <string name="schedule_hint">The minutes start when the node shows Connected, including a gateway. Time with no connection does not count. If nothing connects, the node still turns off after those minutes, then waits the hours you choose. The phone can delay the next start.</string>
+    <string name="schedule_connect_now">Connect now</string>
     <string name="network_data">Network data</string>
     <string name="network_data_hint">Uses Android\'s validated and metered network status, regardless of Wi-Fi, cellular, Ethernet, or VPN. Unmetered blocks cellular and metered Wi-Fi.</string>
     <string name="download_apk">Open APK page</string>
