@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: a swipe along the middle of the left edge opens the menu. Missing the tab no longer shrinks or closes the app."
+        "This update: the menu tab is taller. Scrolling the page no longer opens the menu."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
