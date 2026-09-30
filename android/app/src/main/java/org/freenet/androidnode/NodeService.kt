@@ -39,6 +39,7 @@ class NodeService : Service() {
     private var userRequestedShutdown = false
     private var crashRestartAttempt = 0
     private var crashRestartJob: Job? = null
+    private var scheduleJob: Job? = null
     private var notifiedConnectedThisRun = false
 
     private val powerReceiver = object : BroadcastReceiver() {
@@ -130,6 +131,9 @@ class NodeService : Service() {
                 userRequestedShutdown = true
                 crashRestartJob?.cancel()
                 crashRestartJob = null
+                scheduleJob?.cancel()
+                scheduleJob = null
+                NodeScheduleAlarm.cancel(this@NodeService)
                 NodePolicyRepository.setSuspended(this@NodeService, true)
                 lifecycleMutex.withLock {
                     val automatic = NodePolicyRepository.state.value.automatic
@@ -146,8 +150,28 @@ class NodeService : Service() {
                 userRequestedShutdown = true
                 crashRestartJob?.cancel()
                 crashRestartJob = null
-                NodePolicyRepository.stopAutomaticScheduling(this@NodeService)
-                lifecycleMutex.withLock { shutDownNode(startId, paused = false) }
+                val scheduled = NodePolicyRepository.state.value.power == NodePowerPolicy.Schedule
+                if (scheduled) {
+                    NodePolicyRepository.finishScheduleWindow(this@NodeService, System.currentTimeMillis())
+                } else {
+                    NodePolicyRepository.stopAutomaticScheduling(this@NodeService)
+                }
+                lifecycleMutex.withLock {
+                    if (scheduled) {
+                        userRequestedShutdown = false
+                        shutDownNode(
+                            startId,
+                            keepController = true,
+                            waitingDetail = scheduleMenuLine(
+                                System.currentTimeMillis(),
+                                NodePolicyRepository.state.value,
+                            ) ?: "The node is waiting to connect again.",
+                        )
+                        armSchedule()
+                    } else {
+                        shutDownNode(startId, paused = false)
+                    }
+                }
             }
 
             ACTION_RESTART_NETWORK -> {
@@ -242,6 +266,7 @@ class NodeService : Service() {
     }
 
     private suspend fun reconcilePolicy(startId: Int, explicitStart: Boolean) {
+        try {
         val policy = NodePolicyRepository.state.value
         val connectivity = connectivityMonitor.currentSnapshot()
         val active = nativeIsActive()
@@ -260,6 +285,51 @@ class NodeService : Service() {
                 finishService(startId)
             }
             return
+        }
+
+        if (policy.power == NodePowerPolicy.Schedule) {
+            val now = System.currentTimeMillis()
+            if (explicitStart) {
+                NodePolicyRepository.beginScheduleWindow(this, now)
+            }
+            var current = NodePolicyRepository.state.value
+            var phase = schedulePhase(
+                now,
+                current.scheduleEveryHours,
+                current.scheduleOnMinutes,
+                current.scheduleWindowStartedEpochMs,
+                current.scheduleWindowEndedEpochMs,
+            )
+            if (
+                phase.phase == SchedulePhase.Wait &&
+                current.scheduleWindowStartedEpochMs > 0L
+            ) {
+                val onMs = ConnectionSchedule.coerceMinutes(current.scheduleOnMinutes) * 60_000L
+                NodePolicyRepository.finishScheduleWindow(
+                    this,
+                    current.scheduleWindowStartedEpochMs + onMs,
+                )
+                current = NodePolicyRepository.state.value
+                phase = schedulePhase(
+                    now,
+                    current.scheduleEveryHours,
+                    current.scheduleOnMinutes,
+                    current.scheduleWindowStartedEpochMs,
+                    current.scheduleWindowEndedEpochMs,
+                )
+            }
+            if (phase.phase == SchedulePhase.StartWindow) {
+                NodePolicyRepository.beginScheduleWindow(this, now)
+            } else if (phase.phase == SchedulePhase.Wait) {
+                val detail = scheduleMenuLine(now, NodePolicyRepository.state.value)
+                    ?: "The node is waiting to connect again."
+                if (active) {
+                    shutDownNode(startId, keepController = true, waitingDetail = detail)
+                } else {
+                    publishControllerState(detail)
+                }
+                return
+            }
         }
 
         if (policy.automatic && !policy.powerEligible(batteryManager.isCharging)) {
@@ -300,6 +370,38 @@ class NodeService : Service() {
             return
         }
         startNode(startId, networkMode = true, policy = policy)
+        } finally {
+            armSchedule()
+        }
+    }
+
+    private fun armSchedule() {
+        val previous = scheduleJob
+        scheduleJob = null
+        previous?.cancel()
+        val policy = NodePolicyRepository.state.value
+        if (policy.power != NodePowerPolicy.Schedule || policy.suspendedByUser) {
+            NodeScheduleAlarm.cancel(this)
+            return
+        }
+        val now = System.currentTimeMillis()
+        val phase = schedulePhase(
+            now,
+            policy.scheduleEveryHours,
+            policy.scheduleOnMinutes,
+            policy.scheduleWindowStartedEpochMs,
+            policy.scheduleWindowEndedEpochMs,
+        )
+        val waitMs = (phase.transitionAtEpochMs - now).coerceAtLeast(1_000L)
+        NodeScheduleAlarm.set(this, now + waitMs)
+        scheduleJob = serviceScope.launch {
+            delay(waitMs)
+            serviceScope.launch {
+                lifecycleMutex.withLock {
+                    reconcilePolicy(latestStartId, explicitStart = false)
+                }
+            }
+        }
     }
 
     private suspend fun startNode(

@@ -9,6 +9,7 @@ enum class NodePowerPolicy(val displayName: String, val shortLabel: String) {
     Manual("Manual", "Manual"),
     Charging("Charging", "Charging"),
     Always("Always (best effort)", "Always"),
+    Schedule("On a schedule", "Schedule"),
 }
 
 enum class NetworkDataPolicy(val displayName: String, val shortLabel: String) {
@@ -177,6 +178,10 @@ data class NodePolicyState(
     val notifyUdpBusy: Boolean = true,
     val notifyUpdate: Boolean = true,
     val lastNetworkUpEpochMs: Long = 0L,
+    val scheduleEveryHours: Int = ConnectionSchedule.DefaultHours,
+    val scheduleOnMinutes: Int = ConnectionSchedule.DefaultMinutes,
+    val scheduleWindowStartedEpochMs: Long = 0L,
+    val scheduleWindowEndedEpochMs: Long = 0L,
 ) {
     val automatic: Boolean
         get() = power != NodePowerPolicy.Manual
@@ -185,6 +190,7 @@ data class NodePolicyState(
         NodePowerPolicy.Manual -> true
         NodePowerPolicy.Charging -> charging
         NodePowerPolicy.Always -> true
+        NodePowerPolicy.Schedule -> true
     }
 
     internal fun networkEligible(connectivity: ConnectivitySnapshot): Boolean =
@@ -209,6 +215,10 @@ object NodePolicyRepository {
     private const val NOTIFY_UDP_BUSY_KEY = "notify_udp_busy"
     private const val NOTIFY_UPDATE_KEY = "notify_update"
     private const val LAST_NETWORK_UP_KEY = "last_network_up_ms"
+    private const val SCHEDULE_EVERY_HOURS_KEY = "schedule_every_hours"
+    private const val SCHEDULE_ON_MINUTES_KEY = "schedule_on_minutes"
+    private const val SCHEDULE_WINDOW_STARTED_KEY = "schedule_window_started_ms"
+    private const val SCHEDULE_WINDOW_ENDED_KEY = "schedule_window_ended_ms"
 
     private val mutableState = MutableStateFlow(NodePolicyState())
     val state: StateFlow<NodePolicyState> = mutableState.asStateFlow()
@@ -250,13 +260,70 @@ object NodePolicyRepository {
             notifyUdpBusy = preferences.getBoolean(NOTIFY_UDP_BUSY_KEY, true),
             notifyUpdate = preferences.getBoolean(NOTIFY_UPDATE_KEY, true),
             lastNetworkUpEpochMs = preferences.getLong(LAST_NETWORK_UP_KEY, 0L),
+            scheduleEveryHours = ConnectionSchedule.coerceHours(
+                preferences.getInt(SCHEDULE_EVERY_HOURS_KEY, ConnectionSchedule.DefaultHours),
+            ),
+            scheduleOnMinutes = ConnectionSchedule.coerceMinutes(
+                preferences.getInt(SCHEDULE_ON_MINUTES_KEY, ConnectionSchedule.DefaultMinutes),
+            ),
+            scheduleWindowStartedEpochMs = preferences.getLong(SCHEDULE_WINDOW_STARTED_KEY, 0L),
+            scheduleWindowEndedEpochMs = preferences.getLong(SCHEDULE_WINDOW_ENDED_KEY, 0L),
         )
         initialized = true
     }
 
     fun setPower(context: Context, power: NodePowerPolicy) {
         initialize(context)
-        persist(context, mutableState.value.copy(power = power, suspendedByUser = false))
+        val current = mutableState.value
+        val enteringSchedule = power == NodePowerPolicy.Schedule && current.power != power
+        persist(
+            context,
+            current.copy(
+                power = power,
+                suspendedByUser = false,
+                scheduleWindowStartedEpochMs = if (enteringSchedule) 0L else current.scheduleWindowStartedEpochMs,
+                scheduleWindowEndedEpochMs = if (enteringSchedule) 0L else current.scheduleWindowEndedEpochMs,
+            ),
+        )
+        if (power != NodePowerPolicy.Schedule) NodeScheduleAlarm.cancel(context)
+    }
+
+    fun setScheduleEveryHours(context: Context, hours: Int) {
+        initialize(context)
+        persist(
+            context,
+            mutableState.value.copy(scheduleEveryHours = ConnectionSchedule.coerceHours(hours)),
+        )
+    }
+
+    fun setScheduleOnMinutes(context: Context, minutes: Int) {
+        initialize(context)
+        persist(
+            context,
+            mutableState.value.copy(scheduleOnMinutes = ConnectionSchedule.coerceMinutes(minutes)),
+        )
+    }
+
+    fun beginScheduleWindow(context: Context, nowMs: Long) {
+        initialize(context)
+        persist(
+            context,
+            mutableState.value.copy(
+                scheduleWindowStartedEpochMs = nowMs,
+                scheduleWindowEndedEpochMs = 0L,
+            ),
+        )
+    }
+
+    fun finishScheduleWindow(context: Context, plannedEndMs: Long) {
+        initialize(context)
+        persist(
+            context,
+            mutableState.value.copy(
+                scheduleWindowStartedEpochMs = 0L,
+                scheduleWindowEndedEpochMs = plannedEndMs,
+            ),
+        )
     }
 
     fun setNetworkData(context: Context, networkData: NetworkDataPolicy) {
@@ -347,6 +414,7 @@ object NodePolicyRepository {
                 suspendedByUser = false,
             ),
         )
+        NodeScheduleAlarm.cancel(context)
     }
 
     private fun persist(context: Context, next: NodePolicyState) {
@@ -366,6 +434,10 @@ object NodePolicyRepository {
             .putBoolean(NOTIFY_UDP_BUSY_KEY, next.notifyUdpBusy)
             .putBoolean(NOTIFY_UPDATE_KEY, next.notifyUpdate)
             .putLong(LAST_NETWORK_UP_KEY, next.lastNetworkUpEpochMs)
+            .putInt(SCHEDULE_EVERY_HOURS_KEY, next.scheduleEveryHours)
+            .putInt(SCHEDULE_ON_MINUTES_KEY, next.scheduleOnMinutes)
+            .putLong(SCHEDULE_WINDOW_STARTED_KEY, next.scheduleWindowStartedEpochMs)
+            .putLong(SCHEDULE_WINDOW_ENDED_KEY, next.scheduleWindowEndedEpochMs)
             .apply()
         mutableState.value = next
     }

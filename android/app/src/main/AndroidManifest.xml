@@ -69,6 +69,7 @@
             <intent-filter>
                 <action android:name="android.intent.action.BOOT_COMPLETED" />
                 <action android:name="android.intent.action.MY_PACKAGE_REPLACED" />
+                <action android:name="org.freenet.androidnode.action.SCHEDULE_TICK" />
             </intent-filter>
         </receiver>
     </application>

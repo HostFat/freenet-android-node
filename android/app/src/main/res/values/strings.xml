@@ -81,7 +81,10 @@
     <string name="dismiss_changelog">Got it</string>
     <string name="changelog_title">What\'s new</string>
     <string name="node_runs_when">Node runs when</string>
-    <string name="node_runs_when_hint">Charging and Always keep a lightweight foreground controller active while the node waits. Always is best-effort: Android can still stop the node.</string>
+    <string name="node_runs_when_hint">Charging, Always, and Schedule keep a lightweight foreground controller active while the node waits. Always and Schedule are best-effort: Android can still stop or delay the node.</string>
+    <string name="schedule_wait_label">Wait between connections</string>
+    <string name="schedule_on_label">Stay on</string>
+    <string name="schedule_hint">The node stays on for the minutes you choose, then waits the hours you choose before connecting again. Finding peers uses part of that on time. The phone can delay the next start.</string>
     <string name="network_data">Network data</string>
     <string name="network_data_hint">Uses Android\'s validated and metered network status, regardless of Wi-Fi, cellular, Ethernet, or VPN. Unmetered blocks cellular and metered Wi-Fi.</string>
     <string name="download_apk">Open APK page</string>

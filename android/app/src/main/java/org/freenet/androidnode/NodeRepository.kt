@@ -97,7 +97,11 @@ object NodeRepository {
     }
 
     fun stop(context: Context) {
-        NodePolicyRepository.stopAutomaticScheduling(context.applicationContext)
+        val appContext = context.applicationContext
+        NodePolicyRepository.initialize(appContext)
+        if (NodePolicyRepository.state.value.power != NodePowerPolicy.Schedule) {
+            NodePolicyRepository.stopAutomaticScheduling(appContext)
+        }
         if (!mutableState.value.serviceActive) {
             val response = NativeBridge.nodeStatus().getOrElse {
                 "JNI status error: ${it.message ?: "unknown error"}"
@@ -124,6 +128,26 @@ object NodeRepository {
                 appContext.startService(NodeService.reconcilePolicyIntent(appContext))
             }
         } else {
+            appContext.startForegroundService(NodeService.reconcilePolicyIntent(appContext))
+        }
+    }
+
+    fun setScheduleEveryHours(context: Context, hours: Int) {
+        val appContext = context.applicationContext
+        NodePolicyRepository.setScheduleEveryHours(appContext, hours)
+        reconcileAutomatic(appContext)
+    }
+
+    fun setScheduleOnMinutes(context: Context, minutes: Int) {
+        val appContext = context.applicationContext
+        NodePolicyRepository.setScheduleOnMinutes(appContext, minutes)
+        reconcileAutomatic(appContext)
+    }
+
+    private fun reconcileAutomatic(appContext: Context) {
+        if (NodeRepository.state.value.serviceActive) {
+            appContext.startService(NodeService.reconcilePolicyIntent(appContext))
+        } else if (NodePolicyRepository.state.value.automatic) {
             appContext.startForegroundService(NodeService.reconcilePolicyIntent(appContext))
         }
     }

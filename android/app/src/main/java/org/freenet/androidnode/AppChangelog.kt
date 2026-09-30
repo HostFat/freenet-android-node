@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: the menu tab is taller. Scrolling the page no longer opens the menu."
+        "This update: the node can stay on for the minutes you choose, then wait the hours you choose before connecting again. The menu tab is taller, and scrolling the page no longer opens the menu."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

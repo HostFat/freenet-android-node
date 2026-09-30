@@ -252,4 +252,42 @@ class ConnectionLimitsTest {
         assertEquals(true, connectionLimitsAreDirty(10, 30, 10, 25))
         assertEquals(false, connectionLimitsAreDirty(50, 25, 25, 25))
     }
+
+    @Test
+    fun scheduleTurnsOnForTheChosenMinutesThenWaitsTheChosenHours() {
+        assertEquals(1, ConnectionSchedule.coerceHours(0))
+        assertEquals(24, ConnectionSchedule.coerceHours(25))
+        assertEquals(5, ConnectionSchedule.coerceMinutes(4))
+        assertEquals(30, ConnectionSchedule.coerceMinutes(31))
+        val start = 1_700_000_000_000L
+        val onMs = 5 * 60_000L
+        val offMs = 3_600_000L
+        assertEquals(
+            SchedulePhase.StartWindow,
+            schedulePhase(start, 1, 5, 0L, 0L).phase,
+        )
+        assertEquals(
+            SchedulePhase.StayOn,
+            schedulePhase(start + 60_000L, 1, 5, start, 0L).phase,
+        )
+        val afterOn = schedulePhase(start + onMs, 1, 5, start, 0L)
+        assertEquals(SchedulePhase.Wait, afterOn.phase)
+        assertEquals(start + onMs + offMs, afterOn.transitionAtEpochMs)
+        assertEquals(
+            SchedulePhase.StartWindow,
+            schedulePhase(start + onMs + offMs, 1, 5, 0L, start + onMs).phase,
+        )
+        val longerWait = schedulePhase(start + onMs + 60_000L, 2, 5, 0L, start + onMs)
+        assertEquals(SchedulePhase.Wait, longerWait.phase)
+        assertEquals(start + onMs + 2 * offMs, longerWait.transitionAtEpochMs)
+        val policy = NodePolicyState(
+            power = NodePowerPolicy.Schedule,
+            scheduleEveryHours = 1,
+            scheduleOnMinutes = 5,
+            scheduleWindowStartedEpochMs = start,
+        )
+        val line = scheduleMenuLine(start + 60_000L, policy)
+        assertEquals(true, line != null && line.contains("stays on until"))
+        assertEquals(null, scheduleMenuLine(start, policy.copy(suspendedByUser = true)))
+    }
 }

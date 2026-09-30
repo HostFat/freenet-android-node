@@ -7,7 +7,9 @@ import android.util.Log
 
 class NodePolicyReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        if (intent.action != Intent.ACTION_BOOT_COMPLETED &&
+        val scheduleTick = intent.action == ACTION_SCHEDULE_TICK
+        if (!scheduleTick &&
+            intent.action != Intent.ACTION_BOOT_COMPLETED &&
             intent.action != Intent.ACTION_MY_PACKAGE_REPLACED
         ) {
             return
@@ -19,7 +21,8 @@ class NodePolicyReceiver : BroadcastReceiver() {
         NodePolicyRepository.initialize(context)
         val policy = NodePolicyRepository.state.value
         if (policy.suspendedByUser) return
-        if (!policy.automatic && !policy.startOnBoot) return
+        if (scheduleTick && policy.power != NodePowerPolicy.Schedule) return
+        if (!scheduleTick && !policy.automatic && !policy.startOnBoot) return
 
         runCatching {
             context.startForegroundService(NodeService.reconcilePolicyIntent(context))
@@ -34,5 +37,6 @@ class NodePolicyReceiver : BroadcastReceiver() {
 
     companion object {
         private const val TAG = "FreenetPolicyReceiver"
+        const val ACTION_SCHEDULE_TICK = "org.freenet.androidnode.action.SCHEDULE_TICK"
     }
 }

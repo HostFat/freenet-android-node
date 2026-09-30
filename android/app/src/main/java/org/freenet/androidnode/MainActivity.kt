@@ -115,6 +115,7 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
@@ -383,6 +384,21 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     }
 
     val menuSeen = remember { mutableStateOf(MenuEdgeHint.hasOpened(context)) }
+    var scheduleNowMs by remember { mutableStateOf(System.currentTimeMillis()) }
+    LaunchedEffect(
+        policyState.power,
+        policyState.scheduleEveryHours,
+        policyState.scheduleOnMinutes,
+        policyState.scheduleWindowStartedEpochMs,
+        policyState.scheduleWindowEndedEpochMs,
+        policyState.suspendedByUser,
+    ) {
+        if (policyState.power != NodePowerPolicy.Schedule) return@LaunchedEffect
+        while (true) {
+            scheduleNowMs = System.currentTimeMillis()
+            delay(30_000)
+        }
+    }
     val menuPeek = remember { Animatable(0f) }
     LaunchedEffect(drawerState.currentValue) {
         if (drawerState.currentValue == DrawerValue.Open) {
@@ -450,6 +466,18 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     if (blockReason != null) {
                         Text(
                             blockReason,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            style = MaterialTheme.typography.bodyLarge,
+                        )
+                    }
+                    val scheduleLine = scheduleMenuLine(scheduleNowMs, policyState)
+                    if (
+                        scheduleLine != null &&
+                        scheduleLine != blockReason &&
+                        scheduleLine.startsWith("The node stays on")
+                    ) {
+                        Text(
+                            scheduleLine,
                             color = MaterialTheme.colorScheme.onSurface,
                             style = MaterialTheme.typography.bodyLarge,
                         )
@@ -527,6 +555,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             }
                         },
                         onNetworkDataPolicy = nodeViewModel::setNetworkDataPolicy,
+                        onScheduleEveryHours = nodeViewModel::setScheduleEveryHours,
+                        onScheduleOnMinutes = nodeViewModel::setScheduleOnMinutes,
                         onSaveConnectionLimits = ::saveConnectionLimits,
                         onSaveUdpPortSettings = ::saveUdpPortSettings,
                         onUseSavedUdp = { applyUdpFallback(UdpPortMode.Saved) },
@@ -1264,6 +1294,42 @@ private fun linkedUrlText(full: String, url: String, linkColor: Color): Annotate
     }
 
 @Composable
+private fun IntStepper(
+    label: String,
+    value: Int,
+    min: Int,
+    max: Int,
+    valueLabel: String,
+    onChange: (Int) -> Unit,
+) {
+    Text(label, style = MaterialTheme.typography.titleSmall)
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically,
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        OutlinedButton(
+            onClick = { onChange(value - 1) },
+            enabled = value > min,
+        ) {
+            Text("−")
+        }
+        Text(
+            valueLabel,
+            modifier = Modifier.weight(1f),
+            textAlign = TextAlign.Center,
+            style = MaterialTheme.typography.bodyLarge,
+        )
+        OutlinedButton(
+            onClick = { onChange(value + 1) },
+            enabled = value < max,
+        ) {
+            Text("+")
+        }
+    }
+}
+
+@Composable
 private fun <T> CompactChoiceRow(
     options: List<T>,
     selected: T,
@@ -1298,6 +1364,8 @@ private fun PolicyControls(
     udpPortInUse: Boolean,
     onPowerPolicy: (NodePowerPolicy) -> Unit,
     onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
+    onScheduleEveryHours: (Int) -> Unit,
+    onScheduleOnMinutes: (Int) -> Unit,
     onSaveConnectionLimits: (Int, Int) -> Unit,
     onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
     onUseSavedUdp: () -> Unit,
@@ -1350,6 +1418,28 @@ private fun PolicyControls(
             stringResource(R.string.node_runs_when_hint),
             style = MaterialTheme.typography.bodySmall,
         )
+        if (policies.power == NodePowerPolicy.Schedule) {
+            IntStepper(
+                label = stringResource(R.string.schedule_wait_label),
+                value = policies.scheduleEveryHours,
+                min = ConnectionSchedule.MinHours,
+                max = ConnectionSchedule.MaxHours,
+                valueLabel = hourLabel(policies.scheduleEveryHours),
+                onChange = onScheduleEveryHours,
+            )
+            IntStepper(
+                label = stringResource(R.string.schedule_on_label),
+                value = policies.scheduleOnMinutes,
+                min = ConnectionSchedule.MinMinutes,
+                max = ConnectionSchedule.MaxMinutes,
+                valueLabel = minuteLabel(policies.scheduleOnMinutes),
+                onChange = onScheduleOnMinutes,
+            )
+            Text(
+                stringResource(R.string.schedule_hint),
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         Row(
             modifier = Modifier
                 .fillMaxWidth()

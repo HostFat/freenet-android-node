@@ -44,6 +44,14 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodeRepository.setNetworkDataPolicy(getApplication(), policy)
     }
 
+    fun setScheduleEveryHours(hours: Int) {
+        NodeRepository.setScheduleEveryHours(getApplication(), hours)
+    }
+
+    fun setScheduleOnMinutes(minutes: Int) {
+        NodeRepository.setScheduleOnMinutes(getApplication(), minutes)
+    }
+
     fun setMinConnections(minConnections: Int) {
         NodeRepository.setMinConnections(getApplication(), minConnections)
     }
