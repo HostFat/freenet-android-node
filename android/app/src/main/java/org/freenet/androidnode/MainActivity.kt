@@ -108,7 +108,6 @@ import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
@@ -1356,11 +1355,7 @@ private fun PowerChoiceRow(
                 onClick = { onSelect(option) },
                 modifier = Modifier
                     .weight(1f)
-                    .fillMaxHeight()
-                    .semantics {
-                        role = Role.RadioButton
-                        selected = isSelected
-                    },
+                    .fillMaxHeight(),
                 shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
                 color = if (isSelected) {
                     MaterialTheme.colorScheme.secondaryContainer
