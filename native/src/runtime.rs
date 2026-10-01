@@ -97,7 +97,11 @@ struct ConnectivityStatus {
 
 impl ConnectivityStatus {
     fn network_mode_allowed(&self, allow_metered: bool) -> bool {
-        self.available && self.validated && (allow_metered || !self.metered)
+        let offline = !self.available || !self.validated;
+        if offline {
+            return true;
+        }
+        allow_metered || !self.metered
     }
 }
 
@@ -2094,6 +2098,25 @@ mod tests {
         any_validated
             .validate_network_mode()
             .expect("the any-validated policy allows a metered network");
+
+        let mut offline: serde_json::Value =
+            serde_json::from_str(&valid_config_json()).expect("valid base JSON");
+        offline["network"] = serde_json::json!({
+            "allowMetered": true,
+            "connectivity": {
+                "available": false,
+                "validated": false,
+                "wifi": false,
+                "metered": false,
+                "vpn": false,
+                "networkType": "Unavailable",
+                "activeNetwork": null,
+            }
+        });
+        AndroidNodeConfig::parse(&offline.to_string())
+            .expect("valid offline config")
+            .validate_network_mode()
+            .expect("network mode may start while Android has no network");
     }
 
     #[test]
