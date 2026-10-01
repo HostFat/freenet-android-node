@@ -1,5 +1,7 @@
 package org.freenet.androidnode
 
+import org.json.JSONObject
+
 object NativeBridge {
     private val loadResult = runCatching {
         System.loadLibrary("freenet_android")
@@ -41,6 +43,19 @@ object NativeBridge {
 
     external fun nativeQueryNodeDiagnostics(websocketPort: Int): String
 
+    external fun nativeNearbyExportContract(
+        websocketPort: Int,
+        contractKeyHex: String,
+        outputDirectory: String,
+        allowSendOwned: Boolean,
+        allowFetchMissing: Boolean,
+    ): String
+
+    external fun nativeNearbyImportContract(
+        websocketPort: Int,
+        contractFilePath: String,
+    ): String
+
     fun ping(): Result<String> = withLoadedLibrary(::nativePing)
 
     fun buildInfo(): Result<String> = withLoadedLibrary(::nativeBuildInfo)
@@ -79,6 +94,50 @@ object NativeBridge {
 
     fun appendInfoLog(message: String): Result<String> =
         withLoadedLibrary { nativeAppendInfoLog(message) }
+
+    fun nearbyExportContract(
+        websocketPort: Int,
+        contractKeyHex: String,
+        outputDirectory: String,
+        allowSendOwned: Boolean,
+        allowFetchMissing: Boolean,
+    ): String {
+        if (!isLoaded) return nearbyExportError(loadError ?: "The node library is not loaded.")
+        return runCatching {
+            nativeNearbyExportContract(
+                websocketPort,
+                contractKeyHex,
+                outputDirectory,
+                allowSendOwned,
+                allowFetchMissing,
+            )
+        }.getOrElse { error ->
+            nearbyExportError(error.message ?: "The nearby request failed.")
+        }
+    }
+
+    fun nearbyImportContract(websocketPort: Int, contractFilePath: String): String {
+        if (!isLoaded) return nearbyImportError(loadError ?: "The node library is not loaded.")
+        return runCatching {
+            nativeNearbyImportContract(websocketPort, contractFilePath)
+        }.getOrElse { error ->
+            nearbyImportError(error.message ?: "The nearby import failed.")
+        }
+    }
+
+    private fun nearbyExportError(message: String): String = JSONObject()
+        .put("status", "error")
+        .put("bytes", 0)
+        .put("path", "")
+        .put("message", message)
+        .put("fetched", false)
+        .toString()
+
+    private fun nearbyImportError(message: String): String = JSONObject()
+        .put("status", "error")
+        .put("key", "")
+        .put("message", message)
+        .toString()
 
     private inline fun <T> withLoadedLibrary(block: () -> T): Result<T> {
         return loadResult.fold(

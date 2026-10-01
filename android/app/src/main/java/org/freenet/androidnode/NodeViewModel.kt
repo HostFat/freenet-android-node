@@ -8,6 +8,7 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodePolicyRepository.initialize(application)
         UpdateCheckRepository.initialize(application)
         CrashReportOffer.initialize(application)
+        NearbyService.restore(application)
     }
 
     val state = NodeRepository.state
@@ -90,6 +91,30 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun setNotifyUpdate(enabled: Boolean) {
         NodePolicyRepository.setNotifyUpdate(getApplication(), enabled)
+    }
+
+    fun setNearbyBluetooth(enabled: Boolean) {
+        NodePolicyRepository.setNearbyBluetooth(getApplication(), enabled)
+    }
+
+    fun setNearbyWifi(enabled: Boolean) {
+        NodePolicyRepository.setNearbyWifi(getApplication(), enabled)
+    }
+
+    fun setNearbySendOwned(enabled: Boolean) {
+        NodePolicyRepository.setNearbySendOwned(getApplication(), enabled)
+    }
+
+    fun setNearbyFetchMissing(enabled: Boolean) {
+        NodePolicyRepository.setNearbyFetchMissing(getApplication(), enabled)
+    }
+
+    fun setNearbyDailyCapMb(megabytes: Int) {
+        NodePolicyRepository.setNearbyDailyCapMb(getApplication(), megabytes)
+    }
+
+    fun setNearbySessionMinutes(minutes: Int) {
+        NodePolicyRepository.setNearbySessionMinutes(getApplication(), minutes)
     }
 
     fun restartNetworkNode() {

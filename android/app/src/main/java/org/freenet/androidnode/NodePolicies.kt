@@ -183,6 +183,15 @@ data class NodePolicyState(
     val scheduleWindowStartedEpochMs: Long = 0L,
     val scheduleWindowEndedEpochMs: Long = 0L,
     val scheduleConnectedSinceEpochMs: Long = 0L,
+    val nearbyBluetooth: Boolean = false,
+    val nearbyWifi: Boolean = false,
+    val nearbySendOwned: Boolean = false,
+    val nearbyFetchMissing: Boolean = false,
+    val nearbyDailyCapMb: Int = NearbyLimits.DEFAULT_DAILY_CAP_MB,
+    val nearbySessionMinutes: Int = NearbyLimits.DEFAULT_SESSION_MINUTES,
+    val nearbySessionStartedEpochMs: Long = 0L,
+    val nearbyFetchedDay: String = "",
+    val nearbyFetchedBytes: Long = 0L,
 ) {
     val automatic: Boolean
         get() = power != NodePowerPolicy.Manual
@@ -221,6 +230,15 @@ object NodePolicyRepository {
     private const val SCHEDULE_WINDOW_STARTED_KEY = "schedule_window_started_ms"
     private const val SCHEDULE_WINDOW_ENDED_KEY = "schedule_window_ended_ms"
     private const val SCHEDULE_CONNECTED_SINCE_KEY = "schedule_connected_since_ms"
+    private const val NEARBY_BLUETOOTH_KEY = "nearby_bluetooth"
+    private const val NEARBY_WIFI_KEY = "nearby_wifi"
+    private const val NEARBY_SEND_OWNED_KEY = "nearby_send_owned"
+    private const val NEARBY_FETCH_MISSING_KEY = "nearby_fetch_missing"
+    private const val NEARBY_DAILY_CAP_MB_KEY = "nearby_daily_cap_mb"
+    private const val NEARBY_SESSION_MINUTES_KEY = "nearby_session_minutes"
+    private const val NEARBY_SESSION_STARTED_KEY = "nearby_session_started_ms"
+    private const val NEARBY_FETCHED_DAY_KEY = "nearby_fetched_day"
+    private const val NEARBY_FETCHED_BYTES_KEY = "nearby_fetched_bytes"
 
     private val mutableState = MutableStateFlow(NodePolicyState())
     val state: StateFlow<NodePolicyState> = mutableState.asStateFlow()
@@ -271,6 +289,19 @@ object NodePolicyRepository {
             scheduleWindowStartedEpochMs = preferences.getLong(SCHEDULE_WINDOW_STARTED_KEY, 0L),
             scheduleWindowEndedEpochMs = preferences.getLong(SCHEDULE_WINDOW_ENDED_KEY, 0L),
             scheduleConnectedSinceEpochMs = preferences.getLong(SCHEDULE_CONNECTED_SINCE_KEY, 0L),
+            nearbyBluetooth = preferences.getBoolean(NEARBY_BLUETOOTH_KEY, false),
+            nearbyWifi = preferences.getBoolean(NEARBY_WIFI_KEY, false),
+            nearbySendOwned = preferences.getBoolean(NEARBY_SEND_OWNED_KEY, false),
+            nearbyFetchMissing = preferences.getBoolean(NEARBY_FETCH_MISSING_KEY, false),
+            nearbyDailyCapMb = coerceNearbyDailyCapMb(
+                preferences.getInt(NEARBY_DAILY_CAP_MB_KEY, NearbyLimits.DEFAULT_DAILY_CAP_MB),
+            ),
+            nearbySessionMinutes = coerceNearbySessionMinutes(
+                preferences.getInt(NEARBY_SESSION_MINUTES_KEY, NearbyLimits.DEFAULT_SESSION_MINUTES),
+            ),
+            nearbySessionStartedEpochMs = preferences.getLong(NEARBY_SESSION_STARTED_KEY, 0L),
+            nearbyFetchedDay = preferences.getString(NEARBY_FETCHED_DAY_KEY, "") ?: "",
+            nearbyFetchedBytes = preferences.getLong(NEARBY_FETCHED_BYTES_KEY, 0L).coerceAtLeast(0L),
         )
         initialized = true
     }
@@ -427,6 +458,92 @@ object NodePolicyRepository {
         persist(context, mutableState.value.copy(suspendedByUser = suspended))
     }
 
+    fun setNearbyBluetooth(context: Context, enabled: Boolean) {
+        setNearbyRadio(context, bluetooth = enabled, wifi = null)
+    }
+
+    fun setNearbyWifi(context: Context, enabled: Boolean) {
+        setNearbyRadio(context, bluetooth = null, wifi = enabled)
+    }
+
+    fun setNearbySendOwned(context: Context, enabled: Boolean) {
+        initialize(context)
+        persist(context, mutableState.value.copy(nearbySendOwned = enabled))
+    }
+
+    fun setNearbyFetchMissing(context: Context, enabled: Boolean) {
+        initialize(context)
+        persist(context, mutableState.value.copy(nearbyFetchMissing = enabled))
+    }
+
+    fun setNearbyDailyCapMb(context: Context, megabytes: Int) {
+        initialize(context)
+        persist(context, mutableState.value.copy(nearbyDailyCapMb = coerceNearbyDailyCapMb(megabytes)))
+    }
+
+    fun setNearbySessionMinutes(context: Context, minutes: Int) {
+        initialize(context)
+        persist(
+            context,
+            mutableState.value.copy(nearbySessionMinutes = coerceNearbySessionMinutes(minutes)),
+        )
+    }
+
+    fun addNearbyFetchedBytes(context: Context, bytes: Long) {
+        if (bytes <= 0L) return
+        initialize(context)
+        val now = System.currentTimeMillis()
+        val current = mutableState.value
+        val day = nearbyDayKey(now)
+        val base = fetchedBytesToday(current.nearbyFetchedDay, current.nearbyFetchedBytes, now)
+        persist(
+            context,
+            current.copy(
+                nearbyFetchedDay = day,
+                nearbyFetchedBytes = base + bytes,
+            ),
+        )
+    }
+
+    fun clearNearbyRadios(context: Context) {
+        initialize(context)
+        val current = mutableState.value
+        if (!current.nearbyBluetooth && !current.nearbyWifi && current.nearbySessionStartedEpochMs == 0L) {
+            return
+        }
+        persist(
+            context,
+            current.copy(
+                nearbyBluetooth = false,
+                nearbyWifi = false,
+                nearbySessionStartedEpochMs = 0L,
+            ),
+        )
+    }
+
+    private fun setNearbyRadio(context: Context, bluetooth: Boolean?, wifi: Boolean?) {
+        initialize(context)
+        val current = mutableState.value
+        val nextBluetooth = bluetooth ?: current.nearbyBluetooth
+        val nextWifi = wifi ?: current.nearbyWifi
+        val wasOff = !current.nearbyBluetooth && !current.nearbyWifi
+        val bothOff = !nextBluetooth && !nextWifi
+        val started = when {
+            bothOff -> 0L
+            wasOff || current.nearbySessionStartedEpochMs <= 0L -> System.currentTimeMillis()
+            else -> current.nearbySessionStartedEpochMs
+        }
+        persist(
+            context,
+            current.copy(
+                nearbyBluetooth = nextBluetooth,
+                nearbyWifi = nextWifi,
+                nearbySessionStartedEpochMs = started,
+            ),
+        )
+        if (!bothOff) NearbyService.start(context)
+    }
+
     fun stopAutomaticScheduling(context: Context) {
         initialize(context)
         persist(
@@ -461,6 +578,15 @@ object NodePolicyRepository {
             .putLong(SCHEDULE_WINDOW_STARTED_KEY, next.scheduleWindowStartedEpochMs)
             .putLong(SCHEDULE_WINDOW_ENDED_KEY, next.scheduleWindowEndedEpochMs)
             .putLong(SCHEDULE_CONNECTED_SINCE_KEY, next.scheduleConnectedSinceEpochMs)
+            .putBoolean(NEARBY_BLUETOOTH_KEY, next.nearbyBluetooth)
+            .putBoolean(NEARBY_WIFI_KEY, next.nearbyWifi)
+            .putBoolean(NEARBY_SEND_OWNED_KEY, next.nearbySendOwned)
+            .putBoolean(NEARBY_FETCH_MISSING_KEY, next.nearbyFetchMissing)
+            .putInt(NEARBY_DAILY_CAP_MB_KEY, next.nearbyDailyCapMb)
+            .putInt(NEARBY_SESSION_MINUTES_KEY, next.nearbySessionMinutes)
+            .putLong(NEARBY_SESSION_STARTED_KEY, next.nearbySessionStartedEpochMs)
+            .putString(NEARBY_FETCHED_DAY_KEY, next.nearbyFetchedDay)
+            .putLong(NEARBY_FETCHED_BYTES_KEY, next.nearbyFetchedBytes)
             .apply()
         mutableState.value = next
     }

@@ -1,0 +1,148 @@
+package org.freenet.androidnode
+
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
+import org.junit.Test
+
+class NearbyPolicyTest {
+    @Test
+    fun missingContractIsNotRequestedWhenDownloadIsOff() {
+        val blocked = nearbyDecision(
+            nodeRunning = true,
+            sessionExpired = false,
+            sendOwned = false,
+            fetchMissing = false,
+            fetchedBytes = 0L,
+            capBytes = nearbyCapBytes(20),
+            networkAllowed = true,
+        )
+        assertFalse(blocked.callNative)
+        assertEquals(NearbyLimits.REFUSE_SHARING_OFF, blocked.refuseReason)
+
+        val sendOnly = nearbyDecision(
+            nodeRunning = true,
+            sessionExpired = false,
+            sendOwned = true,
+            fetchMissing = false,
+            fetchedBytes = 0L,
+            capBytes = nearbyCapBytes(20),
+            networkAllowed = true,
+        )
+        assertTrue(sendOnly.callNative)
+        assertTrue(sendOnly.allowSend)
+        assertFalse(sendOnly.allowFetch)
+    }
+
+    @Test
+    fun downloadStaysOffWhenTheCapOrTheNetworkBlocksIt() {
+        val capped = nearbyDecision(
+            nodeRunning = true,
+            sessionExpired = false,
+            sendOwned = false,
+            fetchMissing = true,
+            fetchedBytes = nearbyCapBytes(20),
+            capBytes = nearbyCapBytes(20),
+            networkAllowed = true,
+        )
+        assertFalse(capped.callNative)
+        assertEquals(NearbyLimits.REFUSE_DAILY_CAP, capped.refuseReason)
+
+        val metered = nearbyDecision(
+            nodeRunning = true,
+            sessionExpired = false,
+            sendOwned = true,
+            fetchMissing = true,
+            fetchedBytes = 0L,
+            capBytes = nearbyCapBytes(20),
+            networkAllowed = false,
+        )
+        assertTrue(metered.allowSend)
+        assertFalse(metered.allowFetch)
+
+        val allowed = nearbyDecision(
+            nodeRunning = true,
+            sessionExpired = false,
+            sendOwned = false,
+            fetchMissing = true,
+            fetchedBytes = nearbyCapBytes(20) - 1,
+            capBytes = nearbyCapBytes(20),
+            networkAllowed = true,
+        )
+        assertTrue(allowed.allowFetch)
+    }
+
+    @Test
+    fun aStoppedNodeOrEndedSessionNeverCallsTheNode() {
+        val down = nearbyDecision(
+            nodeRunning = false,
+            sessionExpired = false,
+            sendOwned = true,
+            fetchMissing = true,
+            fetchedBytes = 0L,
+            capBytes = nearbyCapBytes(20),
+            networkAllowed = true,
+        )
+        assertEquals(NearbyLimits.REFUSE_NODE_DOWN, down.refuseReason)
+        assertFalse(down.callNative)
+
+        val ended = nearbyDecision(
+            nodeRunning = true,
+            sessionExpired = true,
+            sendOwned = true,
+            fetchMissing = true,
+            fetchedBytes = 0L,
+            capBytes = nearbyCapBytes(20),
+            networkAllowed = true,
+        )
+        assertEquals(NearbyLimits.REFUSE_SESSION, ended.refuseReason)
+        assertTrue(nearbySessionExpired(1_000L, 30, 1_000L + 30 * 60_000L))
+        assertFalse(nearbySessionExpired(1_000L, 30, 1_000L + 30 * 60_000L - 1))
+        assertFalse(nearbyNodeIsRunning("Stopped"))
+        assertTrue(nearbyNodeIsRunning("RunningLocal"))
+    }
+
+    @Test
+    fun framesRoundTripAcrossPartialReadsAndRejectAnOversizedLength() {
+        val frame = encodeNearbyFrame(NearbyLimits.TYPE_HELLO, "phone".encodeToByteArray())
+        val decoder = NearbyDecoder()
+        assertTrue(decoder.push(frame.copyOfRange(0, 3), 3).frames.isEmpty())
+        val done = decoder.push(frame.copyOfRange(3, frame.size), frame.size - 3)
+        assertEquals(1, done.frames.size)
+        assertEquals(NearbyLimits.TYPE_HELLO, done.frames[0].type)
+        assertEquals("phone", done.frames[0].payload.decodeToString())
+
+        val hostile = byteArrayOf(1, 4, 0x7f, 0, 0, 0)
+        val overflow = NearbyDecoder().push(hostile, hostile.size, maxPayload = 32)
+        assertTrue(overflow.overflow)
+        assertEquals(NearbyLimits.REFUSE_MISSING, refuseForExportStatus("absent"))
+        assertEquals(NearbyLimits.REFUSE_UNAVAILABLE, refuseForExportStatus("unavailable"))
+    }
+
+    @Test
+    fun contractKeysAcceptHexBase58AndTheLastUrlSegment() {
+        val key = ByteArray(32) { index -> if (index == 0) 0 else (index + 1).toByte() }
+        val hex = nearbyKeyHex(key)
+        assertTrue(hex.startsWith("00"))
+        assertTrue(parseNearbyContractKey(hex)!!.contentEquals(key))
+        assertTrue(parseNearbyContractKey("0x$hex")!!.contentEquals(key))
+        val encoded = encodeBase58(key)
+        assertTrue(parseNearbyContractKey(encoded)!!.contentEquals(key))
+        assertTrue(
+            parseNearbyContractKey("https://127.0.0.1:7509/contract/$encoded")!!.contentEquals(key),
+        )
+        assertNull(parseNearbyContractKey("not a key"))
+        val day = java.time.Instant.parse("2026-10-01T00:00:00Z").toEpochMilli()
+        assertEquals(0L, fetchedBytesToday("2026-09-30", 40L, day))
+        assertEquals("2026-10-01", nearbyDayKey(day))
+        assertEquals(40L, fetchedBytesToday("2026-10-01", 40L, day))
+        assertEquals(
+            listOf("android.permission.BLUETOOTH_SCAN", "android.permission.BLUETOOTH_CONNECT", "android.permission.BLUETOOTH_ADVERTISE"),
+            nearbyRuntimePermissions(31, bluetooth = true, wifi = false),
+        )
+        assertTrue(nearbyRuntimePermissions(33, bluetooth = false, wifi = true).contains("android.permission.NEARBY_WIFI_DEVICES"))
+        assertEquals(20, coerceNearbyDailyCapMb(0))
+        assertEquals(120, coerceNearbySessionMinutes(500))
+    }
+}

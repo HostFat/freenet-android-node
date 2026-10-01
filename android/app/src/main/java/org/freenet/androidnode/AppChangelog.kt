@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: the minutes you choose start once the node shows Connected, including a gateway. If nothing connects, it still turns off after those minutes. Connect now starts a session while Schedule is waiting. The check mark sits beside Manual, Charging, Always, and Schedule."
+        "This update: nearby sharing can send one contract the other phone asks for, over Bluetooth or the Wi-Fi network both phones are already on. Bluetooth, Wi-Fi, sending stored contracts, and downloading missing contracts all stay off until you turn them on. A missing contract is refused and is not downloaded unless that download switch is on. A downloaded copy stays on this phone."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

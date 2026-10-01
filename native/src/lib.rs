@@ -3,9 +3,10 @@ use std::ptr;
 
 use jni::JNIEnv;
 use jni::objects::{JClass, JString};
-use jni::sys::{jint, jstring};
+use jni::sys::{jboolean, jint, jstring};
 
 mod contract_proof;
+mod nearby_contract;
 mod runtime;
 mod service_report;
 
@@ -191,6 +192,96 @@ pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeQueryNode
             Err(error) => jni_error_response("NODE_DIAGNOSTICS_UNAVAILABLE", error),
         }
     })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeNearbyExportContract(
+    mut env: JNIEnv,
+    _class: JClass,
+    websocket_port: jint,
+    contract_key_hex: JString,
+    output_directory: JString,
+    allow_send_owned: jboolean,
+    allow_fetch_missing: jboolean,
+) -> jstring {
+    jni_response(&mut env, |env| {
+        let key = match env.get_string(&contract_key_hex) {
+            Ok(value) => value.to_string_lossy().into_owned(),
+            Err(error) => {
+                return nearby_error(
+                    "failed to read the contract key",
+                    &error.to_string(),
+                    true,
+                );
+            }
+        };
+        let directory = match env.get_string(&output_directory) {
+            Ok(value) => value.to_string_lossy().into_owned(),
+            Err(error) => {
+                return nearby_error(
+                    "failed to read the output directory",
+                    &error.to_string(),
+                    true,
+                );
+            }
+        };
+        if websocket_port <= 0 || websocket_port > 65535 {
+            return nearby_error("websocketPort must be between 1 and 65535", "", true);
+        }
+        nearby_contract::export_contract(
+            websocket_port as u16,
+            &key,
+            &directory,
+            allow_send_owned != 0,
+            allow_fetch_missing != 0,
+        )
+    })
+}
+
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeNearbyImportContract(
+    mut env: JNIEnv,
+    _class: JClass,
+    websocket_port: jint,
+    contract_file_path: JString,
+) -> jstring {
+    jni_response(&mut env, |env| {
+        let path = match env.get_string(&contract_file_path) {
+            Ok(value) => value.to_string_lossy().into_owned(),
+            Err(error) => {
+                return nearby_error("failed to read the contract path", &error.to_string(), false);
+            }
+        };
+        if websocket_port <= 0 || websocket_port > 65535 {
+            return nearby_error("websocketPort must be between 1 and 65535", "", false);
+        }
+        nearby_contract::import_contract(websocket_port as u16, &path)
+    })
+}
+
+fn nearby_error(message: &str, detail: &str, export: bool) -> String {
+    let text = if detail.is_empty() {
+        message.to_owned()
+    } else {
+        format!("{message}: {detail}")
+    };
+    if export {
+        serde_json::json!({
+            "status": "error",
+            "bytes": 0,
+            "path": "",
+            "message": text,
+            "fetched": false,
+        })
+        .to_string()
+    } else {
+        serde_json::json!({
+            "status": "error",
+            "key": "",
+            "message": text,
+        })
+        .to_string()
+    }
 }
 
 fn freenet_build_info() -> String {

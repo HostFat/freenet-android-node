@@ -576,6 +576,13 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onNotifyStopped = nodeViewModel::setNotifyStopped,
                         onNotifyUdpBusy = nodeViewModel::setNotifyUdpBusy,
                         onNotifyUpdate = nodeViewModel::setNotifyUpdate,
+                        onNearbyBluetooth = nodeViewModel::setNearbyBluetooth,
+                        onNearbyWifi = nodeViewModel::setNearbyWifi,
+                        onNearbySendOwned = nodeViewModel::setNearbySendOwned,
+                        onNearbyFetchMissing = nodeViewModel::setNearbyFetchMissing,
+                        onNearbyDailyCapMb = nodeViewModel::setNearbyDailyCapMb,
+                        onNearbySessionMinutes = nodeViewModel::setNearbySessionMinutes,
+                        onEnsureNotification = { action -> withNotificationPermission(action) },
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -1441,6 +1448,13 @@ private fun PolicyControls(
     onNotifyStopped: (Boolean) -> Unit,
     onNotifyUdpBusy: (Boolean) -> Unit,
     onNotifyUpdate: (Boolean) -> Unit,
+    onNearbyBluetooth: (Boolean) -> Unit,
+    onNearbyWifi: (Boolean) -> Unit,
+    onNearbySendOwned: (Boolean) -> Unit,
+    onNearbyFetchMissing: (Boolean) -> Unit,
+    onNearbyDailyCapMb: (Int) -> Unit,
+    onNearbySessionMinutes: (Int) -> Unit,
+    onEnsureNotification: (() -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
     var draftMin by remember { mutableStateOf(policies.minConnections) }
@@ -1582,6 +1596,17 @@ private fun PolicyControls(
             style = MaterialTheme.typography.bodySmall,
         )
         HorizontalDivider()
+        NearbyShareControls(
+            policies = policies,
+            onBluetooth = onNearbyBluetooth,
+            onWifi = onNearbyWifi,
+            onSendOwned = onNearbySendOwned,
+            onFetchMissing = onNearbyFetchMissing,
+            onDailyCapMb = onNearbyDailyCapMb,
+            onSessionMinutes = onNearbySessionMinutes,
+            onEnsureNotification = onEnsureNotification,
+        )
+        HorizontalDivider()
         Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)
         Text(
             stringResource(R.string.connection_limits_resource_hint),
@@ -1709,6 +1734,176 @@ private fun PolicyControls(
             stringResource(R.string.connection_limits_apply_next_start),
             style = MaterialTheme.typography.bodySmall,
         )
+    }
+}
+
+@Composable
+private fun NearbyShareControls(
+    policies: NodePolicyState,
+    onBluetooth: (Boolean) -> Unit,
+    onWifi: (Boolean) -> Unit,
+    onSendOwned: (Boolean) -> Unit,
+    onFetchMissing: (Boolean) -> Unit,
+    onDailyCapMb: (Int) -> Unit,
+    onSessionMinutes: (Int) -> Unit,
+    onEnsureNotification: (() -> Unit) -> Unit,
+) {
+    val context = LocalContext.current
+    val peers by NearbyHub.peers.collectAsState()
+    val status by NearbyHub.status.collectAsState()
+    val askResult by NearbyHub.askResult.collectAsState()
+    var keyText by rememberSaveable { mutableStateOf("") }
+    var note by remember { mutableStateOf("") }
+    var pendingEnable by remember { mutableStateOf<Boolean?>(null) }
+    val permissionLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestMultiplePermissions(),
+    ) { grants ->
+        val enableBluetooth = pendingEnable
+        pendingEnable = null
+        if (enableBluetooth == null) return@rememberLauncherForActivityResult
+        if (grants.isEmpty() || grants.values.any { !it }) {
+            note = context.getString(R.string.nearby_permission_denied)
+            return@rememberLauncherForActivityResult
+        }
+        finishNearbyEnable(context, enableBluetooth, onBluetooth, onWifi, onEnsureNotification) { note = it }
+    }
+    val todayBytes = fetchedBytesToday(
+        policies.nearbyFetchedDay,
+        policies.nearbyFetchedBytes,
+        System.currentTimeMillis(),
+    )
+
+    fun requestEnable(bluetooth: Boolean) {
+        note = ""
+        val needed = nearbyRuntimePermissions(
+            Build.VERSION.SDK_INT,
+            bluetooth = bluetooth,
+            wifi = !bluetooth,
+        ).filter {
+            context.checkSelfPermission(it) != PackageManager.PERMISSION_GRANTED
+        }
+        if (needed.isNotEmpty()) {
+            pendingEnable = bluetooth
+            permissionLauncher.launch(needed.toTypedArray())
+            return
+        }
+        finishNearbyEnable(context, bluetooth, onBluetooth, onWifi, onEnsureNotification) { note = it }
+    }
+
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        Text(stringResource(R.string.nearby_share), style = MaterialTheme.typography.titleMedium)
+        Text(
+            stringResource(R.string.nearby_share_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SettingsCheckbox(
+            checked = policies.nearbyBluetooth,
+            label = stringResource(R.string.nearby_bluetooth),
+            onCheckedChange = { enabled ->
+                if (enabled) requestEnable(bluetooth = true) else onBluetooth(false)
+            },
+        )
+        SettingsCheckbox(
+            checked = policies.nearbyWifi,
+            label = stringResource(R.string.nearby_wifi),
+            onCheckedChange = { enabled ->
+                if (enabled) requestEnable(bluetooth = false) else onWifi(false)
+            },
+        )
+        if (note.isNotBlank()) {
+            Text(note, color = MaterialTheme.colorScheme.error, style = MaterialTheme.typography.bodySmall)
+        }
+        if (status.isNotBlank()) {
+            Text(status, style = MaterialTheme.typography.bodySmall)
+        }
+        Text(
+            stringResource(R.string.nearby_peers, peers),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SettingsCheckbox(
+            checked = policies.nearbySendOwned,
+            label = stringResource(R.string.nearby_send_owned),
+            onCheckedChange = onSendOwned,
+        )
+        Text(
+            stringResource(R.string.nearby_send_owned_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SettingsCheckbox(
+            checked = policies.nearbyFetchMissing,
+            label = stringResource(R.string.nearby_fetch_missing),
+            onCheckedChange = onFetchMissing,
+        )
+        Text(
+            stringResource(R.string.nearby_fetch_missing_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(
+                R.string.nearby_downloaded_today,
+                formatTrafficBytes(todayBytes),
+                formatTrafficBytes(nearbyCapBytes(policies.nearbyDailyCapMb)),
+            ),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        IntStepper(
+            label = stringResource(R.string.nearby_daily_cap),
+            value = policies.nearbyDailyCapMb,
+            min = NearbyLimits.MIN_DAILY_CAP_MB,
+            max = NearbyLimits.MAX_DAILY_CAP_MB,
+            valueLabel = "${policies.nearbyDailyCapMb} MB",
+            onChange = onDailyCapMb,
+        )
+        IntStepper(
+            label = stringResource(R.string.nearby_session),
+            value = policies.nearbySessionMinutes,
+            min = NearbyLimits.MIN_SESSION_MINUTES,
+            max = NearbyLimits.MAX_SESSION_MINUTES,
+            valueLabel = "${policies.nearbySessionMinutes} minutes",
+            onChange = onSessionMinutes,
+        )
+        OutlinedTextField(
+            value = keyText,
+            onValueChange = { keyText = it },
+            label = { Text(stringResource(R.string.nearby_ask_label)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Done),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+            onClick = { NearbyHub.ask(keyText) },
+            enabled = policies.nearbyBluetooth || policies.nearbyWifi,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.nearby_ask))
+        }
+        if (askResult.isNotBlank()) {
+            Text(askResult, style = MaterialTheme.typography.bodySmall)
+        }
+    }
+}
+
+private fun finishNearbyEnable(
+    context: Context,
+    bluetooth: Boolean,
+    onBluetooth: (Boolean) -> Unit,
+    onWifi: (Boolean) -> Unit,
+    onEnsureNotification: (() -> Unit) -> Unit,
+    onNote: (String) -> Unit,
+) {
+    if (bluetooth) {
+        val radio = runCatching { bluetoothRadioEnabled(context) }.getOrNull()
+        if (radio != true) {
+            onNote(
+                context.getString(
+                    if (radio == null) R.string.nearby_bluetooth_missing else R.string.nearby_bluetooth_off,
+                ),
+            )
+            return
+        }
+    }
+    onEnsureNotification {
+        if (bluetooth) onBluetooth(true) else onWifi(true)
     }
 }
 
