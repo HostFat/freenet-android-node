@@ -576,16 +576,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onNotifyStopped = nodeViewModel::setNotifyStopped,
                         onNotifyUdpBusy = nodeViewModel::setNotifyUdpBusy,
                         onNotifyUpdate = nodeViewModel::setNotifyUpdate,
-                        onNearbyBluetooth = nodeViewModel::setNearbyBluetooth,
-                        onNearbyWifi = nodeViewModel::setNearbyWifi,
-                        onNearbySendOwned = nodeViewModel::setNearbySendOwned,
-                        onNearbyFetchMissing = nodeViewModel::setNearbyFetchMissing,
-                        onNearbyDailyCapMb = nodeViewModel::setNearbyDailyCapMb,
-                        onNearbySessionMinutes = nodeViewModel::setNearbySessionMinutes,
-                        onNearbyHopLimit = nodeViewModel::setNearbyHopLimit,
-                        onNearbyBluetoothMaxMb = nodeViewModel::setNearbyBluetoothMaxMb,
-                        onNearbyWifiMaxMb = nodeViewModel::setNearbyWifiMaxMb,
-                        onEnsureNotification = { action -> withNotificationPermission(action) },
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -595,6 +585,19 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             closeDrawer()
                         },
                         onOpenGuide = { showExternalGuideConfirm = true },
+                    )
+                    HorizontalDivider()
+                    NearbyShareControls(
+                        policies = policyState,
+                        onBluetooth = nodeViewModel::setNearbyBluetooth,
+                        onWifi = nodeViewModel::setNearbyWifi,
+                        onFetchMissing = nodeViewModel::setNearbyFetchMissing,
+                        onDailyCapMb = nodeViewModel::setNearbyDailyCapMb,
+                        onSessionMinutes = nodeViewModel::setNearbySessionMinutes,
+                        onHopLimit = nodeViewModel::setNearbyHopLimit,
+                        onBluetoothMaxMb = nodeViewModel::setNearbyBluetoothMaxMb,
+                        onWifiMaxMb = nodeViewModel::setNearbyWifiMaxMb,
+                        onEnsureNotification = { action -> withNotificationPermission(action) },
                     )
                     HorizontalDivider()
                     Text(
@@ -1451,16 +1454,6 @@ private fun PolicyControls(
     onNotifyStopped: (Boolean) -> Unit,
     onNotifyUdpBusy: (Boolean) -> Unit,
     onNotifyUpdate: (Boolean) -> Unit,
-    onNearbyBluetooth: (Boolean) -> Unit,
-    onNearbyWifi: (Boolean) -> Unit,
-    onNearbySendOwned: (Boolean) -> Unit,
-    onNearbyFetchMissing: (Boolean) -> Unit,
-    onNearbyDailyCapMb: (Int) -> Unit,
-    onNearbySessionMinutes: (Int) -> Unit,
-    onNearbyHopLimit: (Int) -> Unit,
-    onNearbyBluetoothMaxMb: (Int) -> Unit,
-    onNearbyWifiMaxMb: (Int) -> Unit,
-    onEnsureNotification: (() -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
     var draftMin by remember { mutableStateOf(policies.minConnections) }
@@ -1602,20 +1595,6 @@ private fun PolicyControls(
             style = MaterialTheme.typography.bodySmall,
         )
         HorizontalDivider()
-        NearbyShareControls(
-            policies = policies,
-            onBluetooth = onNearbyBluetooth,
-            onWifi = onNearbyWifi,
-            onSendOwned = onNearbySendOwned,
-            onFetchMissing = onNearbyFetchMissing,
-            onDailyCapMb = onNearbyDailyCapMb,
-            onSessionMinutes = onNearbySessionMinutes,
-            onHopLimit = onNearbyHopLimit,
-            onBluetoothMaxMb = onNearbyBluetoothMaxMb,
-            onWifiMaxMb = onNearbyWifiMaxMb,
-            onEnsureNotification = onEnsureNotification,
-        )
-        HorizontalDivider()
         Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)
         Text(
             stringResource(R.string.connection_limits_resource_hint),
@@ -1747,11 +1726,67 @@ private fun PolicyControls(
 }
 
 @Composable
+private fun NearbyNumberField(
+    label: String,
+    value: Int,
+    max: Int,
+    supporting: String,
+    onChange: (Int) -> Unit,
+) {
+    var text by remember { mutableStateOf(value.toString()) }
+    var focused by remember { mutableStateOf(false) }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(value) {
+        if (!focused) text = value.toString()
+    }
+
+    fun commit() {
+        val parsed = text.toIntOrNull()
+        if (parsed == null) {
+            text = value.toString()
+            return
+        }
+        val next = parsed.coerceIn(0, max)
+        text = next.toString()
+        if (next != value) onChange(next)
+    }
+
+    OutlinedTextField(
+        value = text,
+        onValueChange = { incoming ->
+            val digits = incoming.filter { it.isDigit() }.take(4)
+            text = digits
+            val parsed = digits.toIntOrNull() ?: return@OutlinedTextField
+            if (parsed <= max && parsed != value) onChange(parsed)
+        },
+        label = { Text(label) },
+        supportingText = { Text(supporting) },
+        singleLine = true,
+        keyboardOptions = KeyboardOptions(
+            keyboardType = KeyboardType.Number,
+            imeAction = ImeAction.Done,
+        ),
+        keyboardActions = KeyboardActions(
+            onDone = {
+                commit()
+                focusManager.clearFocus()
+            },
+        ),
+        modifier = Modifier
+            .fillMaxWidth()
+            .onFocusChanged { focusState ->
+                val nowFocused = focusState.isFocused
+                if (focused && !nowFocused) commit()
+                focused = nowFocused
+            },
+    )
+}
+
+@Composable
 private fun NearbyShareControls(
     policies: NodePolicyState,
     onBluetooth: (Boolean) -> Unit,
     onWifi: (Boolean) -> Unit,
-    onSendOwned: (Boolean) -> Unit,
     onFetchMissing: (Boolean) -> Unit,
     onDailyCapMb: (Int) -> Unit,
     onSessionMinutes: (Int) -> Unit,
@@ -1833,15 +1868,6 @@ private fun NearbyShareControls(
             style = MaterialTheme.typography.bodySmall,
         )
         SettingsCheckbox(
-            checked = policies.nearbySendOwned,
-            label = stringResource(R.string.nearby_send_owned),
-            onCheckedChange = onSendOwned,
-        )
-        Text(
-            stringResource(R.string.nearby_send_owned_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        SettingsCheckbox(
             checked = policies.nearbyFetchMissing,
             label = stringResource(R.string.nearby_fetch_missing),
             onCheckedChange = onFetchMissing,
@@ -1862,36 +1888,33 @@ private fun NearbyShareControls(
             },
             style = MaterialTheme.typography.bodySmall,
         )
-        IntStepper(
+        NearbyNumberField(
             label = stringResource(R.string.nearby_daily_cap),
             value = policies.nearbyDailyCapMb,
-            min = NearbyLimits.MIN_DAILY_CAP_MB,
             max = NearbyLimits.MAX_DAILY_CAP_MB,
-            valueLabel = if (policies.nearbyDailyCapMb == 0) {
+            supporting = if (policies.nearbyDailyCapMb == 0) {
                 stringResource(R.string.nearby_no_limit)
             } else {
                 "${policies.nearbyDailyCapMb} MB"
             },
             onChange = onDailyCapMb,
         )
-        IntStepper(
+        NearbyNumberField(
             label = stringResource(R.string.nearby_session),
             value = policies.nearbySessionMinutes,
-            min = NearbyLimits.MIN_SESSION_MINUTES,
             max = NearbyLimits.MAX_SESSION_MINUTES,
-            valueLabel = if (policies.nearbySessionMinutes == 0) {
+            supporting = if (policies.nearbySessionMinutes == 0) {
                 stringResource(R.string.nearby_no_time_limit)
             } else {
                 "${policies.nearbySessionMinutes} minutes"
             },
             onChange = onSessionMinutes,
         )
-        IntStepper(
+        NearbyNumberField(
             label = stringResource(R.string.nearby_hops),
             value = policies.nearbyHopLimit,
-            min = 0,
             max = NearbyLimits.MAX_HOP_LIMIT,
-            valueLabel = if (policies.nearbyHopLimit == 0) {
+            supporting = if (policies.nearbyHopLimit == 0) {
                 stringResource(R.string.nearby_no_hop_limit)
             } else {
                 stringResource(R.string.nearby_hop_value, policies.nearbyHopLimit)
@@ -1902,24 +1925,22 @@ private fun NearbyShareControls(
             stringResource(R.string.nearby_hops_hint),
             style = MaterialTheme.typography.bodySmall,
         )
-        IntStepper(
+        NearbyNumberField(
             label = stringResource(R.string.nearby_bluetooth_size),
             value = policies.nearbyBluetoothMaxMb,
-            min = 0,
             max = NearbyLimits.MAX_SIZE_MB,
-            valueLabel = if (policies.nearbyBluetoothMaxMb == 0) {
+            supporting = if (policies.nearbyBluetoothMaxMb == 0) {
                 stringResource(R.string.nearby_no_size_limit)
             } else {
                 "${policies.nearbyBluetoothMaxMb} MB"
             },
             onChange = onBluetoothMaxMb,
         )
-        IntStepper(
+        NearbyNumberField(
             label = stringResource(R.string.nearby_wifi_size),
             value = policies.nearbyWifiMaxMb,
-            min = 0,
             max = NearbyLimits.MAX_SIZE_MB,
-            valueLabel = if (policies.nearbyWifiMaxMb == 0) {
+            supporting = if (policies.nearbyWifiMaxMb == 0) {
                 stringResource(R.string.nearby_no_size_limit)
             } else {
                 "${policies.nearbyWifiMaxMb} MB"

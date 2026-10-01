@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: nearby phones keep subscribed contracts up to date over Bluetooth or the Wi-Fi they already share, and can relay that through other phones. Hop 1 talks only to directly connected phones and does not relay. Hop 0 is no hop limit. A phone with the download switch on and a Freenet peer can fetch a missing contract and pass it back; every phone on that path keeps a copy. Session length, the daily download cap, and transfer size can be set to no limit. Schedule turns the node and these radios off together."
+        "This update: nearby phones keep subscribed contracts up to date over Bluetooth or the Wi-Fi they already share, and can relay that through other phones. Contracts already on this phone are always sent when a nearby phone asks. Hop 1 talks only to directly connected phones and does not relay. Hop 0 is no hop limit. Limits are typed as numbers, and 0 means no limit. A phone with the download switch on and a Freenet peer can fetch a missing contract and pass it back; every phone on that path keeps a copy. Schedule turns the node and these radios off together."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

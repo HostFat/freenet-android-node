@@ -137,7 +137,6 @@ internal fun fetchedBytesToday(storedDay: String, storedBytes: Long, nowMs: Long
 internal fun nearbyDecision(
     nodeRunning: Boolean,
     sessionExpired: Boolean,
-    sendOwned: Boolean,
     fetchMissing: Boolean,
     fetchedBytes: Long,
     capBytes: Long,
@@ -151,15 +150,7 @@ internal fun nearbyDecision(
         return NearbyDecision(false, false, NearbyLimits.REFUSE_SESSION)
     }
     val allowFetch = fetchMissing && peersConnected && fetchedBytes < capBytes && networkAllowed
-    if (sendOwned || allowFetch) {
-        return NearbyDecision(sendOwned, allowFetch, 0)
-    }
-    val reason = when {
-        fetchMissing && fetchedBytes >= capBytes -> NearbyLimits.REFUSE_DAILY_CAP
-        fetchMissing && !networkAllowed -> NearbyLimits.REFUSE_METERED
-        else -> NearbyLimits.REFUSE_SHARING_OFF
-    }
-    return NearbyDecision(false, false, reason)
+    return NearbyDecision(true, allowFetch, 0)
 }
 
 internal fun nearbyRuntimePermissions(sdkInt: Int, bluetooth: Boolean, wifi: Boolean): List<String> {

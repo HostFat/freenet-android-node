@@ -652,7 +652,6 @@ internal class NearbyEngine(
                 policy.nearbySessionMinutes,
                 now,
             ),
-            sendOwned = policy.nearbySendOwned,
             fetchMissing = policy.nearbyFetchMissing,
             fetchedBytes = fetchedBytesToday(policy.nearbyFetchedDay, policy.nearbyFetchedBytes, now),
             capBytes = nearbyCapBytes(policy.nearbyDailyCapMb),
@@ -742,7 +741,6 @@ internal class NearbyEngine(
         val decision = nearbyDecision(
             nodeRunning = true,
             sessionExpired = false,
-            sendOwned = policy.nearbySendOwned,
             fetchMissing = policy.nearbyFetchMissing,
             fetchedBytes = fetchedBytesToday(policy.nearbyFetchedDay, policy.nearbyFetchedBytes, now),
             capBytes = nearbyCapBytes(policy.nearbyDailyCapMb),
@@ -842,7 +840,6 @@ internal class NearbyEngine(
             NativeBridge.nearbyWatchAddKey(nearbyKeyHex(hop.key))
         }
         val policy = NodePolicyRepository.state.value
-        if (!policy.nearbySendOwned) return
         if (!nearbyForward(policy.nearbyHopLimit, hop.senderLimit, hopsUsed)) return
         val forwarded = encodeNearbyHop(hop.senderLimit, hopsUsed, hop.id, hop.key, hop.body)
         snapshotLinks().forEach { other ->
@@ -853,7 +850,6 @@ internal class NearbyEngine(
     }
 
     private fun originateUpdate(keyHex: String, body: ByteArray) {
-        if (!NodePolicyRepository.state.value.nearbySendOwned) return
         val key = decodeNearbyKeyToken(keyHex) ?: return
         if (key.size != 32 || body.isEmpty()) return
         val hash = sha256(body)

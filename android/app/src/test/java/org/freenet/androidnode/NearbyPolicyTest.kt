@@ -12,19 +12,18 @@ class NearbyPolicyTest {
         val blocked = nearbyDecision(
             nodeRunning = true,
             sessionExpired = false,
-            sendOwned = false,
             fetchMissing = false,
             fetchedBytes = 0L,
             capBytes = nearbyCapBytes(20),
             networkAllowed = true,
         )
-        assertFalse(blocked.callNative)
-        assertEquals(NearbyLimits.REFUSE_SHARING_OFF, blocked.refuseReason)
+        assertTrue(blocked.callNative)
+        assertTrue(blocked.allowSend)
+        assertFalse(blocked.allowFetch)
 
         val sendOnly = nearbyDecision(
             nodeRunning = true,
             sessionExpired = false,
-            sendOwned = true,
             fetchMissing = false,
             fetchedBytes = 0L,
             capBytes = nearbyCapBytes(20),
@@ -40,19 +39,17 @@ class NearbyPolicyTest {
         val capped = nearbyDecision(
             nodeRunning = true,
             sessionExpired = false,
-            sendOwned = false,
             fetchMissing = true,
             fetchedBytes = nearbyCapBytes(20),
             capBytes = nearbyCapBytes(20),
             networkAllowed = true,
         )
-        assertFalse(capped.callNative)
-        assertEquals(NearbyLimits.REFUSE_DAILY_CAP, capped.refuseReason)
+        assertTrue(capped.allowSend)
+        assertFalse(capped.allowFetch)
 
         val metered = nearbyDecision(
             nodeRunning = true,
             sessionExpired = false,
-            sendOwned = true,
             fetchMissing = true,
             fetchedBytes = 0L,
             capBytes = nearbyCapBytes(20),
@@ -64,7 +61,6 @@ class NearbyPolicyTest {
         val allowed = nearbyDecision(
             nodeRunning = true,
             sessionExpired = false,
-            sendOwned = false,
             fetchMissing = true,
             fetchedBytes = nearbyCapBytes(20) - 1,
             capBytes = nearbyCapBytes(20),
@@ -78,7 +74,6 @@ class NearbyPolicyTest {
         val down = nearbyDecision(
             nodeRunning = false,
             sessionExpired = false,
-            sendOwned = true,
             fetchMissing = true,
             fetchedBytes = 0L,
             capBytes = nearbyCapBytes(20),
@@ -90,7 +85,6 @@ class NearbyPolicyTest {
         val ended = nearbyDecision(
             nodeRunning = true,
             sessionExpired = true,
-            sendOwned = true,
             fetchMissing = true,
             fetchedBytes = 0L,
             capBytes = nearbyCapBytes(20),
@@ -171,14 +165,13 @@ class NearbyPolicyTest {
         val offline = nearbyDecision(
             nodeRunning = true,
             sessionExpired = false,
-            sendOwned = false,
             fetchMissing = true,
             fetchedBytes = 0L,
             capBytes = nearbyCapBytes(20),
             networkAllowed = true,
             peersConnected = false,
         )
+        assertTrue(offline.allowSend)
         assertFalse(offline.allowFetch)
-        assertFalse(offline.callNative)
     }
 }

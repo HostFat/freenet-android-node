@@ -92,8 +92,6 @@
     <string name="nearby_share_hint">Bluetooth and Wi-Fi stay off until you turn them on. This is not a Freenet peer and not an internet hotspot. Wi-Fi means the network both phones are already on, including a hotspot one of them already shares. It is not Wi-Fi Direct. Android may ask you to pair over Bluetooth. Both phones need this test build. The phone that answers must have its node running. Subscribed contracts stay up to date across nearby phones, and one phone that reaches Freenet can carry those updates both ways. Schedule turns the radios off while the node is paused and brings them back with the node if these switches are still on.</string>
     <string name="nearby_bluetooth">Bluetooth</string>
     <string name="nearby_wifi">Wi-Fi</string>
-    <string name="nearby_send_owned">Send contracts already on this phone</string>
-    <string name="nearby_send_owned_hint">A nearby phone can ask for one contract. If this phone already has it, the copy goes over Bluetooth or Wi-Fi only.</string>
     <string name="nearby_fetch_missing">Download contracts this phone does not have</string>
     <string name="nearby_fetch_missing_hint">Off: this phone does not download a missing contract. The request is still passed to other nearby phones. On, and only while this node has a Freenet peer: this phone downloads the contract and sends it back. Every phone that receives it keeps a copy, because the node cannot delete it. Network data and the daily cap apply to the download.</string>
     <string name="nearby_daily_cap">Daily download cap</string>

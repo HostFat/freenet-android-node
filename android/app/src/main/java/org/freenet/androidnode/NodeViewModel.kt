@@ -101,10 +101,6 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodePolicyRepository.setNearbyWifi(getApplication(), enabled)
     }
 
-    fun setNearbySendOwned(enabled: Boolean) {
-        NodePolicyRepository.setNearbySendOwned(getApplication(), enabled)
-    }
-
     fun setNearbyFetchMissing(enabled: Boolean) {
         NodePolicyRepository.setNearbyFetchMissing(getApplication(), enabled)
     }

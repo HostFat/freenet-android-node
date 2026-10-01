@@ -185,7 +185,6 @@ data class NodePolicyState(
     val scheduleConnectedSinceEpochMs: Long = 0L,
     val nearbyBluetooth: Boolean = false,
     val nearbyWifi: Boolean = false,
-    val nearbySendOwned: Boolean = false,
     val nearbyFetchMissing: Boolean = false,
     val nearbyDailyCapMb: Int = NearbyLimits.DEFAULT_DAILY_CAP_MB,
     val nearbySessionMinutes: Int = NearbyLimits.DEFAULT_SESSION_MINUTES,
@@ -235,7 +234,6 @@ object NodePolicyRepository {
     private const val SCHEDULE_CONNECTED_SINCE_KEY = "schedule_connected_since_ms"
     private const val NEARBY_BLUETOOTH_KEY = "nearby_bluetooth"
     private const val NEARBY_WIFI_KEY = "nearby_wifi"
-    private const val NEARBY_SEND_OWNED_KEY = "nearby_send_owned"
     private const val NEARBY_FETCH_MISSING_KEY = "nearby_fetch_missing"
     private const val NEARBY_DAILY_CAP_MB_KEY = "nearby_daily_cap_mb"
     private const val NEARBY_SESSION_MINUTES_KEY = "nearby_session_minutes"
@@ -297,7 +295,6 @@ object NodePolicyRepository {
             scheduleConnectedSinceEpochMs = preferences.getLong(SCHEDULE_CONNECTED_SINCE_KEY, 0L),
             nearbyBluetooth = preferences.getBoolean(NEARBY_BLUETOOTH_KEY, false),
             nearbyWifi = preferences.getBoolean(NEARBY_WIFI_KEY, false),
-            nearbySendOwned = preferences.getBoolean(NEARBY_SEND_OWNED_KEY, false),
             nearbyFetchMissing = preferences.getBoolean(NEARBY_FETCH_MISSING_KEY, false),
             nearbyDailyCapMb = coerceNearbyDailyCapMb(
                 preferences.getInt(NEARBY_DAILY_CAP_MB_KEY, NearbyLimits.DEFAULT_DAILY_CAP_MB),
@@ -481,11 +478,6 @@ object NodePolicyRepository {
         setNearbyRadio(context, bluetooth = null, wifi = enabled)
     }
 
-    fun setNearbySendOwned(context: Context, enabled: Boolean) {
-        initialize(context)
-        persist(context, mutableState.value.copy(nearbySendOwned = enabled))
-    }
-
     fun setNearbyFetchMissing(context: Context, enabled: Boolean) {
         initialize(context)
         persist(context, mutableState.value.copy(nearbyFetchMissing = enabled))
@@ -615,7 +607,6 @@ object NodePolicyRepository {
             .putLong(SCHEDULE_CONNECTED_SINCE_KEY, next.scheduleConnectedSinceEpochMs)
             .putBoolean(NEARBY_BLUETOOTH_KEY, next.nearbyBluetooth)
             .putBoolean(NEARBY_WIFI_KEY, next.nearbyWifi)
-            .putBoolean(NEARBY_SEND_OWNED_KEY, next.nearbySendOwned)
             .putBoolean(NEARBY_FETCH_MISSING_KEY, next.nearbyFetchMissing)
             .putInt(NEARBY_DAILY_CAP_MB_KEY, next.nearbyDailyCapMb)
             .putInt(NEARBY_SESSION_MINUTES_KEY, next.nearbySessionMinutes)
