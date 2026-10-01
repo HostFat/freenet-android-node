@@ -1972,6 +1972,46 @@ private fun NearbyShareControls(
         if (askResult.isNotBlank()) {
             Text(askResult, style = MaterialTheme.typography.bodySmall)
         }
+        Text(
+            stringResource(R.string.nearby_chat_fingerprint, nearbyFingerprint.ifBlank { "…" }),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(R.string.nearby_chat_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        chat.takeLast(12).forEach { line ->
+            Text(
+                if (line.mine) {
+                    stringResource(R.string.nearby_chat_mine, line.text)
+                } else {
+                    stringResource(R.string.nearby_chat_theirs, line.fingerprint, line.text)
+                },
+                style = MaterialTheme.typography.bodyMedium,
+            )
+        }
+        OutlinedTextField(
+            value = nearbyDraft,
+            onValueChange = { nearbyDraft = it.take(500) },
+            label = { Text(stringResource(R.string.nearby_chat_label)) },
+            singleLine = true,
+            keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
+            keyboardActions = KeyboardActions(onSend = {
+                NearbyHub.sendChat(nearbyDraft)
+                nearbyDraft = ""
+            }),
+            modifier = Modifier.fillMaxWidth(),
+        )
+        Button(
+            onClick = {
+                NearbyHub.sendChat(nearbyDraft)
+                nearbyDraft = ""
+            },
+            enabled = nearbyDraft.isNotBlank(),
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.nearby_chat_send))
+        }
     }
 }
 
@@ -1996,46 +2036,6 @@ private fun finishNearbyEnable(
     }
     onEnsureNotification {
         if (bluetooth) onBluetooth(true) else onWifi(true)
-    }
-    Text(
-        stringResource(R.string.nearby_chat_fingerprint, nearbyFingerprint.ifBlank { "…" }),
-        style = MaterialTheme.typography.bodySmall,
-    )
-    Text(
-        stringResource(R.string.nearby_chat_hint),
-        style = MaterialTheme.typography.bodySmall,
-    )
-    chat.takeLast(12).forEach { line ->
-        Text(
-            if (line.mine) {
-                stringResource(R.string.nearby_chat_mine, line.text)
-            } else {
-                stringResource(R.string.nearby_chat_theirs, line.fingerprint, line.text)
-            },
-            style = MaterialTheme.typography.bodyMedium,
-        )
-    }
-    OutlinedTextField(
-        value = nearbyDraft,
-        onValueChange = { nearbyDraft = it.take(500) },
-        label = { Text(stringResource(R.string.nearby_chat_label)) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
-        keyboardActions = KeyboardActions(onSend = {
-            NearbyHub.sendChat(nearbyDraft)
-            nearbyDraft = ""
-        }),
-        modifier = Modifier.fillMaxWidth(),
-    )
-    Button(
-        onClick = {
-            NearbyHub.sendChat(nearbyDraft)
-            nearbyDraft = ""
-        },
-        enabled = nearbyDraft.isNotBlank(),
-        modifier = Modifier.fillMaxWidth(),
-    ) {
-        Text(stringResource(R.string.nearby_chat_send))
     }
 }
 
