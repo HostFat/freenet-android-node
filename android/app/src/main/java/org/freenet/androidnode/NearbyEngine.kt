@@ -24,6 +24,8 @@ import java.io.File
 import java.io.IOException
 import java.io.InputStream
 import java.io.OutputStream
+import java.security.MessageDigest
+import java.security.SecureRandom
 import java.net.InetAddress
 import java.net.InetSocketAddress
 import java.net.ServerSocket
@@ -62,12 +64,18 @@ internal class NearbyEngine(
     private val bluetoothLive = ConcurrentHashMap.newKeySet<String>()
     private val bluetoothAttempts = ConcurrentHashMap<String, Long>()
     private val recentServes = ConcurrentHashMap<String, Long>()
+    private val seenMessages = ConcurrentHashMap<String, Long>()
+    private val localRequests = ConcurrentHashMap<String, Long>()
+    private val seekReturn = ConcurrentHashMap<String, Long>()
+    private val recentApplied = ConcurrentHashMap<String, Long>()
     private val radioLock = Any()
 
     @Volatile private var bluetoothWanted = false
     @Volatile private var wifiWanted = false
     @Volatile private var stopped = false
     @Volatile private var currentAsk: AskWait? = null
+    @Volatile private var currentRequestId: ByteArray? = null
+    private var forwardThread: Thread? = null
 
     private var advertiserCallback: AdvertiseCallback? = null
     private var scanCallback: ScanCallback? = null
@@ -96,11 +104,14 @@ internal class NearbyEngine(
     fun stop() {
         stopped = true
         currentAsk = null
+        currentRequestId = null
         synchronized(radioLock) {
             stopBluetoothLocked()
             stopWifiLocked()
         }
         helloThread?.interrupt()
+        forwardThread?.interrupt()
+        NativeBridge.nearbyWatchStop()
         snapshotLinks().forEach { closeLink(it) }
         io.shutdownNow()
     }
@@ -121,25 +132,31 @@ internal class NearbyEngine(
                 onAsk("Start the node on this phone before saving a contract from a nearby phone.")
                 return@execute
             }
-            val open = snapshotLinks().let { links ->
-                if (links.any { it.kind == "wifi" }) links.filter { it.kind == "wifi" } else links
-            }
+            val open = snapshotLinks()
             if (open.isEmpty()) {
                 onAsk("No nearby phone is connected yet. Turn on Bluetooth or Wi-Fi on both phones and wait.")
                 return@execute
             }
+            val requestId = ByteArray(16).also { SecureRandom().nextBytes(it) }
+            val requestHex = nearbyKeyHex(requestId)
+            rememberSeen(requestHex)
+            localRequests[requestHex] = SystemClock.elapsedRealtime()
+            currentRequestId = requestId
             val wait = AskWait(open.map { it.id }.toSet())
             currentAsk = wait
+            val senderLimit = NodePolicyRepository.state.value.nearbyHopLimit
+            val payload = encodeNearbyHop(senderLimit, 0, requestId, key, ByteArray(0))
             onAsk("Asking ${open.size} nearby link${if (open.size == 1) "" else "s"}…")
             for (link in open) {
-                send(link, NearbyLimits.TYPE_REQUEST, key)
+                send(link, NearbyLimits.TYPE_SEEK, payload)
             }
             when (val outcome = wait.await(ASK_TIMEOUT_MS)) {
-                is AskOutcome.Contract -> importContract(outcome.bytes)
+                is AskOutcome.Contract -> importContract(outcome.bytes, key)
                 is AskOutcome.Refused -> onAsk(outcome.text)
-                AskOutcome.Timeout -> onAsk("No nearby phone answered within 90 seconds.")
+                AskOutcome.Timeout -> onAsk("No nearby phone answered within 3 minutes.")
             }
             if (currentAsk === wait) currentAsk = null
+            if (currentRequestId?.contentEquals(requestId) == true) currentRequestId = null
         }
     }
 
@@ -165,6 +182,7 @@ internal class NearbyEngine(
         }
         bluetoothNote = "Bluetooth is listening. Android may ask you to pair."
         startHelloLoop()
+        startForwardLoop()
         var l2capPsm: Int? = null
         try {
             val server = if (Build.VERSION.SDK_INT >= 29) {
@@ -297,6 +315,7 @@ internal class NearbyEngine(
         tcpServer = server
         wifiNote = "Wi-Fi is listening on this network."
         startHelloLoop()
+        startForwardLoop()
         acquireMulticastLock()
         io.execute {
             while (wifiWanted && !stopped) {
@@ -552,7 +571,7 @@ internal class NearbyEngine(
                     continue
                 }
                 if (count < 0) break
-                val batch = decoder.push(buffer, count, link.maxBytes)
+                val batch = decoder.push(buffer, count, NearbyLimits.HARD_MAX_BYTES)
                 if (batch.overflow) {
                     Log.i(TAG, "Closing nearby link that advertised an oversized frame")
                     break
@@ -583,6 +602,34 @@ internal class NearbyEngine(
                 currentAsk?.refuse(link.id, reason)
             }
             NearbyLimits.TYPE_CONTRACT -> currentAsk?.contract(frame.payload.copyOf())
+            NearbyLimits.TYPE_SEEK -> {
+                val payload = frame.payload.copyOf()
+                io.execute { handleSeek(link, payload) }
+            }
+            NearbyLimits.TYPE_DELIVER -> {
+                val parsed = parseNearbyDelivery(frame.payload) ?: return
+                val id = parsed.first
+                if (localRequests.containsKey(nearbyKeyHex(id))) {
+                    currentAsk?.contract(parsed.second)
+                } else {
+                    val copyId = id.copyOf()
+                    val blob = parsed.second.copyOf()
+                    io.execute { relayDelivery(copyId, blob) }
+                }
+            }
+            NearbyLimits.TYPE_UPDATE -> {
+                val payload = frame.payload.copyOf()
+                io.execute { handleUpdate(link, payload) }
+            }
+            NearbyLimits.TYPE_SEEK_REFUSE -> {
+                if (frame.payload.size < 17) return
+                val id = frame.payload.copyOfRange(0, 16)
+                val origin = currentRequestId
+                if (origin != null && origin.contentEquals(id)) {
+                    val reason = frame.payload[16].toInt() and 0xff
+                    currentAsk?.refuse(link.id, reason)
+                }
+            }
         }
     }
 
@@ -610,6 +657,7 @@ internal class NearbyEngine(
             fetchedBytes = fetchedBytesToday(policy.nearbyFetchedDay, policy.nearbyFetchedBytes, now),
             capBytes = nearbyCapBytes(policy.nearbyDailyCapMb),
             networkAllowed = connectivity.isAllowed(policy.networkData),
+            peersConnected = freenetPeersConnected(),
         )
         if (!decision.callNative) {
             send(link, NearbyLimits.TYPE_REFUSE, byteArrayOf(decision.refuseReason.toByte()))
@@ -635,7 +683,7 @@ internal class NearbyEngine(
             null
         }
         if (file != null) runCatching { file.delete() }
-        if (payload != null && send(link, NearbyLimits.TYPE_CONTRACT, payload)) return
+        if (payload != null && fits(link, payload) && send(link, NearbyLimits.TYPE_CONTRACT, payload)) return
         val reason = if (parsed.status == "local" || parsed.status == "fetched") {
             NearbyLimits.REFUSE_TOO_LARGE
         } else {
@@ -644,23 +692,248 @@ internal class NearbyEngine(
         send(link, NearbyLimits.TYPE_REFUSE, byteArrayOf(reason.toByte()))
     }
 
-    private fun importContract(bytes: ByteArray) {
-        if (bytes.size > NearbyLimits.WIFI_MAX_BYTES) {
+    private fun importContract(bytes: ByteArray, knownKey: ByteArray? = null) {
+        if (bytes.size > NearbyLimits.HARD_MAX_BYTES) {
             onAsk("That contract is too large.")
             return
         }
-        val file = File(appContext.cacheDir, "nearby-in-${System.nanoTime()}.bin")
-        try {
-            file.writeBytes(bytes)
-            val json = NativeBridge.nearbyImportContract(NearbyLimits.WEBSOCKET_PORT, file.absolutePath)
-            onAsk(parseNearbyImportMessage(json))
-        } catch (error: IOException) {
+        val json = writeImport(bytes)
+        if (json == null) {
             onAsk("This phone could not save the contract.")
+            return
+        }
+        val saved = knownKey ?: parseNearbyImportKey(json)
+        if (saved != null && saved.size == 32) {
+            NativeBridge.nearbyWatchAddKey(nearbyKeyHex(saved))
+        }
+        onAsk(parseNearbyImportMessage(json))
+    }
+
+    private fun writeImport(bytes: ByteArray): String? {
+        val file = File(appContext.cacheDir, "nearby-in-${System.nanoTime()}.bin")
+        return try {
+            file.writeBytes(bytes)
+            NativeBridge.nearbyImportContract(NearbyLimits.WEBSOCKET_PORT, file.absolutePath)
+        } catch (error: IOException) {
             Log.i(TAG, "Nearby import write failed: ${error.message}")
+            null
         } finally {
             runCatching { file.delete() }
         }
     }
+
+    private fun handleSeek(from: Link, payload: ByteArray) {
+        val hop = parseNearbyHop(payload) ?: return
+        if (hop.key.size != 32 || hop.body.isNotEmpty()) return
+        val idHex = nearbyKeyHex(hop.id)
+        if (!rememberSeen(idHex)) return
+        val origin = currentRequestId
+        if (origin != null && origin.contentEquals(hop.id)) return
+        seekReturn[idHex] = from.id
+        val hopsUsed = hop.hopsUsed + 1
+        val policy = NodePolicyRepository.state.value
+        val now = System.currentTimeMillis()
+        val nodeUp = nearbyNodeIsRunning(NodeRepository.state.value.state)
+        if (!nodeUp || nearbySessionExpired(policy.nearbySessionStartedEpochMs, policy.nearbySessionMinutes, now)) {
+            replySeekRefuse(from, hop.id, if (nodeUp) NearbyLimits.REFUSE_SESSION else NearbyLimits.REFUSE_NODE_DOWN)
+            return
+        }
+        val connectivity = AndroidConnectivityMonitor(appContext) {}.currentSnapshot()
+        val decision = nearbyDecision(
+            nodeRunning = true,
+            sessionExpired = false,
+            sendOwned = policy.nearbySendOwned,
+            fetchMissing = policy.nearbyFetchMissing,
+            fetchedBytes = fetchedBytesToday(policy.nearbyFetchedDay, policy.nearbyFetchedBytes, now),
+            capBytes = nearbyCapBytes(policy.nearbyDailyCapMb),
+            networkAllowed = connectivity.isAllowed(policy.networkData),
+            peersConnected = freenetPeersConnected(),
+        )
+        val directory = File(appContext.cacheDir, "nearby")
+        val json = NativeBridge.nearbyExportContract(
+            NearbyLimits.WEBSOCKET_PORT,
+            nearbyKeyHex(hop.key),
+            directory.absolutePath,
+            decision.allowSend,
+            decision.allowFetch,
+        )
+        val parsed = parseNearbyExport(json)
+        Log.i(TAG, "Nearby seek status=${parsed.status} bytes=${parsed.bytes} fetched=${parsed.fetched}")
+        if (parsed.fetched && parsed.bytes > 0L) {
+            NodePolicyRepository.addNearbyFetchedBytes(appContext, parsed.bytes)
+        }
+        val file = parsed.path.takeIf { it.isNotBlank() }?.let(::File)
+        val blob = if (parsed.status == "local" || parsed.status == "fetched") {
+            file?.takeIf { it.isFile && it.length() in 1..maxBytes(from.kind).toLong() }?.readBytes()
+        } else {
+            null
+        }
+        if (file != null) runCatching { file.delete() }
+        if (parsed.status == "local" || parsed.status == "fetched") {
+            if (blob != null) {
+                NativeBridge.nearbyWatchAddKey(nearbyKeyHex(hop.key))
+                sendDelivery(from, hop.id, blob)
+            } else {
+                replySeekRefuse(from, hop.id, NearbyLimits.REFUSE_TOO_LARGE)
+            }
+            return
+        }
+        if (parsed.status == "refused") {
+            replySeekRefuse(from, hop.id, NearbyLimits.REFUSE_OWNED_OFF)
+            return
+        }
+        if (parsed.status == "too_large") {
+            replySeekRefuse(from, hop.id, NearbyLimits.REFUSE_TOO_LARGE)
+            return
+        }
+        if (nearbyForward(policy.nearbyHopLimit, hop.senderLimit, hopsUsed)) {
+            val forwarded = encodeNearbyHop(hop.senderLimit, hopsUsed, hop.id, hop.key, ByteArray(0))
+            val sent = snapshotLinks().any { other ->
+                other.id != from.id && send(other, NearbyLimits.TYPE_SEEK, forwarded)
+            }
+            if (sent) return
+        }
+        val reason = if (parsed.status == "absent" || parsed.status == "unavailable") {
+            NearbyLimits.REFUSE_MISSING
+        } else {
+            refuseForExportStatus(parsed.status)
+        }
+        replySeekRefuse(from, hop.id, reason)
+    }
+
+    private fun relayDelivery(id: ByteArray, blob: ByteArray) {
+        if (blob.size > NearbyLimits.HARD_MAX_BYTES) return
+        val json = writeImport(blob)
+        val saved = json?.let { parseNearbyImportKey(it) }
+        if (saved != null && saved.size == 32) {
+            NativeBridge.nearbyWatchAddKey(nearbyKeyHex(saved))
+        }
+        val returnLinkId = seekReturn[nearbyKeyHex(id)]
+        val previous = returnLinkId?.let { linkId -> snapshotLinks().find { it.id == linkId } }
+        if (previous == null) return
+        sendDelivery(previous, id, blob)
+    }
+
+    private fun handleUpdate(from: Link, payload: ByteArray) {
+        val hop = parseNearbyHop(payload) ?: return
+        if (hop.key.size != 32 || hop.body.isEmpty()) return
+        if (hop.body.size > maxBytes(from.kind)) return
+        val idHex = nearbyKeyHex(hop.id)
+        if (!rememberSeen(idHex)) return
+        val hopsUsed = hop.hopsUsed + 1
+        val hash = sha256(hop.body)
+        recentApplied[hash] = SystemClock.elapsedRealtime()
+        val file = File(appContext.cacheDir, "nearby-apply-${System.nanoTime()}.bin")
+        val applied = try {
+            file.writeBytes(hop.body)
+            val json = NativeBridge.nearbyApplyUpdate(
+                NearbyLimits.WEBSOCKET_PORT,
+                nearbyKeyHex(hop.key),
+                file.absolutePath,
+            )
+            runCatching { org.json.JSONObject(json).optString("status") }.getOrDefault("error")
+        } catch (error: IOException) {
+            Log.i(TAG, "Nearby update write failed: ${error.message}")
+            "error"
+        } finally {
+            runCatching { file.delete() }
+        }
+        if (applied == "applied") {
+            NativeBridge.nearbyWatchAddKey(nearbyKeyHex(hop.key))
+        }
+        val policy = NodePolicyRepository.state.value
+        if (!policy.nearbySendOwned) return
+        if (!nearbyForward(policy.nearbyHopLimit, hop.senderLimit, hopsUsed)) return
+        val forwarded = encodeNearbyHop(hop.senderLimit, hopsUsed, hop.id, hop.key, hop.body)
+        snapshotLinks().forEach { other ->
+            if (other.id != from.id && fits(other, forwarded)) {
+                send(other, NearbyLimits.TYPE_UPDATE, forwarded)
+            }
+        }
+    }
+
+    private fun originateUpdate(keyHex: String, body: ByteArray) {
+        if (!NodePolicyRepository.state.value.nearbySendOwned) return
+        val key = decodeNearbyKeyToken(keyHex) ?: return
+        if (key.size != 32 || body.isEmpty()) return
+        val hash = sha256(body)
+        val seenAt = recentApplied[hash]
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (seenAt != null && nowElapsed - seenAt < 60_000L) return
+        val id = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        rememberSeen(nearbyKeyHex(id))
+        val limit = NodePolicyRepository.state.value.nearbyHopLimit
+        val payload = encodeNearbyHop(limit, 0, id, key, body)
+        snapshotLinks().forEach { link ->
+            if (fits(link, payload)) send(link, NearbyLimits.TYPE_UPDATE, payload)
+        }
+    }
+
+    private fun startForwardLoop() {
+        if (forwardThread?.isAlive == true) return
+        val directory = File(appContext.cacheDir, "nearby")
+        if (!directory.isDirectory && !directory.mkdirs()) return
+        NativeBridge.nearbyWatchStart(NearbyLimits.WEBSOCKET_PORT, directory.absolutePath)
+        val thread = Thread({
+            while (!stopped && (bluetoothWanted || wifiWanted)) {
+                val json = NativeBridge.nearbyWatchPoll(1_000)
+                if (stopped) break
+                val obj = runCatching { org.json.JSONObject(json) }.getOrNull() ?: continue
+                if (obj.optString("status") != "update") continue
+                val path = obj.optString("path", "")
+                val key = obj.optString("key", "")
+                if (path.isBlank() || key.isBlank()) continue
+                val file = File(path)
+                val body = runCatching { file.readBytes() }.getOrNull()
+                runCatching { file.delete() }
+                if (body != null && body.isNotEmpty()) originateUpdate(key, body)
+            }
+        }, "freenet-nearby-forward")
+        thread.isDaemon = true
+        forwardThread = thread
+        thread.start()
+    }
+
+    private fun sendDelivery(link: Link, id: ByteArray, blob: ByteArray) {
+        val payload = encodeNearbyDelivery(id, blob)
+        if (!fits(link, payload)) {
+            replySeekRefuse(link, id, NearbyLimits.REFUSE_TOO_LARGE)
+            return
+        }
+        send(link, NearbyLimits.TYPE_DELIVER, payload)
+    }
+
+    private fun replySeekRefuse(link: Link, id: ByteArray, reason: Int) {
+        val payload = ByteArray(17)
+        id.copyInto(payload, 0, 0, 16)
+        payload[16] = reason.toByte()
+        send(link, NearbyLimits.TYPE_SEEK_REFUSE, payload)
+    }
+
+    private fun rememberSeen(idHex: String): Boolean {
+        val now = SystemClock.elapsedRealtime()
+        val previous = seenMessages.putIfAbsent(idHex, now)
+        if (previous != null) return false
+        if (seenMessages.size > 400) {
+            seenMessages.entries.removeIf { now - it.value > 10 * 60_000L }
+        }
+        return true
+    }
+
+    private fun freenetPeersConnected(): Boolean {
+        val state = NodeRepository.state.value
+        return state.state == "RunningNetwork" && state.peers > 0
+    }
+
+    private fun maxBytes(kind: String): Int {
+        val policy = NodePolicyRepository.state.value
+        return nearbyMaxBytes(policy.nearbyBluetoothMaxMb, policy.nearbyWifiMaxMb, kind)
+    }
+
+    private fun fits(link: Link, payload: ByteArray): Boolean = payload.size <= maxBytes(link.kind)
+
+    private fun sha256(bytes: ByteArray): String =
+        MessageDigest.getInstance("SHA-256").digest(bytes).joinToString("") { "%02x".format(it) }
 
     private fun sendHello(link: Link) {
         val name = (android.os.Build.MODEL ?: "phone").take(40).encodeToByteArray()
@@ -669,7 +942,14 @@ internal class NearbyEngine(
 
     private fun send(link: Link, type: Int, payload: ByteArray): Boolean {
         if (!link.open) return false
-        if (type == NearbyLimits.TYPE_CONTRACT && payload.size > link.maxBytes) return false
+        if (
+            (type == NearbyLimits.TYPE_CONTRACT ||
+                type == NearbyLimits.TYPE_DELIVER ||
+                type == NearbyLimits.TYPE_UPDATE) &&
+            !fits(link, payload)
+        ) {
+            return false
+        }
         val frame = encodeNearbyFrame(type, payload)
         return synchronized(link.output) {
             try {
@@ -838,6 +1118,6 @@ internal class NearbyEngine(
     private companion object {
         const val TAG = "FreenetNearby"
         const val HELLO_INTERVAL_MS = 25_000L
-        const val ASK_TIMEOUT_MS = 90_000L
+        const val ASK_TIMEOUT_MS = 180_000L
     }
 }

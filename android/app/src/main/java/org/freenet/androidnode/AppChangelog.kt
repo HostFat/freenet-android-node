@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: nearby sharing can send one contract the other phone asks for, over Bluetooth or the Wi-Fi network both phones are already on. Bluetooth, Wi-Fi, sending stored contracts, and downloading missing contracts all stay off until you turn them on. A missing contract is refused and is not downloaded unless that download switch is on. A downloaded copy stays on this phone."
+        "This update: nearby phones keep subscribed contracts up to date over Bluetooth or the Wi-Fi they already share, and can relay that through other phones. Hop 1 talks only to directly connected phones and does not relay. Hop 0 is no hop limit. A phone with the download switch on and a Freenet peer can fetch a missing contract and pass it back; every phone on that path keeps a copy. Session length, the daily download cap, and transfer size can be set to no limit. Schedule turns the node and these radios off together."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

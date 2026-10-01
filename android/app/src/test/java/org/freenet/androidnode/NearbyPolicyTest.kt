@@ -142,7 +142,43 @@ class NearbyPolicyTest {
             nearbyRuntimePermissions(31, bluetooth = true, wifi = false),
         )
         assertTrue(nearbyRuntimePermissions(33, bluetooth = false, wifi = true).contains("android.permission.NEARBY_WIFI_DEVICES"))
-        assertEquals(20, coerceNearbyDailyCapMb(0))
+        assertEquals(0, coerceNearbyDailyCapMb(0))
+        assertEquals(0, coerceNearbySessionMinutes(0))
         assertEquals(120, coerceNearbySessionMinutes(500))
+        assertFalse(nearbySessionExpired(1_000L, 0, 1_000L + 24 * 60 * 60_000L))
+    }
+
+    @Test
+    fun hopLimitStopsAtTheStricterPhone() {
+        assertFalse(nearbyForward(myLimit = 1, senderLimit = 8, hopsUsed = 1))
+        assertFalse(nearbyForward(myLimit = 0, senderLimit = 1, hopsUsed = 1))
+        assertTrue(nearbyForward(myLimit = 0, senderLimit = 0, hopsUsed = 4))
+        assertTrue(nearbyForward(myLimit = 7, senderLimit = 7, hopsUsed = 6))
+        assertFalse(nearbyForward(myLimit = 7, senderLimit = 7, hopsUsed = 7))
+        assertFalse(nearbyForward(myLimit = 1, senderLimit = 0, hopsUsed = 1))
+        assertEquals(Long.MAX_VALUE, nearbyCapBytes(0))
+
+        val id = ByteArray(16) { 7 }
+        val key = ByteArray(32) { 3 }
+        val encoded = encodeNearbyHop(7, 2, id, key, byteArrayOf(9, 8))
+        val parsed = parseNearbyHop(encoded)
+        assertEquals(7, parsed!!.senderLimit)
+        assertEquals(2, parsed.hopsUsed)
+        assertTrue(parsed.id.contentEquals(id))
+        assertTrue(parsed.key.contentEquals(key))
+        assertTrue(parsed.body.contentEquals(byteArrayOf(9, 8)))
+
+        val offline = nearbyDecision(
+            nodeRunning = true,
+            sessionExpired = false,
+            sendOwned = false,
+            fetchMissing = true,
+            fetchedBytes = 0L,
+            capBytes = nearbyCapBytes(20),
+            networkAllowed = true,
+            peersConnected = false,
+        )
+        assertFalse(offline.allowFetch)
+        assertFalse(offline.callNative)
     }
 }

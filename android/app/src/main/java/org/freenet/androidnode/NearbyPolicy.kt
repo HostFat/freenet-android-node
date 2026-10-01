@@ -8,18 +8,29 @@ import org.json.JSONObject
 internal object NearbyLimits {
     const val BLUETOOTH_MAX_BYTES = 8 * 1024 * 1024
     const val WIFI_MAX_BYTES = 32 * 1024 * 1024
+    const val HARD_MAX_BYTES = 128 * 1024 * 1024
     const val DEFAULT_DAILY_CAP_MB = 20
-    const val MIN_DAILY_CAP_MB = 1
+    const val MIN_DAILY_CAP_MB = 0
     const val MAX_DAILY_CAP_MB = 500
     const val DEFAULT_SESSION_MINUTES = 30
-    const val MIN_SESSION_MINUTES = 5
+    const val MIN_SESSION_MINUTES = 0
     const val MAX_SESSION_MINUTES = 120
+    const val DEFAULT_HOP_LIMIT = 7
+    const val MAX_HOP_LIMIT = 255
+    const val DEFAULT_BLUETOOTH_MAX_MB = 8
+    const val DEFAULT_WIFI_MAX_MB = 32
+    const val MAX_SIZE_MB = 128
     const val WEBSOCKET_PORT = 7509
     const val FRAME_VERSION = 1
     const val TYPE_HELLO = 1
     const val TYPE_REQUEST = 2
     const val TYPE_REFUSE = 3
     const val TYPE_CONTRACT = 4
+    const val TYPE_SEEK = 5
+    const val TYPE_DELIVER = 6
+    const val TYPE_UPDATE = 7
+    const val TYPE_SEEK_REFUSE = 8
+    const val HOP_HEADER_BYTES = 50
     const val REFUSE_OWNED_OFF = 1
     const val REFUSE_MISSING = 2
     const val REFUSE_DAILY_CAP = 3
@@ -71,11 +82,42 @@ internal fun coerceNearbyDailyCapMb(value: Int): Int =
 internal fun coerceNearbySessionMinutes(value: Int): Int =
     value.coerceIn(NearbyLimits.MIN_SESSION_MINUTES, NearbyLimits.MAX_SESSION_MINUTES)
 
-internal fun nearbyCapBytes(dailyCapMb: Int): Long =
-    coerceNearbyDailyCapMb(dailyCapMb).toLong() * 1024L * 1024L
+internal fun nearbyCapBytes(dailyCapMb: Int): Long {
+    val cap = coerceNearbyDailyCapMb(dailyCapMb)
+    if (cap == 0) return Long.MAX_VALUE
+    return cap.toLong() * 1024L * 1024L
+}
+
+internal fun coerceNearbyHopLimit(value: Int): Int =
+    value.coerceIn(0, NearbyLimits.MAX_HOP_LIMIT)
+
+internal fun coerceNearbySizeMb(value: Int): Int =
+    value.coerceIn(0, NearbyLimits.MAX_SIZE_MB)
+
+internal fun nearbyMaxBytes(bluetoothMb: Int, wifiMb: Int, kind: String): Int {
+    val megabytes = coerceNearbySizeMb(if (kind == "bluetooth") bluetoothMb else wifiMb)
+    if (megabytes == 0) return NearbyLimits.HARD_MAX_BYTES
+    return (megabytes.toLong() * 1024L * 1024L)
+        .coerceAtMost(NearbyLimits.HARD_MAX_BYTES.toLong())
+        .toInt()
+}
+
+/**
+ * [hopsUsed] counts this phone. A limit of 1 never relays. Zero is no ceiling
+ * from that phone. The sender's limit and this phone's limit both apply.
+ */
+internal fun nearbyForward(myLimit: Int, senderLimit: Int, hopsUsed: Int): Boolean {
+    val mine = coerceNearbyHopLimit(myLimit)
+    val sender = coerceNearbyHopLimit(senderLimit)
+    if (mine == 1) return false
+    if (mine != 0 && hopsUsed >= mine) return false
+    if (sender != 0 && hopsUsed >= sender) return false
+    return true
+}
 
 internal fun nearbySessionExpired(startedEpochMs: Long, sessionMinutes: Int, nowMs: Long): Boolean {
     if (startedEpochMs <= 0L) return false
+    if (coerceNearbySessionMinutes(sessionMinutes) == 0) return false
     val windowMs = coerceNearbySessionMinutes(sessionMinutes) * 60_000L
     return nowMs >= startedEpochMs + windowMs
 }
@@ -100,6 +142,7 @@ internal fun nearbyDecision(
     fetchedBytes: Long,
     capBytes: Long,
     networkAllowed: Boolean,
+    peersConnected: Boolean = true,
 ): NearbyDecision {
     if (!nodeRunning) {
         return NearbyDecision(false, false, NearbyLimits.REFUSE_NODE_DOWN)
@@ -107,7 +150,7 @@ internal fun nearbyDecision(
     if (sessionExpired) {
         return NearbyDecision(false, false, NearbyLimits.REFUSE_SESSION)
     }
-    val allowFetch = fetchMissing && fetchedBytes < capBytes && networkAllowed
+    val allowFetch = fetchMissing && peersConnected && fetchedBytes < capBytes && networkAllowed
     if (sendOwned || allowFetch) {
         return NearbyDecision(sendOwned, allowFetch, 0)
     }
@@ -204,6 +247,59 @@ internal fun decodeNearbyKeyToken(token: String): ByteArray? {
     val decoded = decodeBase58(token) ?: return null
     if (decoded.size == 32) return decoded
     return null
+}
+
+internal data class NearbyHop(
+    val id: ByteArray,
+    val senderLimit: Int,
+    val hopsUsed: Int,
+    val key: ByteArray,
+    val body: ByteArray,
+)
+
+internal fun encodeNearbyHop(
+    senderLimit: Int,
+    hopsUsed: Int,
+    id: ByteArray,
+    key: ByteArray,
+    body: ByteArray,
+): ByteArray {
+    val out = ByteArray(NearbyLimits.HOP_HEADER_BYTES + body.size)
+    id.copyInto(out, 0, 0, 16)
+    out[16] = coerceNearbyHopLimit(senderLimit).toByte()
+    out[17] = hopsUsed.coerceIn(0, 255).toByte()
+    key.copyInto(out, 18, 0, 32)
+    body.copyInto(out, NearbyLimits.HOP_HEADER_BYTES)
+    return out
+}
+
+internal fun parseNearbyHop(payload: ByteArray): NearbyHop? {
+    if (payload.size < NearbyLimits.HOP_HEADER_BYTES) return null
+    return NearbyHop(
+        id = payload.copyOfRange(0, 16),
+        senderLimit = payload[16].toInt() and 0xff,
+        hopsUsed = payload[17].toInt() and 0xff,
+        key = payload.copyOfRange(18, 50),
+        body = payload.copyOfRange(NearbyLimits.HOP_HEADER_BYTES, payload.size),
+    )
+}
+
+internal fun encodeNearbyDelivery(id: ByteArray, blob: ByteArray): ByteArray {
+    val out = ByteArray(16 + blob.size)
+    id.copyInto(out, 0, 0, 16)
+    blob.copyInto(out, 16)
+    return out
+}
+
+internal fun parseNearbyDelivery(payload: ByteArray): Pair<ByteArray, ByteArray>? {
+    if (payload.size < 16) return null
+    return payload.copyOfRange(0, 16) to payload.copyOfRange(16, payload.size)
+}
+
+internal fun parseNearbyImportKey(json: String): ByteArray? {
+    val obj = runCatching { JSONObject(json) }.getOrNull() ?: return null
+    if (obj.optString("status") != "imported") return null
+    return parseNearbyContractKey(obj.optString("key", ""))
 }
 
 internal fun nearbyKeyHex(key: ByteArray): String =

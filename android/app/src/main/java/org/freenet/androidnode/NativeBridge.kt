@@ -56,6 +56,20 @@ object NativeBridge {
         contractFilePath: String,
     ): String
 
+    external fun nativeNearbyApplyUpdate(
+        websocketPort: Int,
+        contractKeyHex: String,
+        updateFilePath: String,
+    ): String
+
+    external fun nativeNearbyWatchStart(websocketPort: Int, outputDirectory: String)
+
+    external fun nativeNearbyWatchStop()
+
+    external fun nativeNearbyWatchAddKey(contractKeyHex: String)
+
+    external fun nativeNearbyWatchPoll(timeoutMs: Int): String
+
     fun ping(): Result<String> = withLoadedLibrary(::nativePing)
 
     fun buildInfo(): Result<String> = withLoadedLibrary(::nativeBuildInfo)
@@ -123,6 +137,44 @@ object NativeBridge {
         }.getOrElse { error ->
             nearbyImportError(error.message ?: "The nearby import failed.")
         }
+    }
+
+    fun nearbyApplyUpdate(websocketPort: Int, contractKeyHex: String, updateFilePath: String): String {
+        if (!isLoaded) {
+            return JSONObject()
+                .put("status", "error")
+                .put("message", loadError ?: "The node library is not loaded.")
+                .toString()
+        }
+        return runCatching {
+            nativeNearbyApplyUpdate(websocketPort, contractKeyHex, updateFilePath)
+        }.getOrElse { error ->
+            JSONObject()
+                .put("status", "error")
+                .put("message", error.message ?: "The nearby update failed.")
+                .toString()
+        }
+    }
+
+    fun nearbyWatchStart(websocketPort: Int, outputDirectory: String) {
+        if (!isLoaded) return
+        runCatching { nativeNearbyWatchStart(websocketPort, outputDirectory) }
+    }
+
+    fun nearbyWatchStop() {
+        if (!isLoaded) return
+        runCatching { nativeNearbyWatchStop() }
+    }
+
+    fun nearbyWatchAddKey(contractKeyHex: String) {
+        if (!isLoaded) return
+        runCatching { nativeNearbyWatchAddKey(contractKeyHex) }
+    }
+
+    fun nearbyWatchPoll(timeoutMs: Int): String {
+        if (!isLoaded) return JSONObject().put("status", "stopped").toString()
+        return runCatching { nativeNearbyWatchPoll(timeoutMs) }
+            .getOrElse { JSONObject().put("status", "timeout").toString() }
     }
 
     private fun nearbyExportError(message: String): String = JSONObject()

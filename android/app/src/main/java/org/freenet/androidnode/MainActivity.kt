@@ -582,6 +582,9 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onNearbyFetchMissing = nodeViewModel::setNearbyFetchMissing,
                         onNearbyDailyCapMb = nodeViewModel::setNearbyDailyCapMb,
                         onNearbySessionMinutes = nodeViewModel::setNearbySessionMinutes,
+                        onNearbyHopLimit = nodeViewModel::setNearbyHopLimit,
+                        onNearbyBluetoothMaxMb = nodeViewModel::setNearbyBluetoothMaxMb,
+                        onNearbyWifiMaxMb = nodeViewModel::setNearbyWifiMaxMb,
                         onEnsureNotification = { action -> withNotificationPermission(action) },
                     )
                     HorizontalDivider()
@@ -1454,6 +1457,9 @@ private fun PolicyControls(
     onNearbyFetchMissing: (Boolean) -> Unit,
     onNearbyDailyCapMb: (Int) -> Unit,
     onNearbySessionMinutes: (Int) -> Unit,
+    onNearbyHopLimit: (Int) -> Unit,
+    onNearbyBluetoothMaxMb: (Int) -> Unit,
+    onNearbyWifiMaxMb: (Int) -> Unit,
     onEnsureNotification: (() -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1604,6 +1610,9 @@ private fun PolicyControls(
             onFetchMissing = onNearbyFetchMissing,
             onDailyCapMb = onNearbyDailyCapMb,
             onSessionMinutes = onNearbySessionMinutes,
+            onHopLimit = onNearbyHopLimit,
+            onBluetoothMaxMb = onNearbyBluetoothMaxMb,
+            onWifiMaxMb = onNearbyWifiMaxMb,
             onEnsureNotification = onEnsureNotification,
         )
         HorizontalDivider()
@@ -1746,6 +1755,9 @@ private fun NearbyShareControls(
     onFetchMissing: (Boolean) -> Unit,
     onDailyCapMb: (Int) -> Unit,
     onSessionMinutes: (Int) -> Unit,
+    onHopLimit: (Int) -> Unit,
+    onBluetoothMaxMb: (Int) -> Unit,
+    onWifiMaxMb: (Int) -> Unit,
     onEnsureNotification: (() -> Unit) -> Unit,
 ) {
     val context = LocalContext.current
@@ -1839,11 +1851,15 @@ private fun NearbyShareControls(
             style = MaterialTheme.typography.bodySmall,
         )
         Text(
-            stringResource(
-                R.string.nearby_downloaded_today,
-                formatTrafficBytes(todayBytes),
-                formatTrafficBytes(nearbyCapBytes(policies.nearbyDailyCapMb)),
-            ),
+            if (policies.nearbyDailyCapMb == 0) {
+                stringResource(R.string.nearby_downloaded_today_unlimited, formatTrafficBytes(todayBytes))
+            } else {
+                stringResource(
+                    R.string.nearby_downloaded_today,
+                    formatTrafficBytes(todayBytes),
+                    formatTrafficBytes(nearbyCapBytes(policies.nearbyDailyCapMb)),
+                )
+            },
             style = MaterialTheme.typography.bodySmall,
         )
         IntStepper(
@@ -1851,7 +1867,11 @@ private fun NearbyShareControls(
             value = policies.nearbyDailyCapMb,
             min = NearbyLimits.MIN_DAILY_CAP_MB,
             max = NearbyLimits.MAX_DAILY_CAP_MB,
-            valueLabel = "${policies.nearbyDailyCapMb} MB",
+            valueLabel = if (policies.nearbyDailyCapMb == 0) {
+                stringResource(R.string.nearby_no_limit)
+            } else {
+                "${policies.nearbyDailyCapMb} MB"
+            },
             onChange = onDailyCapMb,
         )
         IntStepper(
@@ -1859,8 +1879,56 @@ private fun NearbyShareControls(
             value = policies.nearbySessionMinutes,
             min = NearbyLimits.MIN_SESSION_MINUTES,
             max = NearbyLimits.MAX_SESSION_MINUTES,
-            valueLabel = "${policies.nearbySessionMinutes} minutes",
+            valueLabel = if (policies.nearbySessionMinutes == 0) {
+                stringResource(R.string.nearby_no_time_limit)
+            } else {
+                "${policies.nearbySessionMinutes} minutes"
+            },
             onChange = onSessionMinutes,
+        )
+        IntStepper(
+            label = stringResource(R.string.nearby_hops),
+            value = policies.nearbyHopLimit,
+            min = 0,
+            max = NearbyLimits.MAX_HOP_LIMIT,
+            valueLabel = if (policies.nearbyHopLimit == 0) {
+                stringResource(R.string.nearby_no_hop_limit)
+            } else {
+                stringResource(R.string.nearby_hop_value, policies.nearbyHopLimit)
+            },
+            onChange = onHopLimit,
+        )
+        Text(
+            stringResource(R.string.nearby_hops_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        IntStepper(
+            label = stringResource(R.string.nearby_bluetooth_size),
+            value = policies.nearbyBluetoothMaxMb,
+            min = 0,
+            max = NearbyLimits.MAX_SIZE_MB,
+            valueLabel = if (policies.nearbyBluetoothMaxMb == 0) {
+                stringResource(R.string.nearby_no_size_limit)
+            } else {
+                "${policies.nearbyBluetoothMaxMb} MB"
+            },
+            onChange = onBluetoothMaxMb,
+        )
+        IntStepper(
+            label = stringResource(R.string.nearby_wifi_size),
+            value = policies.nearbyWifiMaxMb,
+            min = 0,
+            max = NearbyLimits.MAX_SIZE_MB,
+            valueLabel = if (policies.nearbyWifiMaxMb == 0) {
+                stringResource(R.string.nearby_no_size_limit)
+            } else {
+                "${policies.nearbyWifiMaxMb} MB"
+            },
+            onChange = onWifiMaxMb,
+        )
+        Text(
+            stringResource(R.string.nearby_size_hint),
+            style = MaterialTheme.typography.bodySmall,
         )
         OutlinedTextField(
             value = keyText,

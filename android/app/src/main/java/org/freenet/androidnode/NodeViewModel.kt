@@ -117,6 +117,18 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
         NodePolicyRepository.setNearbySessionMinutes(getApplication(), minutes)
     }
 
+    fun setNearbyHopLimit(hops: Int) {
+        NodePolicyRepository.setNearbyHopLimit(getApplication(), hops)
+    }
+
+    fun setNearbyBluetoothMaxMb(megabytes: Int) {
+        NodePolicyRepository.setNearbyBluetoothMaxMb(getApplication(), megabytes)
+    }
+
+    fun setNearbyWifiMaxMb(megabytes: Int) {
+        NodePolicyRepository.setNearbyWifiMaxMb(getApplication(), megabytes)
+    }
+
     fun restartNetworkNode() {
         NodeRepository.restartNetworkNode(getApplication())
     }

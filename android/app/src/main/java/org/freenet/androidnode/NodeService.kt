@@ -525,6 +525,9 @@ class NodeService : Service() {
                     serviceActive = true,
                     startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
                 )
+                if (state.state == "RunningNetwork" || state.state == "RunningLocal") {
+                    NearbyService.syncWithNode(this@NodeService)
+                }
                 if (state.state == "RunningNetwork") {
                     NodePolicyRepository.recordNetworkUp(this@NodeService)
                     crashRestartAttempt = 0
@@ -709,6 +712,7 @@ class NodeService : Service() {
         shutdownCompleted = true
         NodeRepository.publishWaiting(detail, paused)
         nodeNotificationManager.update(NodeRepository.state.value)
+        NearbyService.syncWithNode(this)
         logControllerDetail(detail)
     }
 
@@ -730,6 +734,7 @@ class NodeService : Service() {
             Log.i(TAG, "Keeping NodeService for a newer command after startId=$startId")
             return
         }
+        NearbyService.syncWithNode(this)
         Log.i(TAG, "Stopping NodeService after native shutdown startId=$startId")
         if (foregroundStarted) {
             stopForeground(STOP_FOREGROUND_REMOVE)

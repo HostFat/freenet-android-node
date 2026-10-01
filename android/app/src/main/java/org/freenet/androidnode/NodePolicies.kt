@@ -189,6 +189,9 @@ data class NodePolicyState(
     val nearbyFetchMissing: Boolean = false,
     val nearbyDailyCapMb: Int = NearbyLimits.DEFAULT_DAILY_CAP_MB,
     val nearbySessionMinutes: Int = NearbyLimits.DEFAULT_SESSION_MINUTES,
+    val nearbyHopLimit: Int = NearbyLimits.DEFAULT_HOP_LIMIT,
+    val nearbyBluetoothMaxMb: Int = NearbyLimits.DEFAULT_BLUETOOTH_MAX_MB,
+    val nearbyWifiMaxMb: Int = NearbyLimits.DEFAULT_WIFI_MAX_MB,
     val nearbySessionStartedEpochMs: Long = 0L,
     val nearbyFetchedDay: String = "",
     val nearbyFetchedBytes: Long = 0L,
@@ -236,6 +239,9 @@ object NodePolicyRepository {
     private const val NEARBY_FETCH_MISSING_KEY = "nearby_fetch_missing"
     private const val NEARBY_DAILY_CAP_MB_KEY = "nearby_daily_cap_mb"
     private const val NEARBY_SESSION_MINUTES_KEY = "nearby_session_minutes"
+    private const val NEARBY_HOP_LIMIT_KEY = "nearby_hop_limit"
+    private const val NEARBY_BLUETOOTH_MAX_MB_KEY = "nearby_bluetooth_max_mb"
+    private const val NEARBY_WIFI_MAX_MB_KEY = "nearby_wifi_max_mb"
     private const val NEARBY_SESSION_STARTED_KEY = "nearby_session_started_ms"
     private const val NEARBY_FETCHED_DAY_KEY = "nearby_fetched_day"
     private const val NEARBY_FETCHED_BYTES_KEY = "nearby_fetched_bytes"
@@ -298,6 +304,15 @@ object NodePolicyRepository {
             ),
             nearbySessionMinutes = coerceNearbySessionMinutes(
                 preferences.getInt(NEARBY_SESSION_MINUTES_KEY, NearbyLimits.DEFAULT_SESSION_MINUTES),
+            ),
+            nearbyHopLimit = coerceNearbyHopLimit(
+                preferences.getInt(NEARBY_HOP_LIMIT_KEY, NearbyLimits.DEFAULT_HOP_LIMIT),
+            ),
+            nearbyBluetoothMaxMb = coerceNearbySizeMb(
+                preferences.getInt(NEARBY_BLUETOOTH_MAX_MB_KEY, NearbyLimits.DEFAULT_BLUETOOTH_MAX_MB),
+            ),
+            nearbyWifiMaxMb = coerceNearbySizeMb(
+                preferences.getInt(NEARBY_WIFI_MAX_MB_KEY, NearbyLimits.DEFAULT_WIFI_MAX_MB),
             ),
             nearbySessionStartedEpochMs = preferences.getLong(NEARBY_SESSION_STARTED_KEY, 0L),
             nearbyFetchedDay = preferences.getString(NEARBY_FETCHED_DAY_KEY, "") ?: "",
@@ -489,6 +504,24 @@ object NodePolicyRepository {
         )
     }
 
+    fun setNearbyHopLimit(context: Context, hops: Int) {
+        initialize(context)
+        persist(context, mutableState.value.copy(nearbyHopLimit = coerceNearbyHopLimit(hops)))
+    }
+
+    fun setNearbyBluetoothMaxMb(context: Context, megabytes: Int) {
+        initialize(context)
+        persist(
+            context,
+            mutableState.value.copy(nearbyBluetoothMaxMb = coerceNearbySizeMb(megabytes)),
+        )
+    }
+
+    fun setNearbyWifiMaxMb(context: Context, megabytes: Int) {
+        initialize(context)
+        persist(context, mutableState.value.copy(nearbyWifiMaxMb = coerceNearbySizeMb(megabytes)))
+    }
+
     fun addNearbyFetchedBytes(context: Context, bytes: Long) {
         if (bytes <= 0L) return
         initialize(context)
@@ -541,7 +574,9 @@ object NodePolicyRepository {
                 nearbySessionStartedEpochMs = started,
             ),
         )
-        if (!bothOff) NearbyService.start(context)
+        if (!bothOff && nearbyNodeIsRunning(NodeRepository.state.value.state)) {
+            NearbyService.start(context)
+        }
     }
 
     fun stopAutomaticScheduling(context: Context) {
@@ -584,6 +619,9 @@ object NodePolicyRepository {
             .putBoolean(NEARBY_FETCH_MISSING_KEY, next.nearbyFetchMissing)
             .putInt(NEARBY_DAILY_CAP_MB_KEY, next.nearbyDailyCapMb)
             .putInt(NEARBY_SESSION_MINUTES_KEY, next.nearbySessionMinutes)
+            .putInt(NEARBY_HOP_LIMIT_KEY, next.nearbyHopLimit)
+            .putInt(NEARBY_BLUETOOTH_MAX_MB_KEY, next.nearbyBluetoothMaxMb)
+            .putInt(NEARBY_WIFI_MAX_MB_KEY, next.nearbyWifiMaxMb)
             .putLong(NEARBY_SESSION_STARTED_KEY, next.nearbySessionStartedEpochMs)
             .putString(NEARBY_FETCHED_DAY_KEY, next.nearbyFetchedDay)
             .putLong(NEARBY_FETCHED_BYTES_KEY, next.nearbyFetchedBytes)

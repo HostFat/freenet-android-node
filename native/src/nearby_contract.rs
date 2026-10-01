@@ -26,7 +26,7 @@ const PRESENCE_TIMEOUT: Duration = Duration::from_secs(15);
 const LOCAL_GET_TIMEOUT: Duration = Duration::from_secs(20);
 const FETCH_GET_TIMEOUT: Duration = Duration::from_secs(90);
 const PUT_TIMEOUT: Duration = Duration::from_secs(60);
-const MAX_BLOB_BYTES: usize = 32 * 1024 * 1024;
+pub(crate) const MAX_BLOB_BYTES: usize = 128 * 1024 * 1024;
 const BLOB_MAGIC: &[u8; 4] = b"FNCT";
 
 #[derive(Debug, PartialEq, Eq)]
@@ -58,7 +58,7 @@ fn nearby_plan(known: bool, allow_send: bool, allow_fetch: bool) -> NearbyPlan {
 /// already has peers, is the case where a client `Get` can leave the phone.
 /// Skip that `Get` when fetching is off. A stored contract with a size, or any
 /// contract while this node has no open connections, still uses the local read.
-fn local_read_stays_on_device(
+pub(crate) fn local_read_stays_on_device(
     open_connections: usize,
     subscribed: bool,
     subscribers: u32,
@@ -230,15 +230,15 @@ async fn export_contract_async(
     })
 }
 
-struct Presence {
-    known: bool,
-    subscribed: bool,
-    subscribers: u32,
-    size_bytes: u64,
-    open_connections: usize,
+pub(crate) struct Presence {
+    pub(crate) known: bool,
+    pub(crate) subscribed: bool,
+    pub(crate) subscribers: u32,
+    pub(crate) size_bytes: u64,
+    pub(crate) open_connections: usize,
 }
 
-async fn presence(
+pub(crate) async fn presence(
     client: &mut WebApi,
     instance_id: ContractInstanceId,
 ) -> Result<Presence, String> {
@@ -319,7 +319,7 @@ async fn read_contract(
                 return Ok(ReadContract {
                     status: "too_large",
                     fetched,
-                    message: "That contract is larger than 32 MiB.".to_owned(),
+                    message: "That contract is larger than 128 MiB.".to_owned(),
                     bytes: raw_bytes,
                     blob: Vec::new(),
                 });
@@ -351,7 +351,7 @@ async fn import_contract_async(port: u16, path: &Path) -> Result<String, String>
     let bytes =
         fs::read(path).map_err(|error| format!("failed to read the nearby contract: {error}"))?;
     if bytes.len() > MAX_BLOB_BYTES {
-        return Err("that contract is larger than 32 MiB".to_owned());
+        return Err("that contract is larger than 128 MiB".to_owned());
     }
     let (code, params, state) = decode_blob(&bytes)?;
     if !code.starts_with(b"\0asm") {
@@ -394,7 +394,7 @@ fn encode_blob(code: &[u8], params: &[u8], state: &[u8]) -> Result<Vec<u8>, Stri
         .saturating_add(params.len())
         .saturating_add(state.len());
     if total > MAX_BLOB_BYTES {
-        return Err("contract is larger than 32 MiB".to_owned());
+        return Err("contract is larger than 128 MiB".to_owned());
     }
     let mut out = Vec::with_capacity(total);
     out.extend_from_slice(BLOB_MAGIC);
@@ -442,7 +442,7 @@ fn push_u32(out: &mut Vec<u8>, len: usize) -> Result<(), String> {
     Ok(())
 }
 
-fn decode_hex_32(text: &str) -> Result<[u8; 32], String> {
+pub(crate) fn decode_hex_32(text: &str) -> Result<[u8; 32], String> {
     let text = text.trim();
     if text.len() != 64 {
         return Err("contract key must be 32 bytes".to_owned());
@@ -484,7 +484,7 @@ fn import_json(status: &str, key: &str, message: String) -> String {
     .to_string()
 }
 
-async fn connect(port: u16) -> Result<WebApi, String> {
+pub(crate) async fn connect(port: u16) -> Result<WebApi, String> {
     let url = format!("ws://127.0.0.1:{port}/v1/contract/command?encodingProtocol=native");
     let connection = tokio::time::timeout(PRESENCE_TIMEOUT, connect_async(&url))
         .await
@@ -493,14 +493,18 @@ async fn connect(port: u16) -> Result<WebApi, String> {
     Ok(WebApi::start(connection.0))
 }
 
-async fn recv(client: &mut WebApi, timeout: Duration, what: &str) -> Result<HostResponse, String> {
+pub(crate) async fn recv(
+    client: &mut WebApi,
+    timeout: Duration,
+    what: &str,
+) -> Result<HostResponse, String> {
     tokio::time::timeout(timeout, client.recv())
         .await
         .map_err(|_| format!("timed out waiting for the node {what} response"))?
         .map_err(|error| format!("the node {what} response failed: {error}"))
 }
 
-async fn disconnect(client: &mut WebApi) {
+pub(crate) async fn disconnect(client: &mut WebApi) {
     let _ = client.send(ClientRequest::Disconnect { cause: None }).await;
 }
 

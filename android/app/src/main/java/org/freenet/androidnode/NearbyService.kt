@@ -73,6 +73,7 @@ class NearbyService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        serviceRunning = true
         NodePolicyRepository.initialize(this)
         val created = NearbyEngine(
             context = this,
@@ -85,6 +86,10 @@ class NearbyService : Service() {
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        if (intent?.action == ACTION_STOP) {
+            requestStop()
+            return START_NOT_STICKY
+        }
         if (!showForeground()) {
             requestStop()
             return START_NOT_STICKY
@@ -92,6 +97,10 @@ class NearbyService : Service() {
         val policy = NodePolicyRepository.state.value
         val now = System.currentTimeMillis()
         if (!policy.nearbyBluetooth && !policy.nearbyWifi) {
+            requestStop()
+            return START_NOT_STICKY
+        }
+        if (!nearbyNodeIsRunning(NodeRepository.state.value.state)) {
             requestStop()
             return START_NOT_STICKY
         }
@@ -120,6 +129,10 @@ class NearbyService : Service() {
                     delay(SESSION_CHECK_MS)
                     val next = NodePolicyRepository.state.value
                     if (!next.nearbyBluetooth && !next.nearbyWifi) {
+                        requestStop()
+                        break
+                    }
+                    if (!nearbyNodeIsRunning(NodeRepository.state.value.state)) {
                         requestStop()
                         break
                     }
@@ -154,6 +167,7 @@ class NearbyService : Service() {
             foregroundStarted = false
         }
         serviceScope.cancel()
+        serviceRunning = false
         super.onDestroy()
     }
 
@@ -204,6 +218,10 @@ class NearbyService : Service() {
         private const val CHANNEL_ID = "freenet_nearby"
         private const val NOTIFICATION_ID = 7511
         private const val SESSION_CHECK_MS = 15_000L
+        private const val ACTION_STOP = "org.freenet.androidnode.NEARBY_STOP"
+
+        @Volatile
+        private var serviceRunning = false
 
         fun start(context: Context) {
             val intent = Intent(context, NearbyService::class.java)
@@ -219,6 +237,7 @@ class NearbyService : Service() {
             NodePolicyRepository.initialize(app)
             val policy = NodePolicyRepository.state.value
             if (!policy.nearbyBluetooth && !policy.nearbyWifi) return
+            if (!nearbyNodeIsRunning(NodeRepository.state.value.state)) return
             val now = System.currentTimeMillis()
             val expired = policy.nearbySessionStartedEpochMs <= 0L ||
                 nearbySessionExpired(policy.nearbySessionStartedEpochMs, policy.nearbySessionMinutes, now)
@@ -227,6 +246,22 @@ class NearbyService : Service() {
                 return
             }
             start(app)
+        }
+
+        fun syncWithNode(context: Context) {
+            val app = context.applicationContext
+            NodePolicyRepository.initialize(app)
+            val radiosOn = NodePolicyRepository.state.value.let {
+                it.nearbyBluetooth || it.nearbyWifi
+            }
+            val nodeUp = nearbyNodeIsRunning(NodeRepository.state.value.state)
+            if (radiosOn && nodeUp) {
+                if (!serviceRunning) restore(app)
+            } else if (serviceRunning && !nodeUp) {
+                app.startService(
+                    Intent(app, NearbyService::class.java).setAction(ACTION_STOP),
+                )
+            }
         }
     }
 }
