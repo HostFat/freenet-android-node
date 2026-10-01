@@ -169,6 +169,7 @@ internal class NearbyEngine(
         if (automatic) {
             val previous = recentAutoAsks[keyHex]
             if (previous != null && nowElapsed - previous < AUTO_ASK_DEDUP_MS) return AutoAsk.Skipped
+            recentAutoAsks[keyHex] = nowElapsed
         }
         if (!nearbyNodeIsRunning(NodeRepository.state.value.state)) {
             if (!automatic) {
@@ -183,7 +184,6 @@ internal class NearbyEngine(
             }
             return AutoAsk.NoLink
         }
-        recentAutoAsks[keyHex] = nowElapsed
         val requestId = ByteArray(16).also { SecureRandom().nextBytes(it) }
         val requestHex = nearbyKeyHex(requestId)
         rememberSeen(requestHex)
@@ -980,9 +980,14 @@ internal class NearbyEngine(
                 val json = NativeBridge.nearbyWatchPoll(1_000)
                 if (stopped) break
                 val obj = runCatching { org.json.JSONObject(json) }.getOrNull() ?: continue
-                if (obj.optString("status") != "update") continue
-                val path = obj.optString("path", "")
+                val status = obj.optString("status")
                 val key = obj.optString("key", "")
+                if (status == "missing" && key.isNotBlank()) {
+                    askAll(listOf(key))
+                    continue
+                }
+                if (status != "update") continue
+                val path = obj.optString("path", "")
                 if (path.isBlank() || key.isBlank()) continue
                 val file = File(path)
                 val body = runCatching { file.readBytes() }.getOrNull()

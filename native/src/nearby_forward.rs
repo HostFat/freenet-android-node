@@ -31,12 +31,17 @@ struct PendingUpdate {
     bytes: u64,
 }
 
+enum WatchItem {
+    Update(PendingUpdate),
+    Missing(String),
+}
+
 struct Watch {
     enabled: AtomicBool,
     port: AtomicU16,
     directory: Mutex<String>,
     extra: Mutex<HashSet<[u8; 32]>>,
-    queue: Mutex<VecDeque<PendingUpdate>>,
+    queue: Mutex<VecDeque<WatchItem>>,
     cv: Condvar,
     started: AtomicBool,
 }
@@ -112,14 +117,21 @@ pub(crate) fn watch_poll(timeout_ms: u64) -> String {
             queue.is_empty()
         })
         .expect("nearby watch queue");
-    if let Some(update) = guard.pop_front() {
-        return serde_json::json!({
-            "status": "update",
-            "key": update.key_hex,
-            "path": update.path,
-            "bytes": update.bytes,
-        })
-        .to_string();
+    if let Some(item) = guard.pop_front() {
+        return match item {
+            WatchItem::Missing(key) => serde_json::json!({
+                "status": "missing",
+                "key": key,
+            })
+            .to_string(),
+            WatchItem::Update(update) => serde_json::json!({
+                "status": "update",
+                "key": update.key_hex,
+                "path": update.path,
+                "bytes": update.bytes,
+            })
+            .to_string(),
+        };
     }
     if !watch.enabled.load(Ordering::Relaxed) {
         return serde_json::json!({"status": "stopped"}).to_string();
@@ -152,16 +164,22 @@ fn enqueue(key: &[u8; 32], bytes: &[u8]) {
         return;
     }
     let mut queue = watch.queue.lock().expect("nearby watch queue");
-    while queue.len() >= QUEUE_LIMIT {
-        if let Some(old) = queue.pop_front() {
-            let _ = fs::remove_file(old.path);
+    while queue.iter().filter(|item| matches!(item, WatchItem::Update(_))).count()
+        >= QUEUE_LIMIT
+    {
+        if let Some(index) = queue.iter().position(|item| matches!(item, WatchItem::Update(_))) {
+            if let Some(WatchItem::Update(old)) = queue.remove(index) {
+                let _ = fs::remove_file(old.path);
+            }
+        } else {
+            break;
         }
     }
-    queue.push_back(PendingUpdate {
+    queue.push_back(WatchItem::Update(PendingUpdate {
         key_hex: hex_encode(key),
         path: path.display().to_string(),
         bytes: bytes.len() as u64,
-    });
+    }));
     watch.cv.notify_one();
 }
 
@@ -194,7 +212,7 @@ async fn run_watch() {
                 {
                     break;
                 }
-                next_refresh = tokio::time::Instant::now() + Duration::from_secs(20);
+                next_refresh = tokio::time::Instant::now() + Duration::from_secs(5);
             }
             match tokio::time::timeout(Duration::from_secs(1), client.recv()).await {
                 Ok(Ok(HostResponse::ContractResponse(ContractResponse::UpdateNotification {
@@ -273,17 +291,43 @@ async fn wanted_keys(
             _ => {}
         }
     };
-    let mut keys = Vec::new();
+    let mut stored = Vec::new();
     for subscription in &info.subscriptions {
-        if let Some(bytes) = instance_bytes(&subscription.contract_key) {
-            keys.push(bytes);
+        let Some(bytes) = instance_bytes(&subscription.contract_key) else {
+            continue;
+        };
+        let has_bytes = contract_has_bytes(client, bytes).await.unwrap_or(false);
+        if has_bytes {
+            stored.push(bytes);
+        } else {
+            note_missing(&bytes);
         }
     }
     let extra = watch().extra.lock().expect("nearby watch keys").clone();
     for id in extra {
-        keys.push(id);
+        stored.push(id);
     }
-    Ok(keys)
+    Ok(stored)
+}
+
+fn note_missing(id: &[u8; 32]) {
+    let watch = watch();
+    let hex = hex_encode(id);
+    let mut queue = watch.queue.lock().expect("nearby watch queue");
+    let already = queue.iter().any(|item| matches!(item, WatchItem::Missing(key) if key == &hex));
+    if already {
+        return;
+    }
+    queue.push_back(WatchItem::Missing(hex));
+    watch.cv.notify_one();
+}
+
+async fn contract_has_bytes(
+    client: &mut freenet_stdlib::client_api::WebApi,
+    id: [u8; 32],
+) -> Result<bool, String> {
+    let present = presence(client, ContractInstanceId::new(id)).await?;
+    Ok(present.size_bytes > 0)
 }
 
 fn instance_bytes(id: &ContractInstanceId) -> Option<[u8; 32]> {

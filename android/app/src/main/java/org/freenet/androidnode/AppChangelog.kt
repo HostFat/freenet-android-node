@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: nearby messages have Copy, Paste and send, and Open. Open loads an invite or a contract address on this phone and asks nearby phones for it. Sharing text from the browser sends it to the nearby chat. Messages stay on the phones."
+        "This update: when this phone subscribes to a contract it does not have, and a nearby phone is connected, it asks that phone for the contract. Nearby messages still have Copy, Paste and send, and Open."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
