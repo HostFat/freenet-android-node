@@ -2285,6 +2285,7 @@ private class LoopbackDashboardClient(
     override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
         if (url?.let(::isAllowedDashboardUri) == true) {
             onLoading()
+            view?.context?.let { maybeRequestNearbyContracts(it, url) }
         }
     }
 
@@ -2297,6 +2298,7 @@ private class LoopbackDashboardClient(
 
     override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest): Boolean {
         if (shouldOpenInExternalBrowser(request.url, request.isForMainFrame, request.hasGesture())) {
+            view?.context?.let { maybeRequestNearbyContracts(it, request.url.toString()) }
             val result = runCatching {
                 view?.context?.startActivity(Intent(Intent.ACTION_VIEW, request.url))
                     ?: error("WebView context is unavailable")
@@ -2840,6 +2842,16 @@ private fun isAllowedDashboardSubresource(uri: Uri): Boolean =
         uri.host == DASHBOARD_LOGO_HOST &&
         uri.path == DASHBOARD_LOGO_PATH &&
         (uri.port == -1 || uri.port == 443)
+
+internal fun maybeRequestNearbyContracts(context: Context, url: String?) {
+    if (url.isNullOrBlank()) return
+    NodePolicyRepository.initialize(context)
+    val policy = NodePolicyRepository.state.value
+    if (!policy.nearbyBluetooth || !policy.nearbyWifi) return
+    val keys = nearbyContractKeysInUrl(url)
+    if (keys.isEmpty()) return
+    NearbyHub.askAll(keys.map { nearbyKeyHex(it) })
+}
 
 internal fun shouldOpenInExternalBrowser(
     uri: Uri,

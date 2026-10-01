@@ -143,6 +143,39 @@ class NearbyPolicyTest {
     }
 
     @Test
+    fun aContractPageAddressYieldsEveryKey() {
+        val appKey = "ab".repeat(32)
+        val roomKey = "cd".repeat(32)
+        val keys = nearbyContractKeysInUrl(
+            "http://127.0.0.1:7509/v1/contract/web/$appKey/room/$roomKey/?x=1",
+        )
+        assertEquals(2, keys.size)
+        assertEquals(appKey, nearbyKeyHex(keys[0]))
+        assertEquals(roomKey, nearbyKeyHex(keys[1]))
+        assertTrue(nearbyContractKeysInUrl("http://127.0.0.1:7509/").isEmpty())
+    }
+
+    @Test
+    fun noNetworkIsOfflineAndAMeteredNetworkStaysBlocked() {
+        val offline = ConnectivitySnapshot(
+            available = false,
+            validated = false,
+            wifi = false,
+            metered = false,
+            vpn = false,
+            networkType = "None",
+            activeNetwork = null,
+        )
+        assertEquals(NetworkStartBlock.Offline, networkStartBlock(offline, NetworkDataPolicy.AnyValidated))
+        val metered = offline.copy(available = true, validated = true, metered = true, networkType = "Cellular")
+        assertEquals(
+            NetworkStartBlock.Metered,
+            networkStartBlock(metered, NetworkDataPolicy.UnmeteredOnly),
+        )
+        assertEquals(null, networkStartBlock(metered, NetworkDataPolicy.AnyValidated))
+    }
+
+    @Test
     fun hopLimitStopsAtTheStricterPhone() {
         assertFalse(nearbyForward(myLimit = 1, senderLimit = 8, hopsUsed = 1))
         assertFalse(nearbyForward(myLimit = 0, senderLimit = 1, hopsUsed = 1))

@@ -218,6 +218,18 @@ internal fun parseNearbyImportMessage(json: String): String {
     }
 }
 
+internal fun nearbyContractKeysInUrl(raw: String): List<ByteArray> {
+    val path = raw.substringBefore('?').substringBefore('#')
+    val seen = LinkedHashSet<String>()
+    val keys = ArrayList<ByteArray>()
+    for (segment in path.split('/', ':')) {
+        val key = decodeNearbyKeyToken(segment.trim()) ?: continue
+        val hex = nearbyKeyHex(key)
+        if (seen.add(hex)) keys.add(key)
+    }
+    return keys
+}
+
 internal fun parseNearbyContractKey(raw: String): ByteArray? {
     val trimmed = raw.trim()
     if (trimmed.isEmpty()) return null

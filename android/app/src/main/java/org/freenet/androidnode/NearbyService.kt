@@ -62,6 +62,12 @@ internal object NearbyHub {
         }
         current.ask(raw)
     }
+
+    fun askAll(raws: List<String>) {
+        val current = engine
+        if (current == null || raws.isEmpty()) return
+        current.askAll(raws)
+    }
 }
 
 class NearbyService : Service() {

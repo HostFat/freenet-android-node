@@ -64,6 +64,8 @@ internal class NearbyEngine(
     private val bluetoothLive = ConcurrentHashMap.newKeySet<String>()
     private val bluetoothAttempts = ConcurrentHashMap<String, Long>()
     private val recentServes = ConcurrentHashMap<String, Long>()
+    private val recentAutoAsks = ConcurrentHashMap<String, Long>()
+    private val askLock = Any()
     private val seenMessages = ConcurrentHashMap<String, Long>()
     private val localRequests = ConcurrentHashMap<String, Long>()
     private val seekReturn = ConcurrentHashMap<String, Long>()
@@ -117,47 +119,71 @@ internal class NearbyEngine(
     }
 
     fun ask(raw: String) {
+        io.execute { synchronized(askLock) { performAsk(raw, automatic = false) } }
+    }
+
+    fun askAll(raws: List<String>) {
+        if (raws.isEmpty()) return
         io.execute {
-            if (stopped) return@execute
-            if (currentAsk != null) {
-                onAsk("Already asking a nearby phone.")
-                return@execute
+            synchronized(askLock) {
+                raws.forEach { performAsk(it, automatic = true) }
             }
-            val key = parseNearbyContractKey(raw)
-            if (key == null || key.size != 32) {
-                onAsk("Paste a contract key: 64 hex characters, base58, or a URL whose last part is that key.")
-                return@execute
-            }
-            if (!nearbyNodeIsRunning(NodeRepository.state.value.state)) {
-                onAsk("Start the node on this phone before saving a contract from a nearby phone.")
-                return@execute
-            }
-            val open = snapshotLinks()
-            if (open.isEmpty()) {
-                onAsk("No nearby phone is connected yet. Turn on Bluetooth or Wi-Fi on both phones and wait.")
-                return@execute
-            }
-            val requestId = ByteArray(16).also { SecureRandom().nextBytes(it) }
-            val requestHex = nearbyKeyHex(requestId)
-            rememberSeen(requestHex)
-            localRequests[requestHex] = SystemClock.elapsedRealtime()
-            currentRequestId = requestId
-            val wait = AskWait(open.map { it.id }.toSet())
-            currentAsk = wait
-            val senderLimit = NodePolicyRepository.state.value.nearbyHopLimit
-            val payload = encodeNearbyHop(senderLimit, 0, requestId, key, ByteArray(0))
-            onAsk("Asking ${open.size} nearby link${if (open.size == 1) "" else "s"}…")
-            for (link in open) {
-                send(link, NearbyLimits.TYPE_SEEK, payload)
-            }
-            when (val outcome = wait.await(ASK_TIMEOUT_MS)) {
-                is AskOutcome.Contract -> importContract(outcome.bytes, key)
-                is AskOutcome.Refused -> onAsk(outcome.text)
-                AskOutcome.Timeout -> onAsk("No nearby phone answered within 3 minutes.")
-            }
-            if (currentAsk === wait) currentAsk = null
-            if (currentRequestId?.contentEquals(requestId) == true) currentRequestId = null
         }
+    }
+
+    private fun performAsk(raw: String, automatic: Boolean) {
+        if (stopped) return
+        if (currentAsk != null) {
+            if (!automatic) onAsk("Already asking a nearby phone.")
+            return
+        }
+        val key = parseNearbyContractKey(raw)
+        if (key == null || key.size != 32) {
+            if (!automatic) {
+                onAsk("Paste a contract key: 64 hex characters, base58, or a URL whose last part is that key.")
+            }
+            return
+        }
+        val keyHex = nearbyKeyHex(key)
+        val nowElapsed = SystemClock.elapsedRealtime()
+        if (automatic) {
+            val previous = recentAutoAsks[keyHex]
+            if (previous != null && nowElapsed - previous < AUTO_ASK_DEDUP_MS) return
+        }
+        if (!nearbyNodeIsRunning(NodeRepository.state.value.state)) {
+            if (!automatic) {
+                onAsk("Start the node on this phone before saving a contract from a nearby phone.")
+            }
+            return
+        }
+        val open = snapshotLinks()
+        if (open.isEmpty()) {
+            if (!automatic) {
+                onAsk("No nearby phone is connected yet. Turn on Bluetooth or Wi-Fi on both phones and wait.")
+            }
+            return
+        }
+        recentAutoAsks[keyHex] = nowElapsed
+        val requestId = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        val requestHex = nearbyKeyHex(requestId)
+        rememberSeen(requestHex)
+        localRequests[requestHex] = nowElapsed
+        currentRequestId = requestId
+        val wait = AskWait(open.map { it.id }.toSet())
+        currentAsk = wait
+        val senderLimit = NodePolicyRepository.state.value.nearbyHopLimit
+        val payload = encodeNearbyHop(senderLimit, 0, requestId, key, ByteArray(0))
+        onAsk("Asking ${open.size} nearby link${if (open.size == 1) "" else "s"}…")
+        for (link in open) {
+            send(link, NearbyLimits.TYPE_SEEK, payload)
+        }
+        when (val outcome = wait.await(ASK_TIMEOUT_MS)) {
+            is AskOutcome.Contract -> importContract(outcome.bytes, key)
+            is AskOutcome.Refused -> onAsk(outcome.text)
+            AskOutcome.Timeout -> onAsk("No nearby phone answered within 3 minutes.")
+        }
+        if (currentAsk === wait) currentAsk = null
+        if (currentRequestId?.contentEquals(requestId) == true) currentRequestId = null
     }
 
     @SuppressLint("MissingPermission")
@@ -1115,5 +1141,6 @@ internal class NearbyEngine(
         const val TAG = "FreenetNearby"
         const val HELLO_INTERVAL_MS = 25_000L
         const val ASK_TIMEOUT_MS = 180_000L
+        const val AUTO_ASK_DEDUP_MS = 3 * 60_000L
     }
 }

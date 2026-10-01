@@ -206,9 +206,23 @@ data class NodePolicyState(
     }
 
     internal fun networkEligible(connectivity: ConnectivitySnapshot): Boolean =
-        connectivity.available &&
-            connectivity.validated &&
-            (networkData == NetworkDataPolicy.AnyValidated || !connectivity.metered)
+        networkStartBlock(connectivity, networkData) == null
+
+    fun nearbyRadiosOn(): Boolean = nearbyBluetooth || nearbyWifi
+}
+
+internal enum class NetworkStartBlock {
+    Offline,
+    Metered,
+}
+
+internal fun networkStartBlock(
+    connectivity: ConnectivitySnapshot,
+    networkData: NetworkDataPolicy,
+): NetworkStartBlock? = when {
+    !connectivity.available || !connectivity.validated -> NetworkStartBlock.Offline
+    connectivity.metered && networkData == NetworkDataPolicy.UnmeteredOnly -> NetworkStartBlock.Metered
+    else -> null
 }
 
 object NodePolicyRepository {
@@ -566,7 +580,10 @@ object NodePolicyRepository {
                 nearbySessionStartedEpochMs = started,
             ),
         )
-        if (!bothOff && nearbyNodeIsRunning(NodeRepository.state.value.state)) {
+        val nodeRunning = nearbyNodeIsRunning(NodeRepository.state.value.state)
+        if (!bothOff && !current.suspendedByUser && !nodeRunning) {
+            NodeRepository.startNetwork(context)
+        } else if (!bothOff && nodeRunning) {
             NearbyService.start(context)
         }
     }

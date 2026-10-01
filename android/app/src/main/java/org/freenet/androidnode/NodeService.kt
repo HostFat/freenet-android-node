@@ -347,7 +347,12 @@ class NodeService : Service() {
             return
         }
 
-        if (!policy.networkEligible(connectivity)) {
+        val offline = !connectivity.available || !connectivity.validated
+        val meteredBlocked = !offline &&
+            connectivity.metered &&
+            policy.networkData == NetworkDataPolicy.UnmeteredOnly
+        val nearbyWantsNode = policy.nearbyRadiosOn()
+        if (meteredBlocked || (offline && !active && !explicitStart && !nearbyWantsNode)) {
             val reason = connectivity.policyBlockReason(policy.networkData)
             if (policy.automatic) {
                 if (active) {
@@ -369,12 +374,17 @@ class NodeService : Service() {
         }
 
         if (active) return
-        if (policy.power == NodePowerPolicy.Manual && !explicitStart && !policy.startOnBoot) {
+        if (
+            policy.power == NodePowerPolicy.Manual &&
+            !explicitStart &&
+            !policy.startOnBoot &&
+            !nearbyWantsNode
+        ) {
             shutdownCompleted = true
             finishService(startId)
             return
         }
-        startNode(startId, networkMode = true, policy = policy)
+        startNode(startId, networkMode = true, policy = policy, allowOffline = offline)
         } finally {
             armSchedule()
         }
@@ -414,10 +424,12 @@ class NodeService : Service() {
         startId: Int,
         networkMode: Boolean,
         policy: NodePolicyState = NodePolicyState(),
+        allowOffline: Boolean = false,
     ) {
         shutdownCompleted = false
         val connectivity = connectivityMonitor.currentSnapshot()
-        if (networkMode && !connectivity.isAllowed(policy.networkData)) {
+        val offline = !connectivity.available || !connectivity.validated
+        if (networkMode && !connectivity.isAllowed(policy.networkData) && !(allowOffline && offline)) {
             val detail = connectivity.policyBlockReason(policy.networkData)
             if (policy.automatic) {
                 publishControllerState(detail)
