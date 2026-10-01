@@ -126,42 +126,57 @@ internal class NearbyEngine(
         if (raws.isEmpty()) return
         io.execute {
             synchronized(askLock) {
-                raws.forEach { performAsk(it, automatic = true) }
+                var saved = false
+                var failed = false
+                var noLink = false
+                for (raw in raws) {
+                    when (performAsk(raw, automatic = true)) {
+                        AutoAsk.Saved -> saved = true
+                        AutoAsk.Failed -> failed = true
+                        AutoAsk.NoLink -> noLink = true
+                        AutoAsk.Skipped -> Unit
+                    }
+                }
+                when {
+                    saved -> NearbyWaitNotice.saved(appContext)
+                    noLink && !failed -> NearbyWaitNotice.noLink(appContext)
+                    failed -> NearbyWaitNotice.failed(appContext)
+                }
             }
         }
     }
 
-    private fun performAsk(raw: String, automatic: Boolean) {
-        if (stopped) return
+    private fun performAsk(raw: String, automatic: Boolean): AutoAsk {
+        if (stopped) return AutoAsk.Skipped
         if (currentAsk != null) {
             if (!automatic) onAsk("Already asking a nearby phone.")
-            return
+            return AutoAsk.Skipped
         }
         val key = parseNearbyContractKey(raw)
         if (key == null || key.size != 32) {
             if (!automatic) {
                 onAsk("Paste a contract key: 64 hex characters, base58, or a URL whose last part is that key.")
             }
-            return
+            return AutoAsk.Skipped
         }
         val keyHex = nearbyKeyHex(key)
         val nowElapsed = SystemClock.elapsedRealtime()
         if (automatic) {
             val previous = recentAutoAsks[keyHex]
-            if (previous != null && nowElapsed - previous < AUTO_ASK_DEDUP_MS) return
+            if (previous != null && nowElapsed - previous < AUTO_ASK_DEDUP_MS) return AutoAsk.Skipped
         }
         if (!nearbyNodeIsRunning(NodeRepository.state.value.state)) {
             if (!automatic) {
                 onAsk("Start the node on this phone before saving a contract from a nearby phone.")
             }
-            return
+            return AutoAsk.Skipped
         }
         val open = snapshotLinks()
         if (open.isEmpty()) {
             if (!automatic) {
                 onAsk("No nearby phone is connected yet. Turn on Bluetooth or Wi-Fi on both phones and wait.")
             }
-            return
+            return AutoAsk.NoLink
         }
         recentAutoAsks[keyHex] = nowElapsed
         val requestId = ByteArray(16).also { SecureRandom().nextBytes(it) }
@@ -173,17 +188,28 @@ internal class NearbyEngine(
         currentAsk = wait
         val senderLimit = NodePolicyRepository.state.value.nearbyHopLimit
         val payload = encodeNearbyHop(senderLimit, 0, requestId, key, ByteArray(0))
+        if (automatic) NearbyWaitNotice.waiting(appContext)
         onAsk("Asking ${open.size} nearby link${if (open.size == 1) "" else "s"}…")
         for (link in open) {
             send(link, NearbyLimits.TYPE_SEEK, payload)
         }
-        when (val outcome = wait.await(ASK_TIMEOUT_MS)) {
-            is AskOutcome.Contract -> importContract(outcome.bytes, key)
-            is AskOutcome.Refused -> onAsk(outcome.text)
-            AskOutcome.Timeout -> onAsk("No nearby phone answered within 3 minutes.")
+        val result = when (val outcome = wait.await(ASK_TIMEOUT_MS)) {
+            is AskOutcome.Contract -> {
+                val saved = importContract(outcome.bytes, key)
+                if (saved) AutoAsk.Saved else AutoAsk.Failed
+            }
+            is AskOutcome.Refused -> {
+                onAsk(outcome.text)
+                AutoAsk.Failed
+            }
+            AskOutcome.Timeout -> {
+                onAsk("No nearby phone answered within 3 minutes.")
+                AutoAsk.Failed
+            }
         }
         if (currentAsk === wait) currentAsk = null
         if (currentRequestId?.contentEquals(requestId) == true) currentRequestId = null
+        return if (automatic) result else AutoAsk.Skipped
     }
 
     @SuppressLint("MissingPermission")
@@ -717,21 +743,25 @@ internal class NearbyEngine(
         send(link, NearbyLimits.TYPE_REFUSE, byteArrayOf(reason.toByte()))
     }
 
-    private fun importContract(bytes: ByteArray, knownKey: ByteArray? = null) {
+    private fun importContract(bytes: ByteArray, knownKey: ByteArray? = null): Boolean {
         if (bytes.size > NearbyLimits.HARD_MAX_BYTES) {
             onAsk("That contract is too large.")
-            return
+            return false
         }
         val json = writeImport(bytes)
         if (json == null) {
             onAsk("This phone could not save the contract.")
-            return
+            return false
         }
-        val saved = knownKey ?: parseNearbyImportKey(json)
+        val imported = runCatching {
+            org.json.JSONObject(json).optString("status") == "imported"
+        }.getOrDefault(false)
+        val saved = if (imported) parseNearbyImportKey(json) ?: knownKey else null
         if (saved != null && saved.size == 32) {
             NativeBridge.nearbyWatchAddKey(nearbyKeyHex(saved))
         }
         onAsk(parseNearbyImportMessage(json))
+        return imported
     }
 
     private fun writeImport(bytes: ByteArray): String? {
@@ -1142,5 +1172,12 @@ internal class NearbyEngine(
         const val HELLO_INTERVAL_MS = 25_000L
         const val ASK_TIMEOUT_MS = 180_000L
         const val AUTO_ASK_DEDUP_MS = 3 * 60_000L
+    }
+
+    private enum class AutoAsk {
+        Saved,
+        Failed,
+        NoLink,
+        Skipped,
     }
 }

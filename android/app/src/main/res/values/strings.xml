@@ -116,6 +116,13 @@
     <string name="nearby_permission_denied">Nearby sharing needs the permission Android just asked for.</string>
     <string name="nearby_notification_title">Nearby sharing</string>
     <string name="nearby_notification_text">Sharing contract updates with nearby phones.</string>
+    <string name="nearby_wait_channel">Nearby contract</string>
+    <string name="nearby_wait_title">Nearby contract</string>
+    <string name="nearby_wait_body">This phone is asking a nearby phone for the contract. Stay on the page, then reload it.</string>
+    <string name="nearby_wait_saved_title">Contract saved</string>
+    <string name="nearby_wait_saved_body">Reload the browser page.</string>
+    <string name="nearby_wait_failed_body">The nearby phone did not send the contract.</string>
+    <string name="nearby_wait_nolink_body">No nearby phone is connected yet.</string>
     <string name="nearby_notification_channel">Nearby sharing</string>
     <string name="download_apk">Open APK page</string>
     <string name="dismiss_update">Dismiss</string>

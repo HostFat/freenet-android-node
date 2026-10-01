@@ -3,6 +3,7 @@ package org.freenet.androidnode
 import android.app.Notification
 import android.app.NotificationChannel
 import android.app.NotificationManager
+import androidx.core.app.NotificationCompat
 import android.app.Service
 import android.content.Context
 import android.content.Intent
@@ -67,6 +68,69 @@ internal object NearbyHub {
         val current = engine
         if (current == null || raws.isEmpty()) return
         current.askAll(raws)
+    }
+}
+
+internal object NearbyWaitNotice {
+    private const val CHANNEL_ID = "freenet_nearby_wait"
+    private const val NOTIFICATION_ID = 7512
+
+    fun waiting(context: Context) {
+        show(
+            context,
+            context.getString(R.string.nearby_wait_title),
+            context.getString(R.string.nearby_wait_body),
+            ongoing = true,
+        )
+    }
+
+    fun saved(context: Context) {
+        show(
+            context,
+            context.getString(R.string.nearby_wait_saved_title),
+            context.getString(R.string.nearby_wait_saved_body),
+            ongoing = false,
+        )
+    }
+
+    fun failed(context: Context) {
+        show(
+            context,
+            context.getString(R.string.nearby_wait_title),
+            context.getString(R.string.nearby_wait_failed_body),
+            ongoing = false,
+        )
+    }
+
+    fun noLink(context: Context) {
+        show(
+            context,
+            context.getString(R.string.nearby_wait_title),
+            context.getString(R.string.nearby_wait_nolink_body),
+            ongoing = false,
+        )
+    }
+
+    private fun show(context: Context, title: String, text: String, ongoing: Boolean) {
+        val manager = context.getSystemService(NotificationManager::class.java) ?: return
+        val channel = NotificationChannel(
+            CHANNEL_ID,
+            context.getString(R.string.nearby_wait_channel),
+            NotificationManager.IMPORTANCE_DEFAULT,
+        ).apply {
+            setShowBadge(false)
+        }
+        manager.createNotificationChannel(channel)
+        val notification = NotificationCompat.Builder(context, CHANNEL_ID)
+            .setSmallIcon(R.drawable.ic_node_notification)
+            .setContentTitle(title)
+            .setContentText(text)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(text))
+            .setOngoing(ongoing)
+            .setAutoCancel(!ongoing)
+            .setOnlyAlertOnce(ongoing)
+            .build()
+        manager.notify(NOTIFICATION_ID, notification)
     }
 }
 

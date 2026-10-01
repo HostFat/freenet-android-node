@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: the network node starts even when Android reports no network, and connects when internet appears. A metered network is still blocked when Network data is Unmetered only. Turning on nearby Bluetooth or Wi-Fi starts that node. With both nearby radios on, opening a contract page on this phone asks nearby phones for every contract key in the address."
+        "This update: while a contract page is loading from a nearby phone, a notification says to stay on the page and reload it when the contract is saved. The network node still starts with no internet. With both nearby radios on, opening a contract page on this phone asks nearby phones for every contract key in the address."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
