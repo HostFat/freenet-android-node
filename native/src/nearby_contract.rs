@@ -16,7 +16,7 @@ use freenet_stdlib::client_api::{
     NodeQuery, QueryResponse, WebApi,
 };
 use freenet_stdlib::prelude::{
-    CodeHash, ContractCode, ContractContainer, ContractInstanceId, ContractKey,
+    ContractCode, ContractContainer, ContractInstanceId,
     ContractWasmAPIVersion, Parameters, RelatedContracts, WrappedContract, WrappedState,
 };
 use serde::Serialize;
@@ -164,6 +164,16 @@ async fn export_contract_async(
     let mut client = connect(port).await?;
     let presence = match presence(&mut client, instance_id).await {
         Ok(presence) => presence,
+        Err(error) if error.contains("not supported") => {
+            disconnect(&mut client).await;
+            return Ok(ExportBody {
+                status: "absent",
+                bytes: 0,
+                path: String::new(),
+                message: "This phone cannot check that contract.".to_owned(),
+                fetched: false,
+            });
+        }
         Err(error) => {
             disconnect(&mut client).await;
             return Err(error);
@@ -205,7 +215,16 @@ async fn export_contract_async(
         }),
     };
     disconnect(&mut client).await;
-    let read = outcome?;
+    let read = match outcome {
+        Err(error) if error.contains("not supported") => ReadContract {
+            status: "absent",
+            fetched: false,
+            message: "This phone cannot check that contract.".to_owned(),
+            bytes: 0,
+            blob: Vec::new(),
+        },
+        other => other?,
+    };
     if read.blob.is_empty() {
         return Ok(ExportBody {
             status: read.status,
@@ -242,15 +261,14 @@ pub(crate) async fn presence(
     client: &mut WebApi,
     instance_id: ContractInstanceId,
 ) -> Result<Presence, String> {
-    let probe = ContractKey::from_id_and_code(instance_id, CodeHash::new([0u8; 32]));
-    let probe_label = probe.to_string();
+    let label = instance_id.to_string();
     client
         .send(ClientRequest::NodeQueries(NodeQuery::NodeDiagnostics {
             config: NodeDiagnosticsConfig {
                 include_node_info: false,
                 include_network_info: true,
                 include_subscriptions: true,
-                contract_keys: vec![probe],
+                contract_keys: Vec::new(),
                 include_system_metrics: false,
                 include_detailed_peer_info: false,
                 include_subscriber_peer_ids: false,
@@ -262,10 +280,7 @@ pub(crate) async fn presence(
     let HostResponse::QueryResponse(QueryResponse::NodeDiagnostics(info)) = response else {
         return Err("the node did not answer the local contract check".to_owned());
     };
-    let labels = [instance_id.to_string(), probe_label];
-    let state = labels
-        .iter()
-        .find_map(|label| info.contract_states.get(label));
+    let state = info.contract_states.get(&label);
     let subscribed = info
         .subscriptions
         .iter()

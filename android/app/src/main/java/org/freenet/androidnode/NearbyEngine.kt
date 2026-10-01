@@ -812,16 +812,18 @@ internal class NearbyEngine(
             onAsk(message)
             return false to message
         }
-        val imported = runCatching {
+        val message = parseNearbyImportMessage(json)
+        val already = nearbySameVersion(message)
+        val imported = already || runCatching {
             org.json.JSONObject(json).optString("status") == "imported"
         }.getOrDefault(false)
         val saved = if (imported) parseNearbyImportKey(json) ?: knownKey else null
         if (saved != null && saved.size == 32) {
             NativeBridge.nearbyWatchAddKey(nearbyKeyHex(saved))
         }
-        val message = parseNearbyImportMessage(json)
-        onAsk(message)
-        return imported to message
+        val shown = if (already) "Contract already on this phone." else message
+        onAsk(shown)
+        return imported to shown
     }
 
     private fun writeImport(bytes: ByteArray): String? {

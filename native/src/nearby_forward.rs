@@ -264,7 +264,7 @@ async fn wanted_keys(
         .send(ClientRequest::NodeQueries(NodeQuery::NodeDiagnostics {
             config: NodeDiagnosticsConfig {
                 include_node_info: false,
-                include_network_info: false,
+                include_network_info: true,
                 include_subscriptions: true,
                 contract_keys: Vec::new(),
                 include_system_metrics: false,
@@ -297,9 +297,14 @@ async fn wanted_keys(
             continue;
         };
         let label = ContractInstanceId::new(bytes).to_string();
+        let peers = info
+            .network_info
+            .as_ref()
+            .map(|network| network.active_connections)
+            .unwrap_or(0);
         if info.contract_states.contains_key(&label) {
             stored.push(bytes);
-        } else {
+        } else if peers == 0 {
             note_missing(&bytes);
         }
     }

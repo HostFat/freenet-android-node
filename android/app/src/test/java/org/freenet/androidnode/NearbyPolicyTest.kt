@@ -143,6 +143,15 @@ class NearbyPolicyTest {
     }
 
     @Test
+    fun theSameStateVersionCountsAsAlreadyStored() {
+        val message = "New state version 30000394 must be higher than current version 30000394"
+        assertTrue(nearbySameVersion(message))
+        assertFalse(
+            nearbySameVersion("New state version 5 must be higher than current version 4"),
+        )
+    }
+
+    @Test
     fun anInviteAddressOpensOnThisPhone() {
         val appKey = "ab".repeat(32)
         val remote = "https://gateway.example/v1/contract/web/$appKey/?invitation=abc"

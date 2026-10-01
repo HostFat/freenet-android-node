@@ -208,6 +208,15 @@ internal fun parseNearbyExport(json: String): NearbyExportView {
     )
 }
 
+internal fun nearbySameVersion(message: String): Boolean {
+    val marker = "must be higher than current version"
+    val index = message.indexOf(marker)
+    if (index < 0) return false
+    val newer = message.substring(0, index).takeLastWhile { it.isDigit() }
+    val current = message.substring(index + marker.length).dropWhile { !it.isDigit() }.takeWhile { it.isDigit() }
+    return newer.isNotEmpty() && newer == current
+}
+
 internal fun parseNearbyImportMessage(json: String): String {
     val obj = runCatching { JSONObject(json) }.getOrNull()
         ?: return "This phone could not save the contract."
