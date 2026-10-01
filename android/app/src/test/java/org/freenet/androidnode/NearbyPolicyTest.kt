@@ -143,6 +143,21 @@ class NearbyPolicyTest {
     }
 
     @Test
+    fun anInviteAddressOpensOnThisPhone() {
+        val appKey = "ab".repeat(32)
+        val remote = "https://gateway.example/v1/contract/web/$appKey/?invitation=abc"
+        assertEquals(
+            "http://127.0.0.1:7509/v1/contract/web/$appKey/?invitation=abc",
+            nearbyLocalOpenUrl(remote),
+        )
+        assertEquals(
+            "http://127.0.0.1:7509/v1/contract/web/$appKey/",
+            nearbyLocalOpenUrl(appKey),
+        )
+        assertEquals(null, nearbyLocalOpenUrl("hello"))
+    }
+
+    @Test
     fun aContractPageAddressYieldsEveryKey() {
         val appKey = "ab".repeat(32)
         val roomKey = "cd".repeat(32)

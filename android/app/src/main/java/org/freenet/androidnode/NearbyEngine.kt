@@ -1042,7 +1042,7 @@ internal class NearbyEngine(
     }
 
     fun sendChat(text: String) {
-        val clean = text.trim().take(500)
+        val clean = text.trim().take(4_000)
         if (clean.isEmpty()) return
         val open = snapshotLinks().filter { it.session?.established == true }
         if (open.isEmpty()) {
@@ -1071,7 +1071,7 @@ internal class NearbyEngine(
         }
         if (!rememberSeen(nearbyKeyHex(hop.id))) return
         val text = runCatching { textBytes.toString(Charsets.UTF_8) }.getOrNull()?.trim().orEmpty()
-        if (text.isEmpty() || text.length > 500) return
+        if (text.isEmpty() || text.length > 4_000) return
         if (!hop.key.contentEquals(identity.ed25519Public)) {
             NearbyHub.addChat(nearbyFingerprint(hop.key), text, mine = false)
         }

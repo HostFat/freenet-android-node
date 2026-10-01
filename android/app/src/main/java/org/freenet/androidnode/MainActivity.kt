@@ -148,6 +148,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
+        consumeNearbyShare(intent)
         setContent {
             MaterialTheme(
                 colorScheme = if (isSystemInDarkTheme()) {
@@ -173,6 +174,21 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        consumeNearbyShare(intent)
+    }
+
+    private fun consumeNearbyShare(intent: Intent?) {
+        if (intent?.action != Intent.ACTION_SEND) return
+        val text = intent.getStringExtra(Intent.EXTRA_TEXT)?.trim().orEmpty()
+        if (text.isEmpty()) return
+        NearbyHub.sendChat(text.take(4_000))
+        intent.action = Intent.ACTION_MAIN
+        intent.removeExtra(Intent.EXTRA_TEXT)
     }
 }
 
@@ -1989,10 +2005,29 @@ private fun NearbyShareControls(
                 },
                 style = MaterialTheme.typography.bodyMedium,
             )
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                TextButton(onClick = {
+                    val clipboard = context.getSystemService(ClipboardManager::class.java)
+                    clipboard?.setPrimaryClip(ClipData.newPlainText("nearby", line.text))
+                }) {
+                    Text(stringResource(R.string.nearby_chat_copy))
+                }
+                val openUrl = nearbyLocalOpenUrl(line.text)
+                if (openUrl != null) {
+                    TextButton(onClick = {
+                        maybeRequestNearbyContracts(context, openUrl)
+                        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(openUrl)))
+                    }) {
+                        Text(stringResource(R.string.nearby_chat_open))
+                    }
+                }
+            }
         }
         OutlinedTextField(
             value = nearbyDraft,
-            onValueChange = { nearbyDraft = it.take(500) },
+            onValueChange = { nearbyDraft = it.take(4_000) },
+            minLines = 1,
+            maxLines = 4,
             label = { Text(stringResource(R.string.nearby_chat_label)) },
             singleLine = true,
             keyboardOptions = KeyboardOptions(imeAction = ImeAction.Send),
@@ -2002,15 +2037,27 @@ private fun NearbyShareControls(
             }),
             modifier = Modifier.fillMaxWidth(),
         )
-        Button(
-            onClick = {
-                NearbyHub.sendChat(nearbyDraft)
-                nearbyDraft = ""
-            },
-            enabled = nearbyDraft.isNotBlank(),
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.nearby_chat_send))
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp), modifier = Modifier.fillMaxWidth()) {
+            Button(
+                onClick = {
+                    NearbyHub.sendChat(nearbyDraft)
+                    nearbyDraft = ""
+                },
+                enabled = nearbyDraft.isNotBlank(),
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.nearby_chat_send))
+            }
+            Button(
+                onClick = {
+                    val clipboard = context.getSystemService(ClipboardManager::class.java)
+                    val pasted = clipboard?.primaryClip?.getItemAt(0)?.coerceToText(context)?.toString()?.trim().orEmpty()
+                    if (pasted.isNotEmpty()) NearbyHub.sendChat(pasted.take(4_000))
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.nearby_chat_paste))
+            }
         }
     }
 }

@@ -220,6 +220,20 @@ internal fun parseNearbyImportMessage(json: String): String {
     }
 }
 
+internal fun nearbyLocalOpenUrl(text: String): String? {
+    val trimmed = text.trim()
+    val found = Regex("""https?://\S+""").find(trimmed)?.value?.trimEnd('.', ',', ')')
+    if (found != null) {
+        val uri = android.net.Uri.parse(found)
+        val path = uri.encodedPath ?: "/"
+        val query = uri.encodedQuery?.let { "?$it" }.orEmpty()
+        val fragment = uri.encodedFragment?.let { "#$it" }.orEmpty()
+        return "http://127.0.0.1:7509$path$query$fragment"
+    }
+    val key = parseNearbyContractKey(trimmed) ?: return null
+    return "http://127.0.0.1:7509/v1/contract/web/${nearbyKeyHex(key)}/"
+}
+
 internal fun nearbyContractKeysInUrl(raw: String): List<ByteArray> {
     val path = raw.substringBefore('?').substringBefore('#')
     val seen = LinkedHashSet<String>()

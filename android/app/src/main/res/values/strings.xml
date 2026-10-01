@@ -127,6 +127,9 @@
     <string name="nearby_chat_hint">Nearby messages stay on these phones. Compare the fingerprint the first time. A phone that relays a message can read it. Someone only on the same Wi-Fi cannot.</string>
     <string name="nearby_chat_label">Message</string>
     <string name="nearby_chat_send">Send</string>
+    <string name="nearby_chat_copy">Copy</string>
+    <string name="nearby_chat_paste">Paste and send</string>
+    <string name="nearby_chat_open">Open</string>
     <string name="nearby_chat_mine">You: %1$s</string>
     <string name="nearby_chat_theirs">%1$s: %2$s</string>
     <string name="nearby_notification_channel">Nearby sharing</string>
