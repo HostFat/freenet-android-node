@@ -30,6 +30,8 @@ internal object NearbyLimits {
     const val TYPE_DELIVER = 6
     const val TYPE_UPDATE = 7
     const val TYPE_SEEK_REFUSE = 8
+    const val TYPE_HANDSHAKE = 9
+    const val TYPE_CHAT = 10
     const val HOP_HEADER_BYTES = 50
     const val REFUSE_OWNED_OFF = 1
     const val REFUSE_MISSING = 2

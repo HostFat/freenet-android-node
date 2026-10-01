@@ -123,6 +123,12 @@
     <string name="nearby_wait_saved_body">Reload the browser page.</string>
     <string name="nearby_wait_failed_body">The nearby phone did not send the contract.</string>
     <string name="nearby_wait_nolink_body">No nearby phone is connected yet.</string>
+    <string name="nearby_chat_fingerprint">This phone: %1$s</string>
+    <string name="nearby_chat_hint">Nearby messages stay on these phones. Compare the fingerprint the first time. A phone that relays a message can read it. Someone only on the same Wi-Fi cannot.</string>
+    <string name="nearby_chat_label">Message</string>
+    <string name="nearby_chat_send">Send</string>
+    <string name="nearby_chat_mine">You: %1$s</string>
+    <string name="nearby_chat_theirs">%1$s: %2$s</string>
     <string name="nearby_notification_channel">Nearby sharing</string>
     <string name="download_apk">Open APK page</string>
     <string name="dismiss_update">Dismiss</string>

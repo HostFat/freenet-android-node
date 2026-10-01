@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: while a contract page is loading from a nearby phone, a notification says to stay on the page and reload it when the contract is saved. The network node still starts with no internet. With both nearby radios on, opening a contract page on this phone asks nearby phones for every contract key in the address."
+        "This update: nearby phones can exchange short messages over Bluetooth or Wi-Fi. The link is encrypted, and each phone shows a fingerprint to compare the first time. Messages stay on the phones and are not published to Freenet. A phone that relays a message can read it."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

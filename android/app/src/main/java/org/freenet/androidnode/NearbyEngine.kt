@@ -66,6 +66,11 @@ internal class NearbyEngine(
     private val recentServes = ConcurrentHashMap<String, Long>()
     private val recentAutoAsks = ConcurrentHashMap<String, Long>()
     private val askLock = Any()
+    private val identity = NearbyIdentity.load(File(appContext.noBackupFilesDir, "freenet"))
+
+    init {
+        NearbyHub.publishFingerprint(identity.fingerprint)
+    }
     private val seenMessages = ConcurrentHashMap<String, Long>()
     private val localRequests = ConcurrentHashMap<String, Long>()
     private val seekReturn = ConcurrentHashMap<String, Long>()
@@ -373,7 +378,7 @@ internal class NearbyEngine(
             while (wifiWanted && !stopped) {
                 try {
                     val socket = server.accept()
-                    adoptTcp(socket)
+                    adoptTcp(socket, initiator = false)
                 } catch (error: IOException) {
                     if (wifiWanted) Log.i(TAG, "TCP accept stopped: ${error.message}")
                     break
@@ -516,7 +521,7 @@ internal class NearbyEngine(
         val socket = Socket()
         try {
             socket.connect(InetSocketAddress(host, port), 8_000)
-            adoptTcp(socket)
+            adoptTcp(socket, initiator = true)
         } catch (error: IOException) {
             runCatching { socket.close() }
             Log.i(TAG, "TCP connect to $host:$port failed: ${error.message}")
@@ -558,7 +563,7 @@ internal class NearbyEngine(
         }
         try {
             socket.connect()
-            adoptOpenBluetooth(address, socket)
+            adoptOpenBluetooth(address, socket, initiator = true)
         } catch (error: IOException) {
             bluetoothLive.remove(address)
             runCatching { socket.close() }
@@ -577,37 +582,44 @@ internal class NearbyEngine(
             runCatching { socket.close() }
             return
         }
-        adoptOpenBluetooth(address, socket)
+        adoptOpenBluetooth(address, socket, initiator = false)
     }
 
-    private fun adoptOpenBluetooth(address: String, socket: BluetoothSocket) {
+    private fun adoptOpenBluetooth(address: String, socket: BluetoothSocket, initiator: Boolean) {
         val link = Link(
             id = nextLinkId.getAndIncrement(),
             kind = "bluetooth",
             address = address,
+            initiator = initiator,
             maxBytes = NearbyLimits.BLUETOOTH_MAX_BYTES,
             input = socket.inputStream,
             output = socket.outputStream,
             closeSocket = { runCatching { socket.close() } },
         )
-        addLink(link)
-        sendHello(link)
-        io.execute { readLoop(link) }
+        openLink(link)
     }
 
-    private fun adoptTcp(socket: Socket) {
+    private fun adoptTcp(socket: Socket, initiator: Boolean) {
         socket.soTimeout = 60_000
         val address = socket.inetAddress?.hostAddress ?: "tcp"
         val link = Link(
             id = nextLinkId.getAndIncrement(),
             kind = "wifi",
             address = address,
+            initiator = initiator,
             maxBytes = NearbyLimits.WIFI_MAX_BYTES,
             input = socket.getInputStream(),
             output = socket.getOutputStream(),
             closeSocket = { runCatching { socket.close() } },
         )
+        openLink(link)
+    }
+
+    private fun openLink(link: Link) {
+        link.session = NearbySession(identity, link.initiator)
         addLink(link)
+        val first = link.session?.start()
+        if (first != null) send(link, NearbyLimits.TYPE_HANDSHAKE, first)
         sendHello(link)
         io.execute { readLoop(link) }
     }
@@ -629,7 +641,8 @@ internal class NearbyEngine(
                     break
                 }
                 for (frame in batch.frames) {
-                    handleFrame(link, frame)
+                    val payload = unwrap(link, frame) ?: break
+                    handleFrame(link, NearbyFrame(frame.type, payload))
                 }
             }
         } catch (error: IOException) {
@@ -639,9 +652,45 @@ internal class NearbyEngine(
         }
     }
 
+    private fun unwrap(link: Link, frame: NearbyFrame): ByteArray? {
+        val session = link.session
+        if (
+            session?.established == true &&
+            frame.type != NearbyLimits.TYPE_HANDSHAKE &&
+            frame.type != NearbyLimits.TYPE_HELLO
+        ) {
+            val plain = session.open(frame.payload)
+            if (plain == null || session.failed) {
+                link.open = false
+                return null
+            }
+            return plain
+        }
+        return frame.payload
+    }
+
     private fun handleFrame(link: Link, frame: NearbyFrame) {
+        if (
+            frame.type != NearbyLimits.TYPE_HELLO &&
+            frame.type != NearbyLimits.TYPE_HANDSHAKE &&
+            link.session?.established != true
+        ) {
+            return
+        }
         when (frame.type) {
             NearbyLimits.TYPE_HELLO -> Unit
+            NearbyLimits.TYPE_HANDSHAKE -> {
+                val reply = link.session?.receive(frame.payload)
+                if (link.session?.failed == true) {
+                    link.open = false
+                    return
+                }
+                if (reply != null) send(link, NearbyLimits.TYPE_HANDSHAKE, reply)
+            }
+            NearbyLimits.TYPE_CHAT -> {
+                val payload = frame.payload.copyOf()
+                io.execute { handleChat(link, payload) }
+            }
             NearbyLimits.TYPE_REQUEST -> {
                 if (frame.payload.size == 32) {
                     io.execute { serve(link, frame.payload.copyOf()) }
@@ -992,17 +1041,79 @@ internal class NearbyEngine(
         send(link, NearbyLimits.TYPE_HELLO, name)
     }
 
+    fun sendChat(text: String) {
+        val clean = text.trim().take(500)
+        if (clean.isEmpty()) return
+        val open = snapshotLinks().filter { it.session?.established == true }
+        if (open.isEmpty()) {
+            onAsk("The nearby link is not secure yet.")
+            return
+        }
+        val id = ByteArray(16).also { SecureRandom().nextBytes(it) }
+        rememberSeen(nearbyKeyHex(id))
+        val limit = NodePolicyRepository.state.value.nearbyHopLimit
+        val textBytes = clean.encodeToByteArray()
+        val signature = identity.sign(nearbyChatSigned(id, limit, identity.ed25519Public, textBytes))
+        val payload = encodeNearbyHop(limit, 0, id, identity.ed25519Public, signature + textBytes)
+        NearbyHub.addChat(identity.fingerprint, clean, mine = true)
+        open.forEach { link ->
+            if (fits(link, payload)) send(link, NearbyLimits.TYPE_CHAT, payload)
+        }
+    }
+
+    private fun handleChat(from: Link, payload: ByteArray) {
+        val hop = parseNearbyHop(payload) ?: return
+        if (hop.key.size != 32 || hop.body.size < 64) return
+        val signature = hop.body.copyOfRange(0, 64)
+        val textBytes = hop.body.copyOfRange(64, hop.body.size)
+        if (!nearbyVerify(hop.key, nearbyChatSigned(hop.id, hop.senderLimit, hop.key, textBytes), signature)) {
+            return
+        }
+        if (!rememberSeen(nearbyKeyHex(hop.id))) return
+        val text = runCatching { textBytes.toString(Charsets.UTF_8) }.getOrNull()?.trim().orEmpty()
+        if (text.isEmpty() || text.length > 500) return
+        if (!hop.key.contentEquals(identity.ed25519Public)) {
+            NearbyHub.addChat(nearbyFingerprint(hop.key), text, mine = false)
+        }
+        val hopsUsed = hop.hopsUsed + 1
+        val policy = NodePolicyRepository.state.value
+        if (!nearbyForward(policy.nearbyHopLimit, hop.senderLimit, hopsUsed)) return
+        val forwarded = encodeNearbyHop(hop.senderLimit, hopsUsed, hop.id, hop.key, hop.body)
+        snapshotLinks().forEach { other ->
+            if (other.id != from.id && other.session?.established == true && fits(other, forwarded)) {
+                send(other, NearbyLimits.TYPE_CHAT, forwarded)
+            }
+        }
+    }
+
     private fun send(link: Link, type: Int, payload: ByteArray): Boolean {
         if (!link.open) return false
         if (
+            type != NearbyLimits.TYPE_HELLO &&
+            type != NearbyLimits.TYPE_HANDSHAKE &&
+            link.session?.established != true
+        ) {
+            return false
+        }
+        if (
             (type == NearbyLimits.TYPE_CONTRACT ||
                 type == NearbyLimits.TYPE_DELIVER ||
-                type == NearbyLimits.TYPE_UPDATE) &&
+                type == NearbyLimits.TYPE_UPDATE ||
+                type == NearbyLimits.TYPE_CHAT) &&
             !fits(link, payload)
         ) {
             return false
         }
-        val frame = encodeNearbyFrame(type, payload)
+        val body = if (
+            link.session?.established == true &&
+            type != NearbyLimits.TYPE_HANDSHAKE &&
+            type != NearbyLimits.TYPE_HELLO
+        ) {
+            link.session?.seal(payload) ?: return false
+        } else {
+            payload
+        }
+        val frame = encodeNearbyFrame(type, body)
         return synchronized(link.output) {
             try {
                 link.output.write(frame)
@@ -1091,7 +1202,9 @@ internal class NearbyEngine(
         val id: Long,
         val kind: String,
         val address: String,
+        val initiator: Boolean,
         val maxBytes: Int,
+        var session: NearbySession? = null,
         val input: InputStream,
         val output: OutputStream,
         val closeSocket: () -> Unit,

@@ -30,6 +30,14 @@ internal object NearbyHub {
     private val askMutable = kotlinx.coroutines.flow.MutableStateFlow("")
     val askResult: kotlinx.coroutines.flow.StateFlow<String> = askMutable
 
+    data class ChatLine(val fingerprint: String, val text: String, val mine: Boolean)
+
+    private val chatMutable = kotlinx.coroutines.flow.MutableStateFlow<List<ChatLine>>(emptyList())
+    val chat: kotlinx.coroutines.flow.StateFlow<List<ChatLine>> = chatMutable
+
+    private val fingerprintMutable = kotlinx.coroutines.flow.MutableStateFlow("")
+    val fingerprint: kotlinx.coroutines.flow.StateFlow<String> = fingerprintMutable
+
     @Volatile private var engine: NearbyEngine? = null
 
     fun attach(next: NearbyEngine) {
@@ -53,6 +61,23 @@ internal object NearbyHub {
 
     fun publishAsk(text: String) {
         askMutable.value = text
+    }
+
+    fun publishFingerprint(value: String) {
+        fingerprintMutable.value = value
+    }
+
+    fun addChat(fingerprint: String, text: String, mine: Boolean) {
+        chatMutable.value = (chatMutable.value + ChatLine(fingerprint, text, mine)).takeLast(100)
+    }
+
+    fun sendChat(text: String) {
+        val current = engine
+        if (current == null) {
+            askMutable.value = "Turn Bluetooth or Wi-Fi on first."
+            return
+        }
+        current.sendChat(text)
     }
 
     fun ask(raw: String) {
