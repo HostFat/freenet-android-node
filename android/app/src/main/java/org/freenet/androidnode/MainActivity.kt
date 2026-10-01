@@ -2602,6 +2602,19 @@ private fun DiagnosticsPanel(
         identityMessage?.let { message ->
             Text(message, style = MaterialTheme.typography.bodySmall)
         }
+        val nearbyTrace by NearbyTrace.entries.collectAsState()
+        Text(stringResource(R.string.nearby_trace_heading), style = MaterialTheme.typography.titleMedium)
+        Text(
+            nearbyTrace.joinToString("\n").ifBlank { stringResource(R.string.nearby_trace_empty) },
+            style = MaterialTheme.typography.bodySmall,
+            fontFamily = androidx.compose.ui.text.font.FontFamily.Monospace,
+        )
+        OutlinedButton(
+            onClick = { copyToClipboard(context, NearbyTrace.text()) },
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.nearby_trace_copy))
+        }
         OutlinedButton(
             onClick = { showLogs = true },
             modifier = Modifier.fillMaxWidth(),

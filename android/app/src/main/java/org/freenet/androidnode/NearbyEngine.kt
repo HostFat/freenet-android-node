@@ -177,8 +177,9 @@ internal class NearbyEngine(
             }
             return AutoAsk.Skipped
         }
-        val open = snapshotLinks()
+        val open = snapshotLinks().filter { it.session?.established == true }
         if (open.isEmpty()) {
+            NearbyTrace.add("Secure links open: 0. Request not sent. key=${keyHex.take(8)}")
             if (!automatic) {
                 onAsk("No nearby phone is connected yet. Turn on Bluetooth or Wi-Fi on both phones and wait.")
             }
@@ -194,6 +195,7 @@ internal class NearbyEngine(
         val senderLimit = NodePolicyRepository.state.value.nearbyHopLimit
         val payload = encodeNearbyHop(senderLimit, 0, requestId, key, ByteArray(0))
         if (automatic) NearbyWaitNotice.waiting(appContext)
+        NearbyTrace.add("Request sent on ${open.size} secure links. key=${keyHex.take(8)}")
         onAsk("Asking ${open.size} nearby link${if (open.size == 1) "" else "s"}…")
         for (link in open) {
             send(link, NearbyLimits.TYPE_SEEK, payload)
@@ -201,14 +203,20 @@ internal class NearbyEngine(
         val result = when (val outcome = wait.await(ASK_TIMEOUT_MS)) {
             is AskOutcome.Contract -> {
                 val saved = importContract(outcome.bytes, key)
+                NearbyTrace.add(
+                    if (saved) "Contract saved. key=${keyHex.take(8)}"
+                    else "Save failed. key=${keyHex.take(8)}",
+                )
                 if (saved) AutoAsk.Saved else AutoAsk.Failed
             }
             is AskOutcome.Refused -> {
                 onAsk(outcome.text)
+                NearbyTrace.add("Nearby phone refused: ${outcome.text} key=${keyHex.take(8)}")
                 AutoAsk.Failed
             }
             AskOutcome.Timeout -> {
                 onAsk("No nearby phone answered within 3 minutes.")
+                NearbyTrace.add("No reply within 3 minutes. key=${keyHex.take(8)}")
                 AutoAsk.Failed
             }
         }
@@ -861,6 +869,8 @@ internal class NearbyEngine(
             decision.allowFetch,
         )
         val parsed = parseNearbyExport(json)
+        val shortKey = nearbyKeyHex(hop.key).take(8)
+        NearbyTrace.add("Request received. key=$shortKey reply=${parsed.status} fetched=${parsed.fetched}")
         Log.i(TAG, "Nearby seek status=${parsed.status} bytes=${parsed.bytes} fetched=${parsed.fetched}")
         if (parsed.fetched && parsed.bytes > 0L) {
             NodePolicyRepository.addNearbyFetchedBytes(appContext, parsed.bytes)
@@ -875,7 +885,8 @@ internal class NearbyEngine(
         if (parsed.status == "local" || parsed.status == "fetched") {
             if (blob != null) {
                 NativeBridge.nearbyWatchAddKey(nearbyKeyHex(hop.key))
-                sendDelivery(from, hop.id, blob)
+                val sent = send(from, NearbyLimits.TYPE_DELIVER, encodeNearbyDelivery(hop.id, blob))
+                NearbyTrace.add(if (sent) "Contract sent. key=$shortKey" else "Contract was not sent. key=$shortKey")
             } else {
                 replySeekRefuse(from, hop.id, NearbyLimits.REFUSE_TOO_LARGE)
             }
@@ -983,6 +994,7 @@ internal class NearbyEngine(
                 val status = obj.optString("status")
                 val key = obj.optString("key", "")
                 if (status == "missing" && key.isNotBlank()) {
+                    NearbyTrace.add("Subscribed contract has no data. key=${key.take(8)}")
                     askAll(listOf(key))
                     continue
                 }

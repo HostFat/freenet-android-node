@@ -96,6 +96,23 @@ internal object NearbyHub {
     }
 }
 
+internal object NearbyTrace {
+    private const val LIMIT = 50
+    private val clock = java.time.format.DateTimeFormatter.ofPattern("HH:mm:ss")
+    private val lines = kotlinx.coroutines.flow.MutableStateFlow<List<String>>(emptyList())
+    val entries: kotlinx.coroutines.flow.StateFlow<List<String>> = lines
+
+    fun add(line: String) {
+        val stamped = "${java.time.LocalTime.now().format(clock)} $line"
+        val current = lines.value
+        if (current.lastOrNull() == stamped.substringAfter(' ')) return
+        if (current.lastOrNull()?.substringAfter(' ') == line) return
+        lines.value = (current + stamped).takeLast(LIMIT)
+    }
+
+    fun text(): String = lines.value.joinToString("\n").ifBlank { "No nearby events yet." }
+}
+
 internal object NearbyWaitNotice {
     private const val CHANNEL_ID = "freenet_nearby_wait"
     private const val NOTIFICATION_ID = 7512

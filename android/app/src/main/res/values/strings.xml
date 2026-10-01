@@ -130,6 +130,9 @@
     <string name="nearby_chat_copy">Copy</string>
     <string name="nearby_chat_paste">Paste and send</string>
     <string name="nearby_chat_open">Open</string>
+    <string name="nearby_trace_heading">Nearby</string>
+    <string name="nearby_trace_empty">No nearby events yet.</string>
+    <string name="nearby_trace_copy">Copy nearby log</string>
     <string name="nearby_chat_mine">You: %1$s</string>
     <string name="nearby_chat_theirs">%1$s: %2$s</string>
     <string name="nearby_notification_channel">Nearby sharing</string>
