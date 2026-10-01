@@ -296,8 +296,8 @@ async fn wanted_keys(
         let Some(bytes) = instance_bytes(&subscription.contract_key) else {
             continue;
         };
-        let has_bytes = contract_has_bytes(client, bytes).await.unwrap_or(false);
-        if has_bytes {
+        let label = ContractInstanceId::new(bytes).to_string();
+        if info.contract_states.contains_key(&label) {
             stored.push(bytes);
         } else {
             note_missing(&bytes);
@@ -320,14 +320,6 @@ fn note_missing(id: &[u8; 32]) {
     }
     queue.push_back(WatchItem::Missing(hex));
     watch.cv.notify_one();
-}
-
-async fn contract_has_bytes(
-    client: &mut freenet_stdlib::client_api::WebApi,
-    id: [u8; 32],
-) -> Result<bool, String> {
-    let present = presence(client, ContractInstanceId::new(id)).await?;
-    Ok(present.size_bytes > 0)
 }
 
 fn instance_bytes(id: &ContractInstanceId) -> Option<[u8; 32]> {

@@ -202,10 +202,10 @@ internal class NearbyEngine(
         }
         val result = when (val outcome = wait.await(ASK_TIMEOUT_MS)) {
             is AskOutcome.Contract -> {
-                val saved = importContract(outcome.bytes, key)
+                val (saved, message) = importContract(outcome.bytes, key)
                 NearbyTrace.add(
                     if (saved) "Contract saved. key=${keyHex.take(8)}"
-                    else "Save failed. key=${keyHex.take(8)}",
+                    else "Save failed. key=${keyHex.take(8)} $message",
                 )
                 if (saved) AutoAsk.Saved else AutoAsk.Failed
             }
@@ -800,15 +800,17 @@ internal class NearbyEngine(
         send(link, NearbyLimits.TYPE_REFUSE, byteArrayOf(reason.toByte()))
     }
 
-    private fun importContract(bytes: ByteArray, knownKey: ByteArray? = null): Boolean {
+    private fun importContract(bytes: ByteArray, knownKey: ByteArray? = null): Pair<Boolean, String> {
         if (bytes.size > NearbyLimits.HARD_MAX_BYTES) {
-            onAsk("That contract is too large.")
-            return false
+            val message = "That contract is too large."
+            onAsk(message)
+            return false to message
         }
         val json = writeImport(bytes)
         if (json == null) {
-            onAsk("This phone could not save the contract.")
-            return false
+            val message = "This phone could not save the contract."
+            onAsk(message)
+            return false to message
         }
         val imported = runCatching {
             org.json.JSONObject(json).optString("status") == "imported"
@@ -817,8 +819,9 @@ internal class NearbyEngine(
         if (saved != null && saved.size == 32) {
             NativeBridge.nearbyWatchAddKey(nearbyKeyHex(saved))
         }
-        onAsk(parseNearbyImportMessage(json))
-        return imported
+        val message = parseNearbyImportMessage(json)
+        onAsk(message)
+        return imported to message
     }
 
     private fun writeImport(bytes: ByteArray): String? {
@@ -870,7 +873,11 @@ internal class NearbyEngine(
         )
         val parsed = parseNearbyExport(json)
         val shortKey = nearbyKeyHex(hop.key).take(8)
-        NearbyTrace.add("Request received. key=$shortKey reply=${parsed.status} fetched=${parsed.fetched}")
+        val detail = parsed.message.trim().take(160)
+        NearbyTrace.add(
+            "Request received. key=$shortKey reply=${parsed.status} fetched=${parsed.fetched}" +
+                if (detail.isEmpty()) "" else " message=$detail",
+        )
         Log.i(TAG, "Nearby seek status=${parsed.status} bytes=${parsed.bytes} fetched=${parsed.fetched}")
         if (parsed.fetched && parsed.bytes > 0L) {
             NodePolicyRepository.addNearbyFetchedBytes(appContext, parsed.bytes)
