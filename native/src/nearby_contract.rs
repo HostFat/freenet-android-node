@@ -162,25 +162,15 @@ async fn export_contract_async(
     allow_fetch: bool,
 ) -> Result<ExportBody, String> {
     let mut client = connect(port).await?;
-    let presence = match presence(&mut client, instance_id).await {
-        Ok(presence) => presence,
+    let outcome = match presence(&mut client, instance_id).await {
         Err(error) if error.contains("not supported") => {
-            disconnect(&mut client).await;
-            return Ok(ExportBody {
-                status: "absent",
-                bytes: 0,
-                path: String::new(),
-                message: "This phone cannot check that contract.".to_owned(),
-                fetched: false,
-            });
+            read_contract(&mut client, instance_id, LOCAL_GET_TIMEOUT, false).await
         }
         Err(error) => {
             disconnect(&mut client).await;
             return Err(error);
         }
-    };
-    let plan = nearby_plan(presence.known, allow_send, allow_fetch);
-    let outcome = match plan {
+        Ok(presence) => match nearby_plan(presence.known, allow_send, allow_fetch) {
         NearbyPlan::ReadLocal
             if local_read_stays_on_device(
                 presence.open_connections,
@@ -213,6 +203,7 @@ async fn export_contract_async(
             bytes: 0,
             blob: Vec::new(),
         }),
+        },
     };
     disconnect(&mut client).await;
     let read = match outcome {

@@ -144,7 +144,7 @@ class NearbyPolicyTest {
 
     @Test
     fun theSameStateVersionCountsAsAlreadyStored() {
-        val message = "New state version 30000394 must be higher than current version 30000394"
+        val message = "reason: New state version 30000394 must be higher than current version 30000394"
         assertTrue(nearbySameVersion(message))
         assertFalse(
             nearbySameVersion("New state version 5 must be higher than current version 4"),

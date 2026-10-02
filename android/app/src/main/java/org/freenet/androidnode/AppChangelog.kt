@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: saving a contract that is already on this phone at the same version counts as saved. A phone with Freenet peers no longer asks a nearby phone for contracts it does not store. A presence check the node cannot answer is no longer reported as a broken node."
+        "This update: a contract already stored at the same version counts as saved. In local mode, if the presence check is unavailable, the phone reads the contract directly and sends it when it is there. Network mode can still start with no internet."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
