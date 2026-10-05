@@ -10,6 +10,7 @@ import android.os.BatteryManager
 import android.os.IBinder
 import android.os.SystemClock
 import android.util.Log
+import kotlin.jvm.Volatile
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
@@ -37,6 +38,8 @@ class NodeService : Service() {
     private var runningMode = "Local"
     private var latestStartId = 0
     private var userRequestedShutdown = false
+    @Volatile
+    private var appInitiatedStop = false
     private var crashRestartAttempt = 0
     private var crashRestartJob: Job? = null
     private var scheduleJob: Job? = null
@@ -222,6 +225,7 @@ class NodeService : Service() {
         connectivityMonitor.unregister()
         runCatching { unregisterReceiver(powerReceiver) }
         crashRestartJob?.cancel()
+        appInitiatedStop = true
         statusJob?.cancel()
         if (!shutdownCompleted) {
             val response = NativeBridge.stopNode().getOrElse {
@@ -496,6 +500,7 @@ class NodeService : Service() {
             }
         }
         crashRestartAttempt = 0
+        appInitiatedStop = false
         beginStatusUpdates()
     }
 
@@ -575,6 +580,7 @@ class NodeService : Service() {
         keepController: Boolean = false,
         waitingDetail: String? = null,
     ) {
+        appInitiatedStop = true
         statusJob?.cancelAndJoin()
         statusJob = null
         if (!nativeIsActive()) {
@@ -645,12 +651,16 @@ class NodeService : Service() {
     private suspend fun handleUnexpectedNativeStop() {
         statusJob?.cancel()
         statusJob = null
-        if (userRequestedShutdown) return
+        if (userRequestedShutdown || appInitiatedStop) return
+        val status = NodeRepository.state.value
+        if (status.state != "Stopped" && status.state != "Failed") return
         val policy = NodePolicyRepository.state.value
-        val detail = NodeRepository.state.value.detail.ifBlank {
+        val detail = status.detail.ifBlank {
             "Native node stopped unexpectedly"
         }
-        CrashReportOffer.note(this, detail, formatServiceReportLogs())
+        if (shouldNoteUnexpectedStop(status.state, appInitiatedStop, userRequestedShutdown)) {
+            CrashReportOffer.note(this, detail, formatServiceReportLogs())
+        }
         if (policy.autoRestartOnCrash && crashRestartAttempt < MAX_CRASH_RESTARTS) {
             scheduleCrashRestart(runningMode == "Network")
             return
