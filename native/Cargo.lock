@@ -1635,7 +1635,7 @@ dependencies = [
 
 [[package]]
 name = "freenet"
-version = "0.2.148"
+version = "0.2.149"
 dependencies = [
  "aes-gcm",
  "ahash",
@@ -1655,6 +1655,7 @@ dependencies = [
  "clap",
  "cookie",
  "ctrlc",
+ "curve25519-dalek 4.1.3",
  "dashmap",
  "delegate",
  "directories",
@@ -1687,11 +1688,14 @@ dependencies = [
  "parking_lot",
  "pav_regression",
  "pin-project",
+ "quinn",
+ "quinn-proto",
  "rand 0.10.3",
  "rand 0.9.5",
  "rand_core 0.10.1",
  "redb",
  "reqwest",
+ "ring",
  "rpassword",
  "rustls",
  "rustls-native-certs",
@@ -1701,6 +1705,7 @@ dependencies = [
  "serde_with",
  "sha2 0.11.1",
  "socket2",
+ "subtle",
  "tao",
  "tar",
  "tempfile",
@@ -4927,9 +4932,9 @@ checksum = "0c790de23124f9ab44544d7ac05d60440adc586479ce501c1d6d7da3cd8c9cf5"
 
 [[package]]
 name = "smallvec"
-version = "1.16.3"
+version = "1.16.4"
 source = "registry+https://github.com/rust-lang/crates.io-index"
-checksum = "5b3dc8af474f516a851ff4bd12db780f948b9250ad37211e4eec0bccea54e01b"
+checksum = "d0d5d4b1981b8bbbb7aed204cae5726d683d5d6ac7e74ec54122ea28f315e7c8"
 dependencies = [
  "serde",
 ]
