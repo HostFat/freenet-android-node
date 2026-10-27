@@ -1715,12 +1715,35 @@ async fn prepare_network_node(
     };
     ensure_udp_port_free(selected_udp_port)?;
     args.network_api.network_port = Some(selected_udp_port);
-    if config_toml.exists() {
+    let existing_config = std::fs::read_to_string(&config_toml).ok();
+    let config_is_complete = existing_config.as_deref().is_some_and(config_toml_has_mode);
+    if config_is_complete {
         // Leave min/max unset so ConfigArgs::build() keeps operator edits
         // from config.toml instead of overlaying the Android UI values.
     } else {
-        args.network_api.min_connections = Some(android_config.min_connections);
-        args.network_api.max_connections = Some(android_config.max_connections);
+        // A file that only sets peer limits is not a Freenet config. Freenet
+        // rejects it with "missing field `mode`". Drop it and pass the limits
+        // as arguments so the node writes a complete file.
+        if config_toml.exists() {
+            std::fs::remove_file(&config_toml).map_err(|error| {
+                NodeError::new(
+                    "CONFIG_REWRITE_FAILED",
+                    format!("Failed to remove an incomplete config.toml: {error}"),
+                )
+            })?;
+        }
+        let min = existing_config
+            .as_deref()
+            .and_then(|text| parse_toml_u16(text, "min-number-of-connections"))
+            .map(usize::from)
+            .unwrap_or(android_config.min_connections);
+        let max = existing_config
+            .as_deref()
+            .and_then(|text| parse_toml_u16(text, "max-number-of-connections"))
+            .map(usize::from)
+            .unwrap_or(android_config.max_connections);
+        args.network_api.min_connections = Some(min);
+        args.network_api.max_connections = Some(max);
     }
     args.secrets.transport_keypair = Some(android_config.transport_keypair_path());
     args.secrets.cipher = Some(android_config.delegate_cipher_path());
@@ -1839,6 +1862,18 @@ fn ensure_udp_port_free(port: u16) -> Result<(), NodeError> {
             ),
         ))
     }
+}
+
+fn config_toml_has_mode(text: &str) -> bool {
+    text.lines().any(|line| {
+        let trimmed = line.trim_start();
+        if trimmed.starts_with('#') {
+            return false;
+        }
+        trimmed
+            .strip_prefix("mode")
+            .is_some_and(|rest| rest.trim_start().starts_with('='))
+    })
 }
 
 fn parse_toml_u16(text: &str, key: &str) -> Option<u16> {
@@ -2018,6 +2053,14 @@ mod tests {
     }
 
     #[test]
+    fn peer_limit_stub_is_not_a_freenet_config() {
+        assert!(!super::config_toml_has_mode(
+            "min-number-of-connections = 1\nmax-number-of-connections = 1\n"
+        ));
+        assert!(super::config_toml_has_mode("mode = \"network\"\n"));
+        assert!(!super::config_toml_has_mode("# mode = \"network\"\n"));
+    }
+
     fn parse_toml_u16_reads_network_port() {
         let text = "mode = \"network\"\nnetwork-port = 55012\nws-api-port = 7509\n";
         assert_eq!(super::parse_toml_u16(text, "network-port"), Some(55012));

@@ -17,6 +17,16 @@ class ConfigTomlTest {
     }
 
     @Test
+    fun peerLimitStubIsNotAFreenetConfig() {
+        assertEquals(
+            false,
+            ConfigToml.isComplete("min-number-of-connections = 1\nmax-number-of-connections = 1\n"),
+        )
+        assertEquals(true, ConfigToml.isComplete("mode = \"network\"\nmin-number-of-connections = 10\n"))
+        assertEquals(false, ConfigToml.isComplete("# mode = \"network\"\n"))
+    }
+
+    @Test
     fun parseIgnoresMissingKeys() {
         assertNull(ConfigToml.parseInt("bandwidth-limit = 1\n", ConfigToml.MIN_KEY))
         assertEquals(10, ConfigToml.parseInt("  min-number-of-connections = 10\n", ConfigToml.MIN_KEY))

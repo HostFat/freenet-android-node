@@ -721,19 +721,21 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         }
                     },
                     onEditConfig = {
-                        ConfigToml.ensureExists(context)
                         configFingerprint = ConfigToml.fingerprint(context)
                         showConfigEditor = true
                     },
                     onOpenExternal = {
-                        ConfigToml.ensureExists(context)
-                        configFingerprint = ConfigToml.fingerprint(context)
-                        val intent = ConfigToml.editorIntent(context)
-                        if (intent == null) {
-                            showNoEditor = true
+                        if (!ConfigToml.isComplete(ConfigToml.read(context))) {
+                            showConfigEditor = true
                         } else {
-                            awaitingExternalConfigEdit = true
-                            externalConfigLauncher.launch(intent)
+                            configFingerprint = ConfigToml.fingerprint(context)
+                            val intent = ConfigToml.editorIntent(context)
+                            if (intent == null) {
+                                showNoEditor = true
+                            } else {
+                                awaitingExternalConfigEdit = true
+                                externalConfigLauncher.launch(intent)
+                            }
                         }
                     },
                 )
@@ -2425,14 +2427,8 @@ private fun ConfigEditorPanel(
     onSaved: () -> Unit,
 ) {
     val context = LocalContext.current
-    var text by remember {
-        mutableStateOf(
-            run {
-                ConfigToml.ensureExists(context)
-                ConfigToml.read(context)
-            },
-        )
-    }
+    var text by remember { mutableStateOf(ConfigToml.read(context)) }
+    val configReady = ConfigToml.isComplete(text)
 
     Column(
         modifier = modifier
@@ -2440,9 +2436,14 @@ private fun ConfigEditorPanel(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
+        if (!configReady) {
+            Text(stringResource(R.string.config_not_ready))
+        }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
+                enabled = configReady,
                 onClick = {
+                    if (!ConfigToml.isComplete(text)) return@Button
                     ConfigToml.write(context, text)
                     onSaved()
                 },

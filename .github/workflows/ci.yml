@@ -24,6 +24,10 @@ on:
         type: boolean
         required: false
         default: true
+      release_notes:
+        description: "Extra text for the GitHub release description"
+        required: false
+        default: ""
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
@@ -679,6 +683,8 @@ jobs:
           body: |
             App version: ${{ github.event.inputs.release_version }}
             freenet-core: ${{ needs.setup.outputs.freenet_core_version }}
+
+            ${{ github.event.inputs.release_notes }}
           files: |
             freenet-android-node/artifacts/apk/freenet-android-node-release.apk
             freenet-android-node/artifacts/SHA256SUMS.txt

@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: the minutes you choose start once the node shows Connected, including a gateway. If nothing connects, it still turns off after those minutes. Connect now starts a session while Schedule is waiting. The check mark sits beside Manual, Charging, Always, and Schedule."
+        "This update: the app no longer saves a config.toml that only sets the peer connection limits. That file made the node fail at startup because Freenet requires a mode field. An incomplete file already on the phone is replaced the next time the network node starts."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

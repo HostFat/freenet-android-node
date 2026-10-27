@@ -47,27 +47,8 @@ internal object ConfigToml {
 
     fun fingerprint(context: Context): String = fingerprint(read(context))
 
-    fun ensureExists(context: Context) {
-        val target = file(context)
-        if (target.exists()) return
-        val policies = runCatching {
-            NodePolicyRepository.initialize(context)
-            NodePolicyRepository.state.value
-        }.getOrNull()
-        val min = policies?.minConnections ?: ConnectionLimits.DefaultMin
-        val max = policies?.maxConnections ?: ConnectionLimits.DefaultMax
-        write(
-            context,
-            """
-            |# Unofficial Freenet Android node configuration.
-            |# Freenet rewrites this file when the node starts and may drop comments.
-            |
-            |$MIN_KEY = $min
-            |$MAX_KEY = $max
-            |
-            """.trimMargin(),
-        )
-    }
+    fun isComplete(text: String): Boolean =
+        Regex("(?m)^[ \\t]*mode[ \\t]*=").containsMatchIn(text)
 
     fun upsertInt(text: String, key: String, value: Int): String {
         val line = "$key = $value"
@@ -93,6 +74,7 @@ internal object ConfigToml {
 
     fun syncUdpPortToFile(context: Context, mode: UdpPortMode, port: Int) {
         val current = read(context)
+        if (!isComplete(current)) return
         val updated = when (mode) {
             UdpPortMode.Custom -> upsertInt(current, NETWORK_PORT_KEY, UdpPorts.coerce(port))
             UdpPortMode.Random -> removeKey(current, NETWORK_PORT_KEY)
@@ -105,6 +87,7 @@ internal object ConfigToml {
 
     fun syncLimitsToFile(context: Context, min: Int, max: Int) {
         val current = read(context)
+        if (!isComplete(current)) return
         val updated = upsertInt(upsertInt(current, MIN_KEY, min), MAX_KEY, max)
         write(context, updated)
     }
@@ -117,8 +100,8 @@ internal object ConfigToml {
     }
 
     fun editorIntent(context: Context): Intent? {
-        ensureExists(context)
         val target = file(context)
+        if (!isComplete(read(context))) return null
         val uri = FileProvider.getUriForFile(
             context,
             context.packageName + FILE_PROVIDER_SUFFIX,
