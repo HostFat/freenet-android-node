@@ -15,7 +15,7 @@ on:
         description: "App release version, no leading v (e.g. 0.2.0-beta.2)"
         required: true
       skip_prechecks:
-        description: "Skip lint and debug APK (used by auto-bump). The release job still compiles native and signs the APK."
+        description: "Skip lint and tests (used by auto-bump). The release job still compiles native and signs the APK."
         type: boolean
         required: false
         default: false
@@ -31,7 +31,9 @@ on:
 
 concurrency:
   group: ${{ github.workflow }}-${{ github.event_name }}-${{ github.ref }}
-  cancel-in-progress: ${{ github.event_name != 'workflow_dispatch' }}
+  # Only branch experiments replace an older run. Nothing on main is ever
+  # cancelled, so a test dispatch cannot interrupt a release.
+  cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
   FREENET_CORE_VERSION: "v0.2.139"
@@ -114,6 +116,7 @@ jobs:
     timeout-minutes: 30
     outputs:
       lock: ${{ steps.hash.outputs.lock }}
+      cargo_lock: ${{ steps.hash.outputs.cargo_lock }}
       freenet_core_version: ${{ steps.resolve-version.outputs.value }}
 
     steps:
@@ -138,7 +141,6 @@ jobs:
           docker system prune -af --volumes
           sudo rm -rf \
             /usr/share/dotnet \
-            /usr/local/lib/android \
             /opt/ghc \
             /usr/local/share/powershell
 
@@ -176,6 +178,7 @@ jobs:
         id: hash
         run: |
           echo "lock=${{ hashFiles('**/Cargo.lock', '**/*.gradle*', '**/gradle-wrapper.properties', '**/Dockerfile') }}" >> "$GITHUB_OUTPUT"
+          echo "cargo_lock=$(sha256sum freenet-android-node/native/Cargo.lock | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
   lint:
     name: Lint & Test Rust
@@ -191,7 +194,6 @@ jobs:
           docker system prune -af --volumes
           sudo rm -rf \
             /usr/share/dotnet \
-            /usr/local/lib/android \
             /opt/ghc \
             /usr/local/share/powershell
 
@@ -214,7 +216,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.cargo-home
-          key: ${{ runner.os }}-cargo-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-cargo-${{ needs.setup.outputs.cargo_lock }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -222,9 +224,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.build-target
-          key: ${{ runner.os }}-target-lint-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-target-lint-${{ needs.setup.outputs.cargo_lock }}
           restore-keys: |
             ${{ runner.os }}-target-lint-
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.gradle-cache
+          key: ${{ runner.os }}-gradle-${{ needs.setup.outputs.lock }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Checkout freenet-android-node
         uses: actions/checkout@v4
@@ -242,15 +252,18 @@ jobs:
         run: |
           mkdir -p \
             /tmp/.cargo-home \
-            /tmp/.build-target
+            /tmp/.build-target \
+            /tmp/.gradle-cache
 
           sudo chown -R "$(id -u):$(id -g)" \
             /tmp/.cargo-home \
-            /tmp/.build-target
+            /tmp/.build-target \
+            /tmp/.gradle-cache
 
           chmod -R u+rwX \
             /tmp/.cargo-home \
-            /tmp/.build-target
+            /tmp/.build-target \
+            /tmp/.gradle-cache
 
           echo "Runner identity:"
           id
@@ -259,6 +272,7 @@ jobs:
           stat -c '%u:%g %a %n' \
             /tmp/.cargo-home \
             /tmp/.build-target \
+            /tmp/.gradle-cache \
             "$GITHUB_WORKSPACE/freenet-android-node" \
             "$GITHUB_WORKSPACE/freenet-core"
 
@@ -270,11 +284,13 @@ jobs:
             --mount "type=bind,src=${GITHUB_WORKSPACE}/freenet-core,dst=/workspace/freenet-core" \
             --mount "type=bind,src=/tmp/.cargo-home,dst=/workspace/cache/cargo" \
             --mount "type=bind,src=/tmp/.build-target,dst=/workspace/target/cargo" \
-            --env HOME=/tmp \
-            --env JAVA_TOOL_OPTIONS=-Duser.home=/tmp \
+            --mount "type=bind,src=/tmp/.gradle-cache,dst=/workspace/cache/gradle" \
+            --env HOME=/workspace/cache/gradle \
+            --env JAVA_TOOL_OPTIONS=-Duser.home=/workspace/cache/gradle \
             --env CARGO_HOME=/workspace/cache/cargo \
             --env CARGO_TARGET_DIR=/workspace/target/cargo \
-            --env ANDROID_USER_HOME=/tmp/android-user \
+            --env GRADLE_USER_HOME=/workspace/cache/gradle \
+            --env ANDROID_USER_HOME=/workspace/cache/gradle/android-user \
             "${{ env.DOCKER_IMAGE }}" \
             bash -lc '
               set -euo pipefail
@@ -300,12 +316,14 @@ jobs:
             '
 
   build:
-    name: Build APK
+    name: Build debug APK
     runs-on: ubuntu-latest
     needs: [changes, setup]
+    # Releases compile the signed APK in the release job and the lint job
+    # already compiles the debug Kotlin sources. This job only guards PRs.
     if: >
-      needs.changes.outputs.native == 'true' &&
-      (github.event_name != 'workflow_dispatch' || github.event.inputs.skip_prechecks != 'true')
+      github.event_name == 'pull_request' &&
+      needs.changes.outputs.native == 'true'
     timeout-minutes: 60
     steps:
       - name: Free disk space on runner
@@ -313,7 +331,6 @@ jobs:
           docker system prune -af --volumes
           sudo rm -rf \
             /usr/share/dotnet \
-            /usr/local/lib/android \
             /opt/ghc \
             /usr/local/share/powershell
 
@@ -336,7 +353,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.cargo-home
-          key: ${{ runner.os }}-cargo-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-cargo-${{ needs.setup.outputs.cargo_lock }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -352,7 +369,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.build-target
-          key: ${{ runner.os }}-target-build-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-target-build-${{ needs.setup.outputs.cargo_lock }}
           restore-keys: |
             ${{ runner.os }}-target-build-
 
@@ -461,10 +478,10 @@ jobs:
     name: Android unit tests
     runs-on: ubuntu-latest
     needs: changes
-    # Release dispatches must pass these too, including the automatic builds
-    # that use skip_prechecks=true.
+    # Dispatches run the same tests inside the lint job. This job covers
+    # Android-only pull requests, where the native lint does not run.
     if: >
-      (github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch') &&
+      github.event_name == 'pull_request' &&
       needs.changes.outputs.android == 'true'
     timeout-minutes: 30
     steps:
@@ -539,15 +556,14 @@ jobs:
   release:
     name: Build & Publish Release APK
     runs-on: ubuntu-latest
-    needs: [setup, lint, build, android-unit]
+    needs: [setup, lint, android-unit]
     if: >
       always() &&
       !cancelled() &&
       (needs.android-unit.result == 'success' || needs.android-unit.result == 'skipped') &&
       github.event_name == 'workflow_dispatch' &&
       needs.setup.result == 'success' &&
-      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
-      (needs.build.result == 'success' || needs.build.result == 'skipped')
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped')
     timeout-minutes: 60
     permissions:
       contents: write
@@ -558,7 +574,6 @@ jobs:
           docker system prune -af --volumes
           sudo rm -rf \
             /usr/share/dotnet \
-            /usr/local/lib/android \
             /opt/ghc \
             /usr/local/share/powershell
 
@@ -581,7 +596,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.cargo-home
-          key: ${{ runner.os }}-cargo-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-cargo-${{ needs.setup.outputs.cargo_lock }}
           restore-keys: |
             ${{ runner.os }}-cargo-
 
@@ -589,9 +604,17 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.build-target
-          key: ${{ runner.os }}-target-release-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-target-release-${{ needs.setup.outputs.cargo_lock }}
           restore-keys: |
             ${{ runner.os }}-target-release-
+
+      - name: Cache Gradle dependencies
+        uses: actions/cache@v4
+        with:
+          path: /tmp/.gradle-cache
+          key: ${{ runner.os }}-gradle-${{ needs.setup.outputs.lock }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-
 
       - name: Checkout freenet-android-node
         uses: actions/checkout@v4
@@ -615,15 +638,18 @@ jobs:
         run: |
           mkdir -p \
             /tmp/.cargo-home \
-            /tmp/.build-target
+            /tmp/.build-target \
+            /tmp/.gradle-cache
 
           sudo chown -R "$(id -u):$(id -g)" \
             /tmp/.cargo-home \
-            /tmp/.build-target
+            /tmp/.build-target \
+            /tmp/.gradle-cache
 
           chmod -R u+rwX \
             /tmp/.cargo-home \
-            /tmp/.build-target
+            /tmp/.build-target \
+            /tmp/.gradle-cache
 
           echo "Runner identity:"
           id
@@ -632,6 +658,7 @@ jobs:
           stat -c '%u:%g %a %n' \
             /tmp/.cargo-home \
             /tmp/.build-target \
+            /tmp/.gradle-cache \
             /tmp/.release-keystore/release.keystore \
             "$GITHUB_WORKSPACE/freenet-android-node" \
             "$GITHUB_WORKSPACE/freenet-core"
@@ -649,11 +676,14 @@ jobs:
             --mount "type=bind,src=${GITHUB_WORKSPACE}/freenet-core,dst=/workspace/freenet-core" \
             --mount "type=bind,src=/tmp/.cargo-home,dst=/workspace/cache/cargo" \
             --mount "type=bind,src=/tmp/.build-target,dst=/workspace/target/cargo" \
+            --mount "type=bind,src=/tmp/.gradle-cache,dst=/workspace/cache/gradle" \
             --mount "type=bind,src=/tmp/.release-keystore/release.keystore,dst=/workspace/release.keystore,readonly" \
             --env HOME=/tmp \
             --env JAVA_TOOL_OPTIONS=-Duser.home=/tmp \
             --env CARGO_HOME=/workspace/cache/cargo \
             --env CARGO_TARGET_DIR=/workspace/target/cargo \
+            --env GRADLE_USER_HOME=/workspace/cache/gradle \
+            --env ANDROID_USER_HOME=/workspace/cache/gradle/android-user \
             --env RELEASE_KEYSTORE_PATH=/workspace/release.keystore \
             --env RELEASE_KEYSTORE_PASSWORD="${RELEASE_KEYSTORE_PASSWORD}" \
             --env RELEASE_KEY_ALIAS="${RELEASE_KEY_ALIAS}" \
