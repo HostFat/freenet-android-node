@@ -1,7 +1,7 @@
 package org.freenet.androidnode
 
 /** Native node lifecycle, parsed once at the JNI boundary. */
-internal enum class NodePhase(val wire: String) {
+enum class NodePhase(val wire: String) {
     Starting("Starting"),
     RunningLocal("RunningLocal"),
     RunningNetwork("RunningNetwork"),
@@ -26,7 +26,7 @@ internal enum class NodePhase(val wire: String) {
 }
 
 /** Whether the node keeps contracts local to the phone or joins Freenet. */
-internal enum class NodeMode(val wire: String) {
+enum class NodeMode(val wire: String) {
     Local("Local"),
     Network("Network"),
     Unknown("Unknown"),
