@@ -1875,9 +1875,13 @@ fn config_toml_has_mode(text: &str) -> bool {
 fn parse_toml_u16(text: &str, key: &str) -> Option<u16> {
     for line in text.lines() {
         let trimmed = line.trim_start();
-        let rest = trimmed.strip_prefix(key)?;
-        let value = rest.trim_start().strip_prefix('=')?.trim();
-        if let Ok(port) = value.parse::<u16>() {
+        let Some(rest) = trimmed.strip_prefix(key) else {
+            continue;
+        };
+        let Some(value) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        if let Ok(port) = value.trim().parse::<u16>() {
             return Some(port);
         }
     }

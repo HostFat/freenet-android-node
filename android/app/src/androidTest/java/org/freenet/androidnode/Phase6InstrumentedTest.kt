@@ -89,7 +89,7 @@ class Phase6InstrumentedTest {
     private fun awaitContractProof(persistenceRequired: Boolean): JSONObject =
         awaitStatus(CONTRACT_TIMEOUT_MS) {
             val data = envelopeData(NativeBridge.contractProofStatus().getOrThrow())
-            when (val state = NodePhase.fromWire(data.getString("state"))) {
+            when (val state = data.getString("state")) {
                 "Failed" -> error("Contract proof failed: ${data.getString("detail")}")
                 "Succeeded" -> {
                     if (!persistenceRequired || data.getBoolean("persistenceVerified")) data else null
