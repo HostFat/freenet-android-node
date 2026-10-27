@@ -19,8 +19,13 @@ android {
 
         testInstrumentationRunner = "org.freenet.androidnode.FreenetAndroidTestRunner"
 
+        val abis = (project.findProperty("abis") as String?)
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?: listOf("arm64-v8a", "x86_64")
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += abis
         }
 
         val crashReportToken = (project.findProperty("crashReportToken") as String?)

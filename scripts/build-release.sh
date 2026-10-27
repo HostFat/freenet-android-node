@@ -15,6 +15,10 @@ if [[ -n "${CRASH_REPORT_TOKEN:-}" ]]; then
   gradle_version_args+=("-PcrashReportToken=${CRASH_REPORT_TOKEN}")
 fi
 
+# Release packages target real phones. Debug builds keep x86_64 for emulators.
+export FREENET_ABIS="arm64-v8a"
+gradle_version_args+=("-Pabis=arm64-v8a")
+
 "${repo_root}/scripts/build-native.sh"
 "${repo_root}/android/gradlew" \
   -p "${repo_root}/android" \
@@ -24,8 +28,7 @@ fi
 
 mkdir -p \
   "${artifact_root}/apk" \
-  "${artifact_root}/native/arm64-v8a" \
-  "${artifact_root}/native/x86_64"
+  "${artifact_root}/native/arm64-v8a"
 
 install -m 0644 \
   "${repo_root}/android/app/build/outputs/apk/release/app-release.apk" \
@@ -33,16 +36,12 @@ install -m 0644 \
 install -m 0644 \
   "${repo_root}/android/app/src/main/jniLibs/arm64-v8a/libfreenet_android.so" \
   "${artifact_root}/native/arm64-v8a/libfreenet_android.so"
-install -m 0644 \
-  "${repo_root}/android/app/src/main/jniLibs/x86_64/libfreenet_android.so" \
-  "${artifact_root}/native/x86_64/libfreenet_android.so"
 
 (
   cd "${artifact_root}"
   sha256sum \
     apk/freenet-android-node-release.apk \
     native/arm64-v8a/libfreenet_android.so \
-    native/x86_64/libfreenet_android.so \
     > SHA256SUMS.txt
 )
 

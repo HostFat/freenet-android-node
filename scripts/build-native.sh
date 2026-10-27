@@ -10,10 +10,15 @@ rm -rf "${jni_libs_dir}"
 mkdir -p "${jni_libs_dir}"
 cd "${repo_root}/native"
 
+read -r -a abis <<< "${FREENET_ABIS:-arm64-v8a x86_64}"
+target_args=()
+for abi in "${abis[@]}"; do
+  target_args+=(--target "${abi}")
+done
+
 cargo ndk \
   --platform 28 \
-  --target arm64-v8a \
-  --target x86_64 \
+  "${target_args[@]}" \
   --output-dir "${jni_libs_dir}" \
   build \
   --locked \
