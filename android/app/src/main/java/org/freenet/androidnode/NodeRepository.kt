@@ -3,17 +3,21 @@ package org.freenet.androidnode
 import android.content.Context
 import android.os.SystemClock
 import java.io.File
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.launch
 import org.json.JSONObject
 
 data class NodeUiState(
-    val state: String = "Stopped",
+    val state: NodePhase = NodePhase.Stopped,
     val detail: String = "The foreground service is not running",
     val completedStartCycles: Long = 0,
     val serviceActive: Boolean = false,
-    val mode: String = "Local",
+    val mode: NodeMode = NodeMode.Local,
     val peers: Int = 0,
     val startedAtElapsedRealtimeMs: Long? = null,
     val lastLifecycleResponse: String = "No lifecycle action submitted",
@@ -54,6 +58,7 @@ data class StorageUiState(
 )
 
 object NodeRepository {
+    private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutableState = MutableStateFlow(NodeUiState())
     private val mutableStorageState = MutableStateFlow(StorageUiState())
 
@@ -65,17 +70,18 @@ object NodeRepository {
         val appContext = context.applicationContext
         NodePolicyRepository.stopAutomaticScheduling(appContext)
         mutableState.value = mutableState.value.copy(
-            state = "Starting",
+            state = NodePhase.Starting,
             detail = "Submitting the foreground-service start request",
             serviceActive = true,
-            mode = "Local",
+            mode = NodeMode.Local,
             peers = 0,
             startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
             lastLifecycleResponse = "Starting local node through NodeService",
             taskRemovedWhileRunning = false,
             udpPortInUse = false,
         )
-        appContext.startForegroundService(NodeService.startLocalIntent(appContext))
+        runCatching { appContext.startForegroundService(NodeService.startLocalIntent(appContext)) }
+            .onFailure { error -> publishServiceStartBlocked(error) }
     }
 
     fun startNetwork(context: Context) {
@@ -83,17 +89,28 @@ object NodeRepository {
         NodePolicyRepository.initialize(appContext)
         NodePolicyRepository.setSuspended(appContext, false)
         mutableState.value = mutableState.value.copy(
-            state = "Starting",
+            state = NodePhase.Starting,
             detail = "Checking the selected power and network policies",
             serviceActive = true,
-            mode = "Network",
+            mode = NodeMode.Network,
             peers = 0,
             startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
             lastLifecycleResponse = "Starting network node through NodeService",
             taskRemovedWhileRunning = false,
             udpPortInUse = false,
         )
-        appContext.startForegroundService(NodeService.startNetworkIntent(appContext))
+        runCatching { appContext.startForegroundService(NodeService.startNetworkIntent(appContext)) }
+            .onFailure { error -> publishServiceStartBlocked(error) }
+    }
+
+    private fun publishServiceStartBlocked(error: Throwable) {
+        val detail = "Android did not allow the node service to start: " +
+            (error.message ?: error.javaClass.simpleName)
+        publishFailure(detail, "SERVICE_START_BLOCKED: $detail")
+    }
+
+    internal fun publishAutomaticStartBlocked(reason: String) {
+        mutableState.value = NodeStateMachine.automaticStartBlocked(mutableState.value, reason)
     }
 
     fun stop(context: Context) {
@@ -103,14 +120,19 @@ object NodeRepository {
             NodePolicyRepository.stopAutomaticScheduling(appContext)
         }
         if (!mutableState.value.serviceActive) {
-            val response = NativeBridge.nodeStatus().getOrElse {
-                "JNI status error: ${it.message ?: "unknown error"}"
+            // The native status call is blocking. Keep it off the caller thread.
+            ioScope.launch {
+                val response = NativeBridge.nodeStatus().getOrElse {
+                    "JNI status error: ${it.message ?: "unknown error"}"
+                }
+                val status = parseNodeStatus(response)
+                if (status.state == NodePhase.Stopped || status.state == NodePhase.Failed) {
+                    publishStopped(status, response)
+                    return@launch
+                }
+                appContext.startService(NodeService.stopIntent(appContext))
             }
-            val status = parseNodeStatus(response)
-            if (status.state == "Stopped" || status.state == "Failed") {
-                publishStopped(status, response)
-                return
-            }
+            return
         }
         context.applicationContext.startService(NodeService.stopIntent(context.applicationContext))
     }
@@ -183,10 +205,10 @@ object NodeRepository {
         NodePolicyRepository.initialize(appContext)
         NodePolicyRepository.setSuspended(appContext, false)
         mutableState.value = mutableState.value.copy(
-            state = "Starting",
+            state = NodePhase.Starting,
             detail = "Restarting the network node with the new connection limits",
             serviceActive = true,
-            mode = "Network",
+            mode = NodeMode.Network,
             lastLifecycleResponse = "Restarting network node through NodeService",
             taskRemovedWhileRunning = false,
             udpPortInUse = false,
@@ -201,30 +223,17 @@ object NodeRepository {
         )
     }
 
-    internal fun publishStarting(startedAtElapsedRealtimeMs: Long, mode: String) {
-        mutableState.value = mutableState.value.copy(
-            state = "Starting",
-            detail = "The foreground service is starting the native node",
-            serviceActive = true,
-            mode = mode,
-            peers = 0,
-            startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
-            taskRemovedWhileRunning = false,
-            udpPortInUse = false,
+    internal fun publishStarting(startedAtElapsedRealtimeMs: Long, mode: NodeMode) {
+        mutableState.value = NodeStateMachine.starting(
+            mutableState.value,
+            mode,
+            "The foreground service is starting the native node",
+            startedAtElapsedRealtimeMs,
         )
     }
 
     internal fun publishWaiting(detail: String, paused: Boolean = false) {
-        mutableState.value = mutableState.value.copy(
-            state = if (paused) "Paused" else "Waiting",
-            detail = detail,
-            serviceActive = true,
-            mode = "Network",
-            peers = 0,
-            startedAtElapsedRealtimeMs = null,
-            lastLifecycleResponse = detail,
-            lastNetworkError = null,
-        )
+        mutableState.value = NodeStateMachine.waiting(mutableState.value, detail, paused)
     }
 
     internal fun publishNativeStatus(
@@ -233,27 +242,11 @@ object NodeRepository {
         startedAtElapsedRealtimeMs: Long?,
     ): NodeUiState {
         val parsed = parseNodeStatus(response)
-        val next = mutableState.value.copy(
-            state = parsed.state,
-            detail = parsed.detail,
-            completedStartCycles = parsed.completedStartCycles,
-            serviceActive = serviceActive,
-            mode = parsed.mode ?: mutableState.value.mode,
-            peers = parsed.peerCount,
-            startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
-            identityFingerprint = parsed.identityFingerprint,
-            connectionAttempts = parsed.connectionAttempts,
-            successfulConnections = parsed.successfulConnections,
-            bytesSent = parsed.bytesSent,
-            bytesReceived = parsed.bytesReceived,
-            currentNetworkType = parsed.currentNetworkType,
-            connectivityAvailable = parsed.connectivityAvailable,
-            networkMetered = parsed.networkMetered,
-            vpnActive = parsed.vpnActive,
-            lastNetworkError = parsed.lastNetworkError,
-            highestSeenPeerVersion = parsed.highestSeenPeerVersion,
-            udpPort = parsed.udpPort,
-            udpPortInUse = false,
+        val next = NodeStateMachine.nativeStatus(
+            mutableState.value,
+            parsed,
+            serviceActive,
+            startedAtElapsedRealtimeMs,
         )
         mutableState.value = next
         return next
@@ -264,19 +257,17 @@ object NodeRepository {
     }
 
     internal fun publishPaused(status: NodeStatusSnapshot, response: String) {
-        mutableState.value = mutableState.value.copy(
-            state = "Paused",
-            detail = "The node was paused through a graceful native shutdown",
+        mutableState.value = NodeStateMachine.stopped(
+            mutableState.value,
+            "The node was paused through a graceful native shutdown",
+            response,
             completedStartCycles = status.completedStartCycles,
-            serviceActive = false,
-            startedAtElapsedRealtimeMs = null,
-            lastLifecycleResponse = response,
-        )
+        ).copy(state = NodePhase.Paused)
     }
 
     internal fun publishAfterReset() {
         mutableState.value = mutableState.value.copy(
-            state = "Stopped",
+            state = NodePhase.Stopped,
             detail = "Node data was reset. Identity and config.toml were kept.",
             serviceActive = false,
             startedAtElapsedRealtimeMs = null,
@@ -292,13 +283,11 @@ object NodeRepository {
     }
 
     internal fun publishStopped(status: NodeStatusSnapshot, response: String) {
-        mutableState.value = mutableState.value.copy(
-            state = "Stopped",
-            detail = status.detail,
+        mutableState.value = NodeStateMachine.stopped(
+            mutableState.value,
+            status.detail,
+            response,
             completedStartCycles = status.completedStartCycles,
-            serviceActive = false,
-            startedAtElapsedRealtimeMs = null,
-            lastLifecycleResponse = response,
         )
     }
 
@@ -307,32 +296,22 @@ object NodeRepository {
         response: String,
         reason: String,
     ) {
-        mutableState.value = mutableState.value.copy(
-            state = "Stopped",
-            detail = "Network mode stopped safely: $reason",
+        mutableState.value = NodeStateMachine.stopped(
+            mutableState.value,
+            "Network mode stopped safely: $reason",
+            response,
             completedStartCycles = status.completedStartCycles,
-            serviceActive = false,
-            startedAtElapsedRealtimeMs = null,
-            lastLifecycleResponse = response,
             lastNetworkError = reason,
         )
     }
 
     internal fun publishFailure(detail: String, response: String) {
-        mutableState.value = mutableState.value.copy(
-            state = "Failed",
-            detail = detail,
-            serviceActive = false,
-            startedAtElapsedRealtimeMs = null,
-            lastLifecycleResponse = response,
-            lastNetworkError = detail,
-            udpPortInUse = false,
-        )
+        mutableState.value = NodeStateMachine.failed(mutableState.value, detail, response)
     }
 
     internal fun publishUdpPortInUse(detail: String, response: String) {
         mutableState.value = mutableState.value.copy(
-            state = "Failed",
+            state = NodePhase.Failed,
             detail = detail,
             serviceActive = false,
             startedAtElapsedRealtimeMs = null,
@@ -344,7 +323,7 @@ object NodeRepository {
 
     internal fun publishShutdownTimeout(detail: String, response: String) {
         mutableState.value = mutableState.value.copy(
-            state = "Stopping",
+            state = NodePhase.Stopping,
             detail = detail,
             serviceActive = true,
             lastLifecycleResponse = response,
@@ -395,11 +374,11 @@ object NodeRepository {
 }
 
 internal data class NodeStatusSnapshot(
-    val state: String,
+    val state: NodePhase,
     val detail: String,
     val completedStartCycles: Long,
     val identityFingerprint: String?,
-    val mode: String? = null,
+    val mode: NodeMode? = null,
     val peerCount: Int = 0,
     val connectionAttempts: Long = 0,
     val successfulConnections: Long = 0,
@@ -420,7 +399,7 @@ internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
         if (!envelope.optBoolean("ok")) {
             val error = envelope.optJSONObject("error")
             return@runCatching NodeStatusSnapshot(
-                state = "Failed",
+                state = NodePhase.Failed,
                 detail = error?.optString("message") ?: "Native status request failed",
                 completedStartCycles = 0,
                 identityFingerprint = null,
@@ -428,11 +407,11 @@ internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
         }
         val data = envelope.getJSONObject("data")
         NodeStatusSnapshot(
-            state = data.optString("state", "Unknown"),
+            state = NodePhase.fromWire(data.optString("state", "Unknown")),
             detail = data.optString("detail", "No detail"),
             completedStartCycles = data.optLong("completedStartCycles"),
             identityFingerprint = data.optionalString("identityFingerprint"),
-            mode = data.optionalString("mode"),
+            mode = NodeMode.fromWireOrNull(data.optionalString("mode")),
             peerCount = data.optInt("peerCount"),
             connectionAttempts = data.optLong("connectionAttempts"),
             successfulConnections = data.optLong("successfulConnections"),
@@ -447,7 +426,7 @@ internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
             udpPort = data.optInt("udpPort").takeIf { data.has("udpPort") && !data.isNull("udpPort") && it > 0 },
         )
     }.getOrElse { error ->
-        NodeStatusSnapshot("Failed", error.message ?: response, 0, null)
+        NodeStatusSnapshot(NodePhase.Failed, error.message ?: response, 0, null)
     }
 }
 

@@ -58,16 +58,15 @@ internal object ConnectionLimits {
     }
 }
 
-internal fun networkNodeIsLive(state: String, mode: String): Boolean =
-    mode == "Network" && state in setOf("Starting", "RunningNetwork", "Stopping")
+internal fun networkNodeIsLive(state: NodePhase, mode: NodeMode): Boolean =
+    mode == NodeMode.Network && state.isLive
 
-internal fun nodeIsLive(state: String): Boolean =
-    state in setOf("Starting", "RunningNetwork", "RunningLocal", "Stopping")
+internal fun nodeIsLive(state: NodePhase): Boolean = state.isLive
 
 internal const val RIVER_CHAT_INVITE_URL = "https://freenet.org/quickstart"
 
-internal fun showRiverChatInvite(state: String, mode: String): Boolean =
-    mode == "Network" && state == "RunningNetwork"
+internal fun showRiverChatInvite(state: NodePhase, mode: NodeMode): Boolean =
+    mode == NodeMode.Network && state == NodePhase.RunningNetwork
 
 internal fun connectionLimitsAreDirty(
     draftMin: Int,
@@ -83,27 +82,28 @@ internal fun isGatewayOnlyHint(natHint: String?): Boolean =
     natHint?.contains("gateways", ignoreCase = true) == true
 
 internal fun networkStatusLabel(
-    state: String,
-    mode: String,
+    state: NodePhase,
+    mode: NodeMode,
     peers: Int,
     serviceActive: Boolean,
     natHint: String? = null,
 ): String =
     when {
-        !serviceActive || state == "Stopped" || state == "Failed" -> "Stopped"
-        state == "Paused" -> "Paused"
-        state == "Waiting" -> "Waiting"
-        mode == "Local" && (state == "RunningLocal" || state == "Starting") ->
-            if (state == "Starting") "Starting local" else "Local"
-        state == "Starting" || state == "Stopping" -> "Connecting"
-        state == "RunningNetwork" && peers > 0 -> "Connected"
-        state == "RunningNetwork" && isGatewayOnlyHint(natHint) -> "Gateway only"
-        state == "RunningNetwork" -> "Connecting"
-        else -> state
+        !serviceActive || state == NodePhase.Stopped || state == NodePhase.Failed -> "Stopped"
+        state == NodePhase.Paused -> "Paused"
+        state == NodePhase.Waiting -> "Waiting"
+        mode == NodeMode.Local &&
+            (state == NodePhase.RunningLocal || state == NodePhase.Starting) ->
+            if (state == NodePhase.Starting) "Starting local" else "Local"
+        state == NodePhase.Starting || state == NodePhase.Stopping -> "Connecting"
+        state == NodePhase.RunningNetwork && peers > 0 -> "Connected"
+        state == NodePhase.RunningNetwork && isGatewayOnlyHint(natHint) -> "Gateway only"
+        state == NodePhase.RunningNetwork -> "Connecting"
+        else -> state.wire
     }
 
 internal fun menuBlockReason(
-    status: String,
+    status: NodePhase,
     detail: String,
     lastNetworkError: String?,
     udpPortInUse: Boolean = false,
@@ -112,8 +112,8 @@ internal fun menuBlockReason(
     val cleanDetail = detail.trim()
     val cleanError = lastNetworkError?.trim().orEmpty()
     return when (status) {
-        "Waiting", "Paused" -> cleanDetail.ifEmpty { null }
-        "Stopped" -> cleanError.ifEmpty { null }
+        NodePhase.Waiting, NodePhase.Paused -> cleanDetail.ifEmpty { null }
+        NodePhase.Stopped -> cleanError.ifEmpty { null }
         else -> null
     }
 }

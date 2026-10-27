@@ -186,26 +186,17 @@ private fun AlphaDisclaimerDialog(onAccept: () -> Unit) {
             dismissOnBackPress = false,
             dismissOnClickOutside = false,
         ),
-        title = { Text("Warning: This application runs a full Freenet node.") },
+        title = { Text(stringResource(R.string.alpha_title)) },
         text = {
             Column(
                 modifier = Modifier.verticalScroll(rememberScrollState()),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                Text(
-                    "This is an unofficial, community-built app. It is not published, " +
-                        "maintained, or endorsed by the Freenet Project.",
-                    fontWeight = FontWeight.Bold,
-                )
-                Text("Freenet is not yet optimized for mobile devices.")
-                Text("Running a node may result in:")
-                Text(
-                    "Significant battery drain\n" +
-                        "High CPU usage and device heating\n" +
-                        "Large Wi-Fi data usage\n" +
-                        "Reduced device performance",
-                )
-                Text("This software is intended for developers and early adopters only.")
+                Text(stringResource(R.string.alpha_unofficial), fontWeight = FontWeight.Bold)
+                Text(stringResource(R.string.alpha_not_optimized))
+                Text(stringResource(R.string.alpha_risks))
+                Text(stringResource(R.string.alpha_risks_list))
+                Text(stringResource(R.string.alpha_early))
                 Row(
                     modifier = Modifier
                         .fillMaxWidth()
@@ -222,7 +213,7 @@ private fun AlphaDisclaimerDialog(onAccept: () -> Unit) {
                         onCheckedChange = null,
                     )
                     Text(
-                        "I have read and accept the risks and notices in this disclaimer",
+                        stringResource(R.string.alpha_accept_risks),
                         modifier = Modifier.padding(start = 8.dp),
                     )
                 }
@@ -233,7 +224,7 @@ private fun AlphaDisclaimerDialog(onAccept: () -> Unit) {
                 onClick = onAccept,
                 enabled = riskAccepted,
             ) {
-                Text("Accept and continue")
+                Text(stringResource(R.string.alpha_accept))
             }
         },
     )
@@ -252,15 +243,15 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
     var pendingNotificationAction by remember { mutableStateOf<(() -> Unit)?>(null) }
-    var showDiagnostics by remember { mutableStateOf(false) }
-    var showConfigEditor by remember { mutableStateOf(false) }
-    var showNoEditor by remember { mutableStateOf(false) }
-    var showExternalGuideConfirm by remember { mutableStateOf(false) }
+    var showDiagnostics by rememberSaveable { mutableStateOf(false) }
+    var showConfigEditor by rememberSaveable { mutableStateOf(false) }
+    var showNoEditor by rememberSaveable { mutableStateOf(false) }
+    var showExternalGuideConfirm by rememberSaveable { mutableStateOf(false) }
     var changelogLine by remember { mutableStateOf(AppChangelog.pendingLine(context)) }
     var pendingRestart by remember { mutableStateOf<PendingRestart?>(null) }
-    var pendingReset by remember { mutableStateOf(false) }
-    var showCrashDialog by remember { mutableStateOf(false) }
-    var crashComment by remember { mutableStateOf("") }
+    var pendingReset by rememberSaveable { mutableStateOf(false) }
+    var showCrashDialog by rememberSaveable { mutableStateOf(false) }
+    var crashComment by rememberSaveable { mutableStateOf("") }
     var crashSending by remember { mutableStateOf(false) }
     var crashSentId by remember { mutableStateOf<String?>(null) }
     var crashError by remember { mutableStateOf<String?>(null) }
@@ -271,9 +262,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         val now = ConfigToml.fingerprint(context)
         val changed = now != configFingerprint
         configFingerprint = now
-        if (changed) {
-            ConfigToml.syncLimitsFromFile(context)
-        }
         val live = NodeRepository.state.value
         if (
             shouldPromptRestartForConfigFile(
@@ -447,21 +435,14 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         )
                         Column {
                             Text("Freenet Android Node", style = MaterialTheme.typography.titleLarge)
-                            Text(
-                                "Unofficial · not affiliated with the Freenet Project",
+                            Text(stringResource(R.string.unofficial_not_affiliated),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                             )
                         }
                     }
                     val blockReason = menuBlockReason(
-                        status = networkStatusLabel(
-                            nodeState.state,
-                            nodeState.mode,
-                            nodeState.peers,
-                            nodeState.serviceActive,
-                            nodeState.natHint,
-                        ),
+                        status = nodeState.state,
                         detail = nodeState.detail,
                         lastNetworkError = nodeState.lastNetworkError,
                         udpPortInUse = nodeState.udpPortInUse,
@@ -496,9 +477,9 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("Dashboard")
+                        Text(stringResource(R.string.dashboard_title))
                     }
-                    if (nodeState.state == "RunningNetwork" || nodeState.state == "RunningLocal") {
+                    if (nodeState.state.isRunning) {
                         OutlinedButton(
                             onClick = {
                                 context.startActivity(
@@ -611,7 +592,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     ) {
                         Text(
                             if (updateState.checking) {
-                                "Checking…"
+                                stringResource(R.string.checking_updates)
                             } else {
                                 stringResource(R.string.check_for_updates)
                             },
@@ -655,7 +636,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         },
                         modifier = Modifier.fillMaxWidth(),
                     ) {
-                        Text("For nerds")
+                        Text(stringResource(R.string.for_nerds_title))
                     }
                     val appVersion = remember {
                         runCatching {
@@ -1141,7 +1122,7 @@ private fun NodeControlStrip(
                 }
             }
         }
-        if (state.mode == "Network" && state.udpPort != null && state.udpPort > 0) {
+        if (state.mode == NodeMode.Network && state.udpPort != null && state.udpPort > 0) {
             Text(
                 "UDP port: ${state.udpPort}",
                 color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -1180,7 +1161,7 @@ private fun NodeControlStrip(
             }
         } else if (
             state.lastNetworkError != null &&
-            menuBlockReason(status, state.detail, state.lastNetworkError, state.udpPortInUse) == null
+            menuBlockReason(state.state, state.detail, state.lastNetworkError, state.udpPortInUse) == null
         ) {
             Text(
                 text = state.lastNetworkError,
@@ -1203,17 +1184,17 @@ private fun NodeControlStrip(
             if (state.serviceActive) {
                 OutlinedButton(
                     enabled = NativeBridge.isLoaded,
-                    onClick = if (state.state == "Paused") onStartNetwork else onPause,
+                    onClick = if (state.state == NodePhase.Paused) onStartNetwork else onPause,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text(if (state.state == "Paused") "Resume node" else "Pause node")
+                    Text(if (state.state == NodePhase.Paused) "Resume node" else "Pause node")
                 }
                 Button(
                     enabled = NativeBridge.isLoaded,
                     onClick = onStop,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Stop node")
+                    Text(stringResource(R.string.stop_node))
                 }
             } else {
                 Button(
@@ -1221,14 +1202,14 @@ private fun NodeControlStrip(
                     onClick = onStartNetwork,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Start network node")
+                    Text(stringResource(R.string.start_network_node))
                 }
                 OutlinedButton(
                     enabled = NativeBridge.isLoaded,
                     onClick = onStartLocal,
                     modifier = Modifier.weight(1f),
                 ) {
-                    Text("Start local node")
+                    Text(stringResource(R.string.start_local_node))
                 }
             }
         }
@@ -1881,7 +1862,7 @@ private fun oemTipRes(vendor: OemVendor): Int = when (vendor) {
 
 @Composable
 private fun DashboardPanel(state: NodeUiState, modifier: Modifier = Modifier) {
-    val running = state.state == "RunningLocal" || state.state == "RunningNetwork"
+    val running = state.state.isRunning
     if (running) {
         CoreDashboardWebView(
             reloadKey = "${state.mode}:${state.completedStartCycles}",
@@ -1894,17 +1875,11 @@ private fun DashboardPanel(state: NodeUiState, modifier: Modifier = Modifier) {
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                if (state.state == "Starting" || state.state == "Stopping") {
+                if ((state.state == NodePhase.Starting || state.state == NodePhase.Stopping)) {
                     CircularProgressIndicator()
                 }
                 val blockReason = menuBlockReason(
-                    status = networkStatusLabel(
-                        state.state,
-                        state.mode,
-                        state.peers,
-                        state.serviceActive,
-                        state.natHint,
-                    ),
+                    status = state.state,
                     detail = state.detail,
                     lastNetworkError = state.lastNetworkError,
                     udpPortInUse = state.udpPortInUse,
@@ -1979,7 +1954,7 @@ private fun CoreDashboardWebView(reloadKey: String, modifier: Modifier = Modifie
                 horizontalAlignment = Alignment.CenterHorizontally,
                 verticalArrangement = Arrangement.spacedBy(8.dp),
             ) {
-                Text("Dashboard is not ready yet")
+                Text(stringResource(R.string.dashboard_not_ready))
                 Text(message, style = MaterialTheme.typography.bodySmall)
                 Button(
                     onClick = {
@@ -1988,7 +1963,7 @@ private fun CoreDashboardWebView(reloadKey: String, modifier: Modifier = Modifie
                         webView.reload()
                     },
                 ) {
-                    Text("Retry")
+                    Text(stringResource(R.string.retry))
                 }
             }
         }
@@ -2417,55 +2392,6 @@ private fun ScrollableMonospaceBox(
                 )
             }
         }
-    }
-}
-
-@Composable
-private fun ConfigEditorPanel(
-    modifier: Modifier = Modifier,
-    onClose: () -> Unit,
-    onSaved: () -> Unit,
-) {
-    val context = LocalContext.current
-    var text by remember { mutableStateOf(ConfigToml.read(context)) }
-    val configReady = ConfigToml.isComplete(text)
-
-    Column(
-        modifier = modifier
-            .fillMaxSize()
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        if (!configReady) {
-            Text(stringResource(R.string.config_not_ready))
-        }
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            Button(
-                enabled = configReady,
-                onClick = {
-                    if (!ConfigToml.isComplete(text)) return@Button
-                    ConfigToml.write(context, text)
-                    onSaved()
-                },
-            ) {
-                Text(stringResource(R.string.config_save))
-            }
-            OutlinedButton(onClick = onClose) {
-                Text(stringResource(R.string.config_close))
-            }
-        }
-        Text(
-            stringResource(R.string.config_open_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        OutlinedTextField(
-            value = text,
-            onValueChange = { text = it },
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
-            textStyle = MaterialTheme.typography.bodySmall.copy(fontFamily = FontFamily.Monospace),
-        )
     }
 }
 

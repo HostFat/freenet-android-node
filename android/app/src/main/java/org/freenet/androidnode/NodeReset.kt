@@ -11,7 +11,7 @@ internal fun nodeRuntimeResetPaths(filesDir: File, cacheDir: File): List<File> =
     File(cacheDir, "freenet"),
 )
 
-internal fun canResetNode(serviceActive: Boolean, nativeState: String?): Boolean {
+internal fun canResetNode(serviceActive: Boolean, nativeState: NodePhase?): Boolean {
     if (serviceActive) return false
     if (nativeState != null && nodeIsLive(nativeState)) return false
     return true

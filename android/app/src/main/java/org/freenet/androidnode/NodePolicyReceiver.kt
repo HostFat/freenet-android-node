@@ -32,6 +32,10 @@ class NodePolicyReceiver : BroadcastReceiver() {
                 "Android did not permit the best-effort automatic node controller to start",
                 error,
             )
+            NodeRepository.publishAutomaticStartBlocked(
+                "Android did not allow the automatic node start: " +
+                    (error.message ?: error.javaClass.simpleName),
+            )
         }
     }
 

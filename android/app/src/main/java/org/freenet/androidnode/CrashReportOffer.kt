@@ -67,7 +67,7 @@ internal fun shouldOfferCrashReport(
 ): Boolean = !udpPortInUse && !policyBlocked && !userRequestedShutdown
 
 internal fun shouldNoteUnexpectedStop(
-    state: String,
+    state: NodePhase,
     appInitiatedStop: Boolean,
     userRequestedShutdown: Boolean,
-): Boolean = state == "Failed" && !appInitiatedStop && !userRequestedShutdown
+): Boolean = state == NodePhase.Failed && !appInitiatedStop && !userRequestedShutdown

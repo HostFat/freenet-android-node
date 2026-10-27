@@ -22,11 +22,11 @@ class ConnectionLimitsTest {
 
     @Test
     fun nodeResetKeepsIdentityAndConfigAndRefusesALiveNode() {
-        assertEquals(true, canResetNode(serviceActive = false, nativeState = "Stopped"))
-        assertEquals(true, canResetNode(serviceActive = false, nativeState = "Failed"))
-        assertEquals(false, canResetNode(serviceActive = true, nativeState = "Stopped"))
-        assertEquals(false, canResetNode(serviceActive = false, nativeState = "RunningNetwork"))
-        assertEquals(false, canResetNode(serviceActive = false, nativeState = "RunningLocal"))
+        assertEquals(true, canResetNode(serviceActive = false, nativeState = NodePhase.Stopped))
+        assertEquals(true, canResetNode(serviceActive = false, nativeState = NodePhase.Failed))
+        assertEquals(false, canResetNode(serviceActive = true, nativeState = NodePhase.Stopped))
+        assertEquals(false, canResetNode(serviceActive = false, nativeState = NodePhase.RunningNetwork))
+        assertEquals(false, canResetNode(serviceActive = false, nativeState = NodePhase.RunningLocal))
         val files = java.io.File("/data/user/0/app/files")
         val cache = java.io.File("/data/user/0/app/cache")
         val paths = nodeRuntimeResetPaths(files, cache).map { it.path }
@@ -39,7 +39,7 @@ class ConnectionLimitsTest {
     @Test
     fun lastKnownStatusJsonSurvivesADeadNode() {
         val json = lastKnownStatusJson(
-            NodeUiState(state = "Failed", detail = "native crash", lastNetworkError = "segfault"),
+            NodeUiState(state = NodePhase.Failed, detail = "native crash", lastNetworkError = "segfault"),
         )
         assertEquals(true, json.contains("android-last-known"))
         assertEquals(true, json.contains("Failed"))
@@ -61,10 +61,10 @@ class ConnectionLimitsTest {
         assertEquals(false, shouldOfferCrashReport(udpPortInUse = true, policyBlocked = false, userRequestedShutdown = false))
         assertEquals(false, shouldOfferCrashReport(udpPortInUse = false, policyBlocked = true, userRequestedShutdown = false))
         assertEquals(false, shouldOfferCrashReport(udpPortInUse = false, policyBlocked = false, userRequestedShutdown = true))
-        assertEquals(true, shouldNoteUnexpectedStop("Failed", appInitiatedStop = false, userRequestedShutdown = false))
-        assertEquals(false, shouldNoteUnexpectedStop("Stopped", appInitiatedStop = false, userRequestedShutdown = false))
-        assertEquals(false, shouldNoteUnexpectedStop("Failed", appInitiatedStop = true, userRequestedShutdown = false))
-        assertEquals(false, shouldNoteUnexpectedStop("Failed", appInitiatedStop = false, userRequestedShutdown = true))
+        assertEquals(true, shouldNoteUnexpectedStop(NodePhase.Failed, appInitiatedStop = false, userRequestedShutdown = false))
+        assertEquals(false, shouldNoteUnexpectedStop(NodePhase.Stopped, appInitiatedStop = false, userRequestedShutdown = false))
+        assertEquals(false, shouldNoteUnexpectedStop(NodePhase.Failed, appInitiatedStop = true, userRequestedShutdown = false))
+        assertEquals(false, shouldNoteUnexpectedStop(NodePhase.Failed, appInitiatedStop = false, userRequestedShutdown = true))
         val comment = presetCrashReportComment("0.2.137.1")
         assertEquals(true, comment.contains(SERVICE_REPORT_REPO))
         assertEquals(true, comment.contains("App version: 0.2.137.1"))
@@ -119,23 +119,23 @@ class ConnectionLimitsTest {
     fun networkStatusLabelIsConnectedConnectingOrStopped() {
         assertEquals(
             "Stopped",
-            networkStatusLabel("Stopped", "Network", 0, false),
+            networkStatusLabel(NodePhase.Stopped, NodeMode.Network, 0, false),
         )
         assertEquals(
             "Connecting",
-            networkStatusLabel("RunningNetwork", "Network", 0, true),
+            networkStatusLabel(NodePhase.RunningNetwork, NodeMode.Network, 0, true),
         )
         assertEquals(
             "Connected",
-            networkStatusLabel("RunningNetwork", "Network", 4, true),
+            networkStatusLabel(NodePhase.RunningNetwork, NodeMode.Network, 4, true),
         )
         assertEquals(
             "Paused",
-            networkStatusLabel("Paused", "Network", 0, true),
+            networkStatusLabel(NodePhase.Paused, NodeMode.Network, 0, true),
         )
         assertEquals(
             "Local",
-            networkStatusLabel("RunningLocal", "Local", 0, true),
+            networkStatusLabel(NodePhase.RunningLocal, NodeMode.Local, 0, true),
         )
         assertEquals(
             "Gateway only",
@@ -169,16 +169,16 @@ class ConnectionLimitsTest {
                 null,
             ),
         )
-        assertEquals("paused by the user", menuBlockReason("Paused", "paused by the user", null))
+        assertEquals("paused by the user", menuBlockReason(NodePhase.Paused, "paused by the user", null))
         assertEquals(
             "The node is waiting because there is no network.",
-            menuBlockReason("Stopped", "idle", "The node is waiting because there is no network."),
+            menuBlockReason(NodePhase.Stopped, "idle", "The node is waiting because there is no network."),
         )
-        assertNull(menuBlockReason("Stopped", "The foreground service is not running", null))
-        assertNull(menuBlockReason("Connected", "running", null))
-        assertNull(menuBlockReason("Waiting", "  ", null))
+        assertNull(menuBlockReason(NodePhase.Stopped, "The foreground service is not running", null))
+        assertNull(menuBlockReason(NodePhase.Unknown, "running", null))
+        assertNull(menuBlockReason(NodePhase.Waiting, "  ", null))
         assertNull(
-            menuBlockReason("Stopped", "port in use", "port in use", udpPortInUse = true),
+            menuBlockReason(NodePhase.Stopped, "port in use", "port in use", udpPortInUse = true),
         )
     }
 
@@ -201,30 +201,30 @@ class ConnectionLimitsTest {
         assertEquals(false, isUdpPortInUseResponse("""{"ok":false,"error":{"code":"NETWORK_POLICY_BLOCKED","message":"x"}}"""))
         assertEquals(true, identityRestoreSucceeded("Identity restored. Restart the node to use it."))
         assertEquals(false, identityRestoreSucceeded("Could not read the backup file"))
-        assertEquals(true, nodeIsLive("RunningNetwork"))
-        assertEquals(true, nodeIsLive("RunningLocal"))
-        assertEquals(false, nodeIsLive("Stopped"))
-        assertEquals(false, nodeIsLive("Paused"))
+        assertEquals(true, nodeIsLive(NodePhase.RunningNetwork))
+        assertEquals(true, nodeIsLive(NodePhase.RunningLocal))
+        assertEquals(false, nodeIsLive(NodePhase.Stopped))
+        assertEquals(false, nodeIsLive(NodePhase.Paused))
     }
 
     @Test
     fun riverChatInviteOnlyWhenTheNetworkNodeIsRunning() {
-        assertEquals(true, showRiverChatInvite("RunningNetwork", "Network"))
-        assertEquals(false, showRiverChatInvite("Starting", "Network"))
-        assertEquals(false, showRiverChatInvite("Paused", "Network"))
-        assertEquals(false, showRiverChatInvite("Stopped", "Network"))
-        assertEquals(false, showRiverChatInvite("RunningLocal", "Local"))
+        assertEquals(true, showRiverChatInvite(NodePhase.RunningNetwork, NodeMode.Network))
+        assertEquals(false, showRiverChatInvite(NodePhase.Starting, NodeMode.Network))
+        assertEquals(false, showRiverChatInvite(NodePhase.Paused, NodeMode.Network))
+        assertEquals(false, showRiverChatInvite(NodePhase.Stopped, NodeMode.Network))
+        assertEquals(false, showRiverChatInvite(NodePhase.RunningLocal, NodeMode.Local))
         assertEquals("https://freenet.org/quickstart", RIVER_CHAT_INVITE_URL)
     }
 
     @Test
     fun restartPromptOnlyWhenTheNetworkNodeIsLive() {
-        assertEquals(true, networkNodeIsLive("RunningNetwork", "Network"))
-        assertEquals(true, networkNodeIsLive("Starting", "Network"))
-        assertEquals(true, networkNodeIsLive("Stopping", "Network"))
-        assertEquals(false, networkNodeIsLive("RunningLocal", "Local"))
-        assertEquals(false, networkNodeIsLive("Paused", "Network"))
-        assertEquals(false, networkNodeIsLive("Stopped", "Network"))
+        assertEquals(true, networkNodeIsLive(NodePhase.RunningNetwork, NodeMode.Network))
+        assertEquals(true, networkNodeIsLive(NodePhase.Starting, NodeMode.Network))
+        assertEquals(true, networkNodeIsLive(NodePhase.Stopping, NodeMode.Network))
+        assertEquals(false, networkNodeIsLive(NodePhase.RunningLocal, NodeMode.Local))
+        assertEquals(false, networkNodeIsLive(NodePhase.Paused, NodeMode.Network))
+        assertEquals(false, networkNodeIsLive(NodePhase.Stopped, NodeMode.Network))
     }
 
     @Test

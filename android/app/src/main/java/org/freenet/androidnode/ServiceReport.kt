@@ -16,6 +16,31 @@ private const val MAX_LOG_BYTES = 2 * 1024 * 1024
 private const val WS_API_PORT = 7509
 private const val RING_LOG_ENTRIES = 256
 
+private val REDACTED_CONFIG_KEYS = setOf(
+    "transport_keypair",
+    "secrets_dir",
+    "config_dir",
+    "data_dir",
+    "db_dir",
+    "contracts_dir",
+    "delegates_dir",
+    "event_log",
+    "log_dir",
+    "wasmtime_cache_dir",
+    "cipher",
+)
+
+/** Keeps the shape of config.toml but replaces local paths and identities. */
+internal fun redactConfigToml(text: String): String =
+    text.lines().joinToString("\n") { line ->
+        val key = line.substringBefore('=').trim()
+        if (key.isNotEmpty() && key in REDACTED_CONFIG_KEYS) {
+            "$key = \"<redacted>\""
+        } else {
+            line
+        }
+    }
+
 internal fun presetServiceReportComment(appVersion: String): String =
     "This report was sent from the unofficial Android APK\n" +
         "$SERVICE_REPORT_REPO\n" +
@@ -32,8 +57,12 @@ internal object ServiceReport {
         postGzip(json)
     }
 
-    internal fun buildReportJson(context: Context, userMessage: String): JSONObject {
-        val logs = collectLogs(context)
+    internal fun buildReportJson(
+        context: Context,
+        userMessage: String,
+        extraLog: String? = null,
+    ): JSONObject {
+        val logs = collectLogs(context, extraLog)
         val config = ConfigToml.read(context)
         val lastState = NodeRepository.state.value
         val (networkStatus, networkError) = collectNetworkStatus(lastState)
@@ -58,7 +87,7 @@ internal object ServiceReport {
                     .put("build_timestamp", "apk ${appVersionName(context)}"),
             )
             .put("logs", logs)
-            .put("config", config.ifBlank { JSONObject.NULL })
+            .put("config", redactConfigToml(config).ifBlank { JSONObject.NULL })
             .put("network_status", networkStatus ?: JSONObject.NULL)
             .put("network_status_error", networkError ?: JSONObject.NULL)
             .put("user_message", message ?: JSONObject.NULL)
@@ -87,10 +116,10 @@ internal object ServiceReport {
         return fromFiles
     }
 
-    private fun collectLogs(context: Context): JSONObject {
+    private fun collectLogs(context: Context, extraLog: String? = null): JSONObject {
         val fromFiles = readFileLogs(context)
         val fromRing = formatServiceReportLogs()
-        val merged = listOfNotNull(fromFiles, fromRing).joinToString(
+        val merged = listOfNotNull(extraLog, fromFiles, fromRing).joinToString(
             "\n--- android adapter ring ---\n",
         ).ifBlank { null }
         val main = when {
@@ -141,9 +170,9 @@ internal object ServiceReport {
     internal fun lastKnownStatusJson(state: NodeUiState): String =
         JSONObject()
             .put("source", "android-last-known")
-            .put("state", state.state)
+            .put("state", state.state.wire)
             .put("detail", state.detail)
-            .put("mode", state.mode)
+            .put("mode", state.mode.wire)
             .put("peers", state.peers)
             .put("lastNetworkError", state.lastNetworkError ?: JSONObject.NULL)
             .put("udpPortInUse", state.udpPortInUse)

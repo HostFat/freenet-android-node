@@ -35,7 +35,7 @@ class NodeService : Service() {
     private var foregroundStarted = false
     private var shutdownCompleted = false
     private var startedAtElapsedRealtimeMs: Long? = null
-    private var runningMode = "Local"
+    private var runningMode = NodeMode.Local
     private var latestStartId = 0
     private var userRequestedShutdown = false
     @Volatile
@@ -101,7 +101,7 @@ class NodeService : Service() {
                 crashRestartJob?.cancel()
                 crashRestartJob = null
                 notifiedConnectedThisRun = false
-                runningMode = "Local"
+                runningMode = NodeMode.Local
                 startForegroundImmediately(runningMode)
                 serviceScope.launch {
                     lifecycleMutex.withLock { startNode(startId, networkMode = false) }
@@ -115,7 +115,7 @@ class NodeService : Service() {
                 crashRestartJob?.cancel()
                 crashRestartJob = null
                 notifiedConnectedThisRun = false
-                runningMode = "Network"
+                runningMode = NodeMode.Network
                 startForegroundController("Evaluating node policies")
                 serviceScope.launch {
                     lifecycleMutex.withLock { reconcilePolicy(startId, explicitStart = true) }
@@ -123,7 +123,7 @@ class NodeService : Service() {
             }
 
             ACTION_RECONCILE_POLICY -> {
-                runningMode = "Network"
+                runningMode = NodeMode.Network
                 startForegroundController("Evaluating node policies")
                 serviceScope.launch {
                     lifecycleMutex.withLock { reconcilePolicy(startId, explicitStart = false) }
@@ -183,7 +183,7 @@ class NodeService : Service() {
                 crashRestartJob?.cancel()
                 crashRestartJob = null
                 notifiedConnectedThisRun = false
-                runningMode = "Network"
+                runningMode = NodeMode.Network
                 startForegroundImmediately(runningMode)
                 serviceScope.launch {
                     lifecycleMutex.withLock {
@@ -201,7 +201,7 @@ class NodeService : Service() {
 
             else -> {
                 if (NodePolicyRepository.state.value.automatic) {
-                    runningMode = "Network"
+                    runningMode = NodeMode.Network
                     startForegroundController("Restoring the automatic node schedule")
                     serviceScope.launch {
                         lifecycleMutex.withLock { reconcilePolicy(startId, explicitStart = false) }
@@ -246,11 +246,10 @@ class NodeService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private fun startForegroundImmediately(mode: String) {
-        if (startedAtElapsedRealtimeMs == null) {
-            startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime()
-        }
-        NodeRepository.publishStarting(startedAtElapsedRealtimeMs!!, mode)
+    private fun startForegroundImmediately(mode: NodeMode) {
+        val startedAt = startedAtElapsedRealtimeMs ?: SystemClock.elapsedRealtime()
+        startedAtElapsedRealtimeMs = startedAt
+        NodeRepository.publishStarting(startedAt, mode)
         ensureForeground()
     }
 
@@ -433,8 +432,9 @@ class NodeService : Service() {
             }
             return
         }
-        startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime()
-        NodeRepository.publishStarting(startedAtElapsedRealtimeMs!!, runningMode)
+        val startedAt = SystemClock.elapsedRealtime()
+        startedAtElapsedRealtimeMs = startedAt
+        NodeRepository.publishStarting(startedAt, runningMode)
         nodeNotificationManager.update(NodeRepository.state.value)
         val response = withContext(Dispatchers.IO) {
             val configJson = androidNodeConfigJson(
@@ -511,7 +511,7 @@ class NodeService : Service() {
             }
         }
         NodeRepository.publishConnectivity(snapshot, response)
-        if (runningMode == "Network") {
+        if (runningMode == NodeMode.Network) {
             lifecycleMutex.withLock { reconcilePolicy(latestStartId, explicitStart = false) }
         }
     }
@@ -530,7 +530,7 @@ class NodeService : Service() {
                     serviceActive = true,
                     startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
                 )
-                if (state.state == "RunningNetwork") {
+                if (state.state == NodePhase.RunningNetwork) {
                     NodePolicyRepository.recordNetworkUp(this@NodeService)
                     crashRestartAttempt = 0
                     natTick += 1
@@ -555,7 +555,7 @@ class NodeService : Service() {
                     NodeRepository.publishNatHint(null)
                 }
                 if (
-                    (state.state == "Stopped" || state.state == "Failed") &&
+                    (state.state == NodePhase.Stopped || state.state == NodePhase.Failed) &&
                     !userRequestedShutdown
                 ) {
                     serviceScope.launch {
@@ -607,26 +607,26 @@ class NodeService : Service() {
         NodeRepository.publishLifecycleResponse(response)
 
         val deadline = SystemClock.elapsedRealtime() + SHUTDOWN_TIMEOUT_MS
-        var finalStatus = NodeStatusSnapshot("Stopping", "Waiting for native shutdown", 0, null)
+        var finalStatus = NodeStatusSnapshot(NodePhase.Stopping, "Waiting for native shutdown", 0, null)
         while (SystemClock.elapsedRealtime() < deadline) {
             val statusResponse = NativeBridge.nodeStatus().getOrElse { response }
             finalStatus = runCatching { parseNodeStatus(statusResponse) }
-                .getOrElse { NodeStatusSnapshot("Failed", it.message ?: statusResponse, 0, null) }
+                .getOrElse { NodeStatusSnapshot(NodePhase.Failed, it.message ?: statusResponse, 0, null) }
             NodeRepository.publishNativeStatus(
                 response = statusResponse,
                 serviceActive = true,
                 startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
             )
             nodeNotificationManager.update(NodeRepository.state.value)
-            if (finalStatus.state == "Stopped" || finalStatus.state == "Failed") {
+            if (finalStatus.state == NodePhase.Stopped || finalStatus.state == NodePhase.Failed) {
                 startedAtElapsedRealtimeMs = null
                 shutdownCompleted = true
-                if (keepController && finalStatus.state == "Stopped") {
+                if (keepController && finalStatus.state == NodePhase.Stopped) {
                     publishControllerState(waitingDetail ?: "Waiting for node policy", paused)
                 } else {
-                    if (paused && finalStatus.state == "Stopped") {
+                    if (paused && finalStatus.state == NodePhase.Stopped) {
                         NodeRepository.publishPaused(finalStatus, response)
-                    } else if (policyReason != null && finalStatus.state == "Stopped") {
+                    } else if (policyReason != null && finalStatus.state == NodePhase.Stopped) {
                         NodeRepository.publishPolicyStopped(finalStatus, response, policyReason)
                     } else {
                         NodeRepository.publishStopped(finalStatus, response)
@@ -653,7 +653,7 @@ class NodeService : Service() {
         statusJob = null
         if (userRequestedShutdown || appInitiatedStop) return
         val status = NodeRepository.state.value
-        if (status.state != "Stopped" && status.state != "Failed") return
+        if (status.state != NodePhase.Stopped && status.state != NodePhase.Failed) return
         val policy = NodePolicyRepository.state.value
         val detail = status.detail.ifBlank {
             "Native node stopped unexpectedly"
@@ -662,7 +662,7 @@ class NodeService : Service() {
             CrashReportOffer.note(this, detail, formatServiceReportLogs())
         }
         if (policy.autoRestartOnCrash && crashRestartAttempt < MAX_CRASH_RESTARTS) {
-            scheduleCrashRestart(runningMode == "Network")
+            scheduleCrashRestart(runningMode == NodeMode.Network)
             return
         }
         if (policy.notifyStopped) {
@@ -730,10 +730,11 @@ class NodeService : Service() {
 
     private fun nativeStatus(fallback: String): NodeStatusSnapshot = NativeBridge.nodeStatus()
         .map(::parseNodeStatus)
-        .getOrElse { NodeStatusSnapshot("Failed", it.message ?: fallback, 0, null) }
+        .getOrElse { NodeStatusSnapshot(NodePhase.Failed, it.message ?: fallback, 0, null) }
 
-    private fun nativeIsActive(): Boolean = nativeStatus("Native status unavailable").state in
-        ACTIVE_NATIVE_STATES
+    private suspend fun nativeIsActive(): Boolean = withContext(Dispatchers.IO) {
+        nativeStatus("Native status unavailable").state in ACTIVE_NATIVE_STATES
+    }
 
     private fun finishService(startId: Int) {
         if (!stopSelfResult(startId)) {
@@ -765,10 +766,10 @@ class NodeService : Service() {
         private val CRASH_RESTART_BACKOFF_MS = longArrayOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L)
         private const val TAG = "FreenetNodeService"
         private val ACTIVE_NATIVE_STATES = setOf(
-            "Starting",
-            "RunningLocal",
-            "RunningNetwork",
-            "Stopping",
+            NodePhase.Starting,
+            NodePhase.RunningLocal,
+            NodePhase.RunningNetwork,
+            NodePhase.Stopping,
         )
 
         fun startLocalIntent(context: Context): Intent =
