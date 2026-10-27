@@ -2057,6 +2057,7 @@ mod tests {
         assert!(!super::config_toml_has_mode("# mode = \"network\"\n"));
     }
 
+    #[test]
     fn parse_toml_u16_reads_network_port() {
         let text = "mode = \"network\"\nnetwork-port = 55012\nws-api-port = 7509\n";
         assert_eq!(super::parse_toml_u16(text, "network-port"), Some(55012));

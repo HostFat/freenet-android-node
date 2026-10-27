@@ -19,11 +19,11 @@ class Phase6InstrumentedTest {
     fun identityAndContractStatePersistAcrossOrdinaryRestart() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         NodeRepository.stop(context)
-        awaitNodeState("Stopped")
+        awaitNodeState(NodePhase.Stopped)
 
         try {
             NodeRepository.startLocal(context)
-            val firstRun = awaitNodeState("RunningLocal")
+            val firstRun = awaitNodeState(NodePhase.RunningLocal)
             val firstFingerprint = firstRun.getString("identityFingerprint")
             assertEquals(32, firstFingerprint.length)
 
@@ -40,9 +40,9 @@ class Phase6InstrumentedTest {
             assertEquals("phase4-updated-state", contract.getString("result"))
 
             NodeRepository.stop(context)
-            awaitNodeState("Stopped")
+            awaitNodeState(NodePhase.Stopped)
             NodeRepository.startLocal(context)
-            val secondRun = awaitNodeState("RunningLocal")
+            val secondRun = awaitNodeState(NodePhase.RunningLocal)
             assertEquals(firstFingerprint, secondRun.getString("identityFingerprint"))
 
             assertEnvelopeOk(NativeBridge.verifyContractPersistence().getOrThrow())
@@ -70,18 +70,18 @@ class Phase6InstrumentedTest {
             )
         } finally {
             NodeRepository.stop(context)
-            runCatching { awaitNodeState("Stopped") }
+            runCatching { awaitNodeState(NodePhase.Stopped) }
         }
     }
 
     private fun storageStatus(context: Context): JSONObject =
         envelopeData(NativeBridge.storageStatus(androidNodeConfigJson(context)).getOrThrow())
 
-    private fun awaitNodeState(expected: String): JSONObject = awaitStatus(NODE_TIMEOUT_MS) {
+    private fun awaitNodeState(expected: NodePhase): JSONObject = awaitStatus(NODE_TIMEOUT_MS) {
         val data = envelopeData(NativeBridge.nodeStatus().getOrThrow())
-        when (val state = data.getString("state")) {
+        when (val state = NodePhase.fromWire(data.getString("state"))) {
             expected -> data
-            "Failed" -> error("Native node failed: ${data.getString("detail")}")
+            NodePhase.Failed -> error("Native node failed: ${data.getString("detail")}")
             else -> null
         }
     }
@@ -89,7 +89,7 @@ class Phase6InstrumentedTest {
     private fun awaitContractProof(persistenceRequired: Boolean): JSONObject =
         awaitStatus(CONTRACT_TIMEOUT_MS) {
             val data = envelopeData(NativeBridge.contractProofStatus().getOrThrow())
-            when (val state = data.getString("state")) {
+            when (val state = NodePhase.fromWire(data.getString("state"))) {
                 "Failed" -> error("Contract proof failed: ${data.getString("detail")}")
                 "Succeeded" -> {
                     if (!persistenceRequired || data.getBoolean("persistenceVerified")) data else null
