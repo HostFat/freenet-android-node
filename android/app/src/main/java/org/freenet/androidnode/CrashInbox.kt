@@ -65,6 +65,7 @@ internal object CrashInbox {
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Content-Encoding", "gzip")
             setRequestProperty("X-App-Version", appVersionName(context))
+            setRequestProperty("X-Install-Id", InstallId.get(context))
         }
         try {
             connection.outputStream.use { it.write(compressed) }

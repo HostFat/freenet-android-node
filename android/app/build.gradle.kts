@@ -27,6 +27,14 @@ android {
             ?: System.getenv("CRASH_REPORT_TOKEN")
             ?: ""
         buildConfigField("String", "CRASH_REPORT_TOKEN", "\"${crashReportToken.replace("\"", "")}\"")
+        val serviceReportToken = (project.findProperty("serviceReportToken") as String?)
+            ?: System.getenv("SERVICE_REPORT_TOKEN")
+            ?: ""
+        buildConfigField(
+            "String",
+            "SERVICE_REPORT_TOKEN",
+            "\"${serviceReportToken.replace("\"", "")}\"",
+        )
     }
 
     signingConfigs {

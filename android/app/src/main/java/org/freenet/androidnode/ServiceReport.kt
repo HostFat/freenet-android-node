@@ -12,7 +12,7 @@ import java.util.zip.GZIPOutputStream
 
 internal const val SERVICE_REPORT_SERVER = "https://nova.locut.us/api/reports"
 internal const val SERVICE_REPORT_REPO = "https://github.com/HostFat/freenet-android-node"
-private const val MAX_LOG_BYTES = 2 * 1024 * 1024
+private const val MAX_LOG_BYTES = 400 * 1024
 private const val WS_API_PORT = 7509
 private const val RING_LOG_ENTRIES = 256
 
@@ -54,7 +54,7 @@ internal fun appVersionName(context: Context): String =
 internal object ServiceReport {
     fun upload(context: Context, userMessage: String): Result<String> = runCatching {
         val json = buildReportJson(context, userMessage).toString()
-        postGzip(json)
+        postGzip(context, json)
     }
 
     internal fun buildReportJson(
@@ -91,6 +91,7 @@ internal object ServiceReport {
             .put("network_status", networkStatus ?: JSONObject.NULL)
             .put("network_status_error", networkError ?: JSONObject.NULL)
             .put("user_message", message ?: JSONObject.NULL)
+            .put("install_id", InstallId.get(context))
     }
 
     internal fun hasLogFiles(context: Context): Boolean {
@@ -179,7 +180,7 @@ internal object ServiceReport {
             .put("serviceActive", state.serviceActive)
             .toString(2)
 
-    private fun postGzip(json: String): String {
+    private fun postGzip(context: Context, json: String): String {
         val compressed = ByteArrayOutputStream().use { bytes ->
             GZIPOutputStream(bytes).use { gzip ->
                 gzip.write(json.toByteArray(Charsets.UTF_8))
@@ -194,6 +195,11 @@ internal object ServiceReport {
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Content-Encoding", "gzip")
             setRequestProperty("User-Agent", "freenet-report")
+            setRequestProperty("X-Install-Id", InstallId.get(context))
+            // A service report uses its own token, never the crash token.
+            BuildConfig.SERVICE_REPORT_TOKEN.trim().takeIf { it.isNotEmpty() }?.let { token ->
+                setRequestProperty("Authorization", "Bearer $token")
+            }
         }
         try {
             connection.outputStream.use { it.write(compressed) }
