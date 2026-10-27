@@ -38,7 +38,7 @@ class ConnectionLimitsTest {
 
     @Test
     fun lastKnownStatusJsonSurvivesADeadNode() {
-        val json = lastKnownStatusJson(
+        val json = ServiceReport.lastKnownStatusJson(
             NodeUiState(state = NodePhase.Failed, detail = "native crash", lastNetworkError = "segfault"),
         )
         assertEquals(true, json.contains("android-last-known"))
@@ -140,8 +140,8 @@ class ConnectionLimitsTest {
         assertEquals(
             "Gateway only",
             networkStatusLabel(
-                "RunningNetwork",
-                "Network",
+                NodePhase.RunningNetwork,
+                NodeMode.Network,
                 0,
                 true,
                 "Only connected to gateways — no peer-to-peer connections yet",
@@ -150,8 +150,8 @@ class ConnectionLimitsTest {
         assertEquals(
             "Connected",
             networkStatusLabel(
-                "RunningNetwork",
-                "Network",
+                NodePhase.RunningNetwork,
+                NodeMode.Network,
                 2,
                 true,
                 "Only connected to gateways — no peer-to-peer connections yet",
@@ -164,7 +164,7 @@ class ConnectionLimitsTest {
         assertEquals(
             "The node is waiting because this network is metered. Network data is set to Unmetered only.",
             menuBlockReason(
-                "Waiting",
+                NodePhase.Waiting,
                 "The node is waiting because this network is metered. Network data is set to Unmetered only.",
                 null,
             ),
