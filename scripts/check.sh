@@ -12,12 +12,8 @@ cargo clippy \
   -- -D warnings
 cargo test --manifest-path "${repo_root}/native/Cargo.toml" --locked
 
-# build-debug.sh already calls build-native.sh internally,
-# so we don't need to call it separately here.
 "${repo_root}/android/gradlew" \
   -p "${repo_root}/android" \
   --no-daemon \
   :app:testDebugUnitTest \
   :app:lintDebug
-
-"${repo_root}/scripts/build-debug.sh"
