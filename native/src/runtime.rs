@@ -1844,11 +1844,7 @@ fn pick_ephemeral_udp_port() -> u16 {
 }
 
 fn udp_port_is_free(port: u16) -> bool {
-    UdpSocket::bind(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-        port,
-    ))
-    .is_ok()
+    UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)).is_ok()
 }
 
 fn ensure_udp_port_free(port: u16) -> Result<(), NodeError> {
@@ -2082,8 +2078,7 @@ mod tests {
         AndroidNodeConfig::parse(&json.to_string()).expect("tested Freenet config max is allowed");
 
         json["maxConnections"] = serde_json::json!(2001);
-        let error = AndroidNodeConfig::parse(&json.to_string())
-            .expect_err("above 2000 must fail");
+        let error = AndroidNodeConfig::parse(&json.to_string()).expect_err("above 2000 must fail");
         assert_eq!(error.code, "INVALID_CONNECTION_LIMITS");
 
         json["minConnections"] = serde_json::json!(0);
