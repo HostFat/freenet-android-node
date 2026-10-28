@@ -120,6 +120,7 @@ jobs:
     outputs:
       lock: ${{ steps.hash.outputs.lock }}
       cargo_lock: ${{ steps.hash.outputs.cargo_lock }}
+      gradle_lock: ${{ steps.hash.outputs.gradle_lock }}
       freenet_core_version: ${{ steps.resolve-version.outputs.value }}
       image: ${{ steps.image.outputs.value }}
       image_digest: ${{ steps.build.outputs.digest }}
@@ -183,6 +184,7 @@ jobs:
         run: |
           echo "lock=${{ hashFiles('**/Cargo.lock', '**/*.gradle*', '**/gradle-wrapper.properties', '**/Dockerfile') }}" >> "$GITHUB_OUTPUT"
           echo "cargo_lock=$(sha256sum freenet-android-node/native/Cargo.lock | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "gradle_lock=$(find freenet-android-node/android -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name 'gradle-wrapper.properties' -o -name 'gradle.properties' \) -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
   lint:
     name: Lint & Test Rust
@@ -240,7 +242,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.gradle-cache
-          key: ${{ runner.os }}-gradle-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-gradle-${{ needs.setup.outputs.gradle_lock }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
@@ -373,7 +375,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.gradle-cache
-          key: ${{ runner.os }}-gradle-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-gradle-${{ needs.setup.outputs.gradle_lock }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
@@ -626,7 +628,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: /tmp/.gradle-cache
-          key: ${{ runner.os }}-gradle-${{ needs.setup.outputs.lock }}
+          key: ${{ runner.os }}-gradle-${{ needs.setup.outputs.gradle_lock }}
           restore-keys: |
             ${{ runner.os }}-gradle-
 
