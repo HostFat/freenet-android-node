@@ -86,13 +86,12 @@ internal object UpdateCheckRepository {
                     }
                 },
                 onFailure = { error ->
+                    // Keep the failure visible even for an automatic check:
+                    // "no update" and "could not check" are different states.
+                    val reason = error.message ?: "Could not check for updates"
                     mutableState.value = UpdateUiState(
                         checking = false,
-                        lastError = if (force) {
-                            error.message ?: "Could not check for updates"
-                        } else {
-                            null
-                        },
+                        lastError = if (force) reason else "Could not check for updates: $reason",
                     )
                 },
             )

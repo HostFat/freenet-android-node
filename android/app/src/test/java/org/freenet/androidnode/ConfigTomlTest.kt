@@ -27,6 +27,16 @@ class ConfigTomlTest {
     }
 
     @Test
+    fun validationRejectsBrokenTomlAndIncompleteFiles() {
+        assertEquals("missing mode", ConfigToml.validationError("min-number-of-connections = 1\n"))
+        assertEquals(null, ConfigToml.validationError("mode = \"network\"\n"))
+        assertEquals(
+            false,
+            ConfigToml.validationError("mode = \"network\"\nbroken = [\n").isNullOrEmpty(),
+        )
+    }
+
+    @Test
     fun parseIgnoresMissingKeys() {
         assertNull(ConfigToml.parseInt("bandwidth-limit = 1\n", ConfigToml.MIN_KEY))
         assertEquals(10, ConfigToml.parseInt("  min-number-of-connections = 10\n", ConfigToml.MIN_KEY))

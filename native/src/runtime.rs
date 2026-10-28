@@ -1844,11 +1844,7 @@ fn pick_ephemeral_udp_port() -> u16 {
 }
 
 fn udp_port_is_free(port: u16) -> bool {
-    UdpSocket::bind(SocketAddr::new(
-        IpAddr::V4(Ipv4Addr::UNSPECIFIED),
-        port,
-    ))
-    .is_ok()
+    UdpSocket::bind(SocketAddr::new(IpAddr::V4(Ipv4Addr::UNSPECIFIED), port)).is_ok()
 }
 
 fn ensure_udp_port_free(port: u16) -> Result<(), NodeError> {
@@ -1879,9 +1875,13 @@ fn config_toml_has_mode(text: &str) -> bool {
 fn parse_toml_u16(text: &str, key: &str) -> Option<u16> {
     for line in text.lines() {
         let trimmed = line.trim_start();
-        let rest = trimmed.strip_prefix(key)?;
-        let value = rest.trim_start().strip_prefix('=')?.trim();
-        if let Ok(port) = value.parse::<u16>() {
+        let Some(rest) = trimmed.strip_prefix(key) else {
+            continue;
+        };
+        let Some(value) = rest.trim_start().strip_prefix('=') else {
+            continue;
+        };
+        if let Ok(port) = value.trim().parse::<u16>() {
             return Some(port);
         }
     }
@@ -2061,6 +2061,7 @@ mod tests {
         assert!(!super::config_toml_has_mode("# mode = \"network\"\n"));
     }
 
+    #[test]
     fn parse_toml_u16_reads_network_port() {
         let text = "mode = \"network\"\nnetwork-port = 55012\nws-api-port = 7509\n";
         assert_eq!(super::parse_toml_u16(text, "network-port"), Some(55012));
@@ -2082,8 +2083,7 @@ mod tests {
         AndroidNodeConfig::parse(&json.to_string()).expect("tested Freenet config max is allowed");
 
         json["maxConnections"] = serde_json::json!(2001);
-        let error = AndroidNodeConfig::parse(&json.to_string())
-            .expect_err("above 2000 must fail");
+        let error = AndroidNodeConfig::parse(&json.to_string()).expect_err("above 2000 must fail");
         assert_eq!(error.code, "INVALID_CONNECTION_LIMITS");
 
         json["minConnections"] = serde_json::json!(0);

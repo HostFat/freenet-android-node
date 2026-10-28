@@ -71,7 +71,7 @@ class NodeNotificationManager(private val context: Context) {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
-        val primaryAction = if (state.state == "Paused") {
+        val primaryAction = if (state.state == NodePhase.Paused) {
             Notification.Action.Builder(
                 Icon.createWithResource(context, R.drawable.ic_node_notification),
                 context.getString(R.string.resume_node),
@@ -101,19 +101,19 @@ class NodeNotificationManager(private val context: Context) {
     }
 
     private fun notificationTitle(state: NodeUiState): String = when (state.state) {
-        "Starting" -> context.getString(R.string.node_notification_starting)
-        "Waiting" -> context.getString(R.string.node_notification_waiting)
-        "Paused" -> context.getString(R.string.node_notification_paused)
+        NodePhase.Starting -> context.getString(R.string.node_notification_starting)
+        NodePhase.Waiting -> context.getString(R.string.node_notification_waiting)
+        NodePhase.Paused -> context.getString(R.string.node_notification_paused)
         else -> context.getString(R.string.node_notification_running)
     }
 
     private fun notificationText(state: NodeUiState): String =
-        if (state.state == "Waiting" || state.state == "Paused") {
+        if (state.state == NodePhase.Waiting || state.state == NodePhase.Paused) {
             state.detail
         } else {
             context.getString(
                 R.string.node_notification_status,
-                state.mode,
+                state.mode.wire,
                 state.peers,
                 formatUptime(state.uptimeMs),
             )

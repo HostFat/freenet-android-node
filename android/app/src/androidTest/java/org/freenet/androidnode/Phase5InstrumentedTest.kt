@@ -26,7 +26,7 @@ class Phase5InstrumentedTest {
         stopAnyExistingNode(context)
         try {
             NodeRepository.startLocal(context)
-            awaitNodeState("RunningLocal")
+            awaitNodeState(NodePhase.RunningLocal)
             val firstNotification = awaitNotification(context, present = true)
             assertTrue(
                 firstNotification!!.notification.flags and Notification.FLAG_ONGOING_EVENT != 0,
@@ -43,28 +43,28 @@ class Phase5InstrumentedTest {
             awaitCondition(NODE_TIMEOUT_MS, "task removal callback") {
                 NodeRepository.state.value.taskRemovedWhileRunning
             }
-            assertEquals("RunningLocal", currentNodeState())
+            assertEquals(NodePhase.RunningLocal, currentNodeState())
 
             instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_SLEEP").close()
             SystemClock.sleep(SCREEN_OFF_PROBE_MS)
-            assertEquals("RunningLocal", currentNodeState())
+            assertEquals(NodePhase.RunningLocal, currentNodeState())
             instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_WAKEUP").close()
 
             notificationAction(firstNotification, "Pause").actionIntent.send()
-            awaitNodeState("Stopped")
-            awaitRepositoryState("Paused")
+            awaitNodeState(NodePhase.Stopped)
+            awaitRepositoryState(NodePhase.Paused)
             awaitNotification(context, present = false)
 
             NodeRepository.startLocal(context)
-            awaitNodeState("RunningLocal")
+            awaitNodeState(NodePhase.RunningLocal)
             val secondNotification = awaitNotification(context, present = true)!!
             notificationAction(secondNotification, "Stop").actionIntent.send()
-            awaitNodeState("Stopped")
-            awaitRepositoryState("Stopped")
+            awaitNodeState(NodePhase.Stopped)
+            awaitRepositoryState(NodePhase.Stopped)
             awaitNotification(context, present = false)
 
             SystemClock.sleep(NO_RESTART_PROBE_MS)
-            assertEquals("Stopped", currentNodeState())
+            assertEquals(NodePhase.Stopped, currentNodeState())
             assertFalse(NodeRepository.state.value.serviceActive)
             Log.i(
                 EVIDENCE_TAG,
@@ -79,20 +79,20 @@ class Phase5InstrumentedTest {
 
     private fun stopAnyExistingNode(context: Context) {
         NodeRepository.stop(context)
-        runCatching { awaitNodeState("Stopped") }
+        runCatching { awaitNodeState(NodePhase.Stopped) }
     }
 
-    private fun awaitNodeState(expected: String) {
+    private fun awaitNodeState(expected: NodePhase) {
         awaitCondition(NODE_TIMEOUT_MS, "native node state $expected") {
             when (val state = currentNodeState()) {
                 expected -> true
-                "Failed" -> error("Native node failed: ${currentNodeDetail()}")
+                NodePhase.Failed -> error("Native node failed: ${currentNodeDetail()}")
                 else -> false
             }
         }
     }
 
-    private fun awaitRepositoryState(expected: String) {
+    private fun awaitRepositoryState(expected: NodePhase) {
         awaitCondition(NODE_TIMEOUT_MS, "repository state $expected") {
             NodeRepository.state.value.state == expected
         }
@@ -114,7 +114,7 @@ class Phase5InstrumentedTest {
         title: String,
     ) = notification.notification.actions.first { it.title.toString() == title }
 
-    private fun currentNodeState(): String = nativeStatus().getString("state")
+    private fun currentNodeState(): NodePhase = NodePhase.fromWire(nativeStatus().getString("state"))
 
     private fun currentNodeDetail(): String = nativeStatus().getString("detail")
 

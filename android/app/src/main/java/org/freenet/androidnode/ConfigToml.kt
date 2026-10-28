@@ -50,6 +50,21 @@ internal object ConfigToml {
     fun isComplete(text: String): Boolean =
         Regex("(?m)^[ \\t]*mode[ \\t]*=").containsMatchIn(text)
 
+    /** Null when the text is a complete, syntactically valid Freenet config. */
+    fun validationError(text: String): String? {
+        if (!isComplete(text)) return "missing mode"
+        return runCatching {
+            val parsed = org.tomlj.Toml.parse(text)
+            if (parsed.hasErrors()) {
+                parsed.errors().joinToString("; ") { it.toString() }
+            } else {
+                null
+            }
+        }.getOrElse { error ->
+            error.message ?: "invalid TOML"
+        }
+    }
+
     fun upsertInt(text: String, key: String, value: Int): String {
         val line = "$key = $value"
         val regex = Regex("(?m)^[ \\t]*${Regex.escape(key)}[ \\t]*=[ \\t]*.*$")
@@ -90,13 +105,6 @@ internal object ConfigToml {
         if (!isComplete(current)) return
         val updated = upsertInt(upsertInt(current, MIN_KEY, min), MAX_KEY, max)
         write(context, updated)
-    }
-
-    fun syncLimitsFromFile(context: Context) {
-        val text = read(context)
-        val min = parseInt(text, MIN_KEY) ?: return
-        val max = parseInt(text, MAX_KEY) ?: return
-        NodePolicyRepository.setConnectionLimits(context, min, max)
     }
 
     fun editorIntent(context: Context): Intent? {

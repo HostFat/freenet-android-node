@@ -21,25 +21,25 @@ class NodePolicyLifecycleInstrumentedTest {
         assertTrue("This device proof requires the plugged-in device to be charging", battery.isCharging)
 
         NodeRepository.stop(context)
-        awaitUiState("Stopped", SHORT_TIMEOUT_MS)
+        awaitUiState(NodePhase.Stopped, SHORT_TIMEOUT_MS)
         NodeRepository.setNetworkDataPolicy(context, NetworkDataPolicy.UnmeteredOnly)
 
         try {
             NodeRepository.setPowerPolicy(context, NodePowerPolicy.Charging)
-            awaitUiState("RunningNetwork", START_TIMEOUT_MS)
+            awaitUiState(NodePhase.RunningNetwork, START_TIMEOUT_MS)
             assertEquals(NodePowerPolicy.Charging, NodePolicyRepository.state.value.power)
 
             NodeRepository.pause(context)
-            awaitUiState("Paused", SHUTDOWN_TIMEOUT_MS)
+            awaitUiState(NodePhase.Paused, SHUTDOWN_TIMEOUT_MS)
             assertTrue(NodePolicyRepository.state.value.suspendedByUser)
-            assertEquals("Stopped", nativeState())
+            assertEquals(NodePhase.Stopped, nativeState())
 
             NodeRepository.startNetwork(context)
-            awaitUiState("RunningNetwork", START_TIMEOUT_MS)
+            awaitUiState(NodePhase.RunningNetwork, START_TIMEOUT_MS)
             assertFalse(NodePolicyRepository.state.value.suspendedByUser)
 
             NodeRepository.setPowerPolicy(context, NodePowerPolicy.Always)
-            awaitUiState("RunningNetwork", SHORT_TIMEOUT_MS)
+            awaitUiState(NodePhase.RunningNetwork, SHORT_TIMEOUT_MS)
             NodeRepository.setNetworkDataPolicy(context, NetworkDataPolicy.AnyValidated)
             assertEquals(
                 NetworkDataPolicy.AnyValidated,
@@ -47,27 +47,27 @@ class NodePolicyLifecycleInstrumentedTest {
             )
         } finally {
             NodeRepository.stop(context)
-            awaitUiState("Stopped", SHUTDOWN_TIMEOUT_MS)
+            awaitUiState(NodePhase.Stopped, SHUTDOWN_TIMEOUT_MS)
             NodeRepository.setNetworkDataPolicy(context, NetworkDataPolicy.UnmeteredOnly)
         }
 
         assertEquals(NodePowerPolicy.Manual, NodePolicyRepository.state.value.power)
         assertFalse(NodePolicyRepository.state.value.suspendedByUser)
-        assertEquals("Stopped", nativeState())
+        assertEquals(NodePhase.Stopped, nativeState())
     }
 
-    private fun awaitUiState(expected: String, timeoutMs: Long) {
+    private fun awaitUiState(expected: NodePhase, timeoutMs: Long) {
         val deadline = SystemClock.elapsedRealtime() + timeoutMs
         while (SystemClock.elapsedRealtime() < deadline) {
             val state = NodeRepository.state.value
             if (state.state == expected) return
-            if (state.state == "Failed") error(state.detail)
+            if (state.state == NodePhase.Failed) error(state.detail)
             SystemClock.sleep(POLL_INTERVAL_MS)
         }
         error("Timed out waiting for $expected; current=${NodeRepository.state.value}")
     }
 
-    private fun nativeState(): String = parseNodeStatus(
+    private fun nativeState(): NodePhase = parseNodeStatus(
         NativeBridge.nodeStatus().getOrThrow(),
     ).state
 

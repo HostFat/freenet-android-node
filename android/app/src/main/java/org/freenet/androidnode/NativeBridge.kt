@@ -1,6 +1,8 @@
 package org.freenet.androidnode
 
 object NativeBridge {
+    private const val TAG = "FreenetNativeBridge"
+
     private val loadResult = runCatching {
         System.loadLibrary("freenet_android")
     }
@@ -81,9 +83,12 @@ object NativeBridge {
         withLoadedLibrary { nativeAppendInfoLog(message) }
 
     private inline fun <T> withLoadedLibrary(block: () -> T): Result<T> {
-        return loadResult.fold(
-            onSuccess = { runCatching(block) },
-            onFailure = { Result.failure(it) },
-        )
+        loadResult.exceptionOrNull()?.let { error ->
+            android.util.Log.e(TAG, "The native library is not loaded", error)
+            return Result.failure(error)
+        }
+        return runCatching(block).onFailure { error ->
+            android.util.Log.e(TAG, "A native call failed", error)
+        }
     }
 }

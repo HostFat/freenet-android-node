@@ -19,14 +19,27 @@ android {
 
         testInstrumentationRunner = "org.freenet.androidnode.FreenetAndroidTestRunner"
 
+        val abis = (project.findProperty("abis") as String?)
+            ?.split(",")
+            ?.map { it.trim() }
+            ?.filter { it.isNotEmpty() }
+            ?: listOf("arm64-v8a", "x86_64")
         ndk {
-            abiFilters += listOf("arm64-v8a", "x86_64")
+            abiFilters += abis
         }
 
         val crashReportToken = (project.findProperty("crashReportToken") as String?)
             ?: System.getenv("CRASH_REPORT_TOKEN")
             ?: ""
         buildConfigField("String", "CRASH_REPORT_TOKEN", "\"${crashReportToken.replace("\"", "")}\"")
+        val serviceReportToken = (project.findProperty("serviceReportToken") as String?)
+            ?: System.getenv("SERVICE_REPORT_TOKEN")
+            ?: ""
+        buildConfigField(
+            "String",
+            "SERVICE_REPORT_TOKEN",
+            "\"${serviceReportToken.replace("\"", "")}\"",
+        )
     }
 
     signingConfigs {
@@ -42,7 +55,8 @@ android {
 
     buildTypes {
         release {
-            isMinifyEnabled = false
+            isMinifyEnabled = true
+            isShrinkResources = true
             proguardFiles(
                 getDefaultProguardFile("proguard-android-optimize.txt"),
                 "proguard-rules.pro",
@@ -79,10 +93,13 @@ dependencies {
     implementation("androidx.compose.material3:material3")
     implementation("androidx.compose.ui:ui")
     implementation("androidx.compose.ui:ui-tooling-preview")
+    implementation("org.tomlj:tomlj:1.1.1")
 
     debugImplementation("androidx.compose.ui:ui-tooling")
 
     testImplementation("junit:junit:4.13.2")
+    // The android.jar org.json stubs throw in local unit tests.
+    testImplementation("org.json:json:20240303")
 
     androidTestImplementation("androidx.test:runner:1.6.2")
     androidTestImplementation("androidx.test.ext:junit:1.2.1")

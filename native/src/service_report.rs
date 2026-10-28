@@ -24,9 +24,9 @@ pub(crate) fn query_node_diagnostics(port: u16) -> Result<String, String> {
 
 async fn query_once(host: &str, port: u16) -> Result<String, String> {
     let url = format!("ws://{host}:{port}/v1/contract/command?encodingProtocol=native");
-    let (stream, _) = connect_async(&url)
-        .await
-        .map_err(|error| format!("{host}:{port}: Failed to connect to node WebSocket API: {error}"))?;
+    let (stream, _) = connect_async(&url).await.map_err(|error| {
+        format!("{host}:{port}: Failed to connect to node WebSocket API: {error}")
+    })?;
     let mut client = WebApi::start(stream);
     let config = NodeDiagnosticsConfig {
         include_node_info: true,
@@ -43,16 +43,14 @@ async fn query_once(host: &str, port: u16) -> Result<String, String> {
         }))
         .await
         .map_err(|error| format!("{host}:{port}: Failed to send diagnostics query: {error}"))?;
-    let response = client
-        .recv()
-        .await
-        .map_err(|error| format!("{host}:{port}: Failed to receive diagnostics response: {error}"))?;
+    let response = client.recv().await.map_err(|error| {
+        format!("{host}:{port}: Failed to receive diagnostics response: {error}")
+    })?;
     let _ = client.send(ClientRequest::Disconnect { cause: None }).await;
     match response {
         HostResponse::QueryResponse(QueryResponse::NodeDiagnostics(diag)) => {
-            serde_json::to_string_pretty(&diag).map_err(|error| {
-                format!("{host}:{port}: Failed to serialize diagnostics: {error}")
-            })
+            serde_json::to_string_pretty(&diag)
+                .map_err(|error| format!("{host}:{port}: Failed to serialize diagnostics: {error}"))
         }
         _ => Err(format!("{host}:{port}: Unexpected response from node")),
     }

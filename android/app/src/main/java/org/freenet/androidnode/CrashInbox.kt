@@ -25,7 +25,6 @@ internal object CrashInbox {
             error("Nothing useful to send")
         }
         val notedAt = CrashReportOffer.notedAtEpochMs(context)
-        val jsonObject = ServiceReport.buildReportJson(context, userMessage)
         val body = buildString {
             append("Crash detail:\n")
             append(detail.ifBlank { "(none)" })
@@ -40,16 +39,7 @@ internal object CrashInbox {
                 append(ring)
             }
         }
-        jsonObject.put(
-            "logs",
-            org.json.JSONObject()
-                .put("main_log", body)
-                .put("error_log", org.json.JSONObject.NULL)
-                .put("main_log_size_bytes", body.toByteArray(Charsets.UTF_8).size)
-                .put("error_log_size_bytes", 0)
-                .put("main_log_original_size_bytes", body.toByteArray(Charsets.UTF_8).size)
-                .put("error_log_original_size_bytes", 0),
-        )
+        val jsonObject = ServiceReport.buildReportJson(context, userMessage, extraLog = body)
         jsonObject.put(
             "network_status",
             org.json.JSONObject()
@@ -75,6 +65,7 @@ internal object CrashInbox {
             setRequestProperty("Content-Type", "application/json")
             setRequestProperty("Content-Encoding", "gzip")
             setRequestProperty("X-App-Version", appVersionName(context))
+            setRequestProperty("X-Install-Id", InstallId.get(context))
         }
         try {
             connection.outputStream.use { it.write(compressed) }

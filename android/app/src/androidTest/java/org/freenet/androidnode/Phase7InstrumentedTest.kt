@@ -17,7 +17,7 @@ class Phase7InstrumentedTest {
     fun rejectsCellularBeforeStartingNativeNetworkNode() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         NodeRepository.stop(context)
-        awaitNodeState("Stopped", SHORT_TIMEOUT_MS)
+        awaitNodeState(NodePhase.Stopped, SHORT_TIMEOUT_MS)
         val cellular = ConnectivitySnapshot(
             available = true,
             validated = true,
@@ -33,7 +33,7 @@ class Phase7InstrumentedTest {
         )
         assertFalse(response.getBoolean("ok"))
         assertEquals("NETWORK_POLICY_BLOCKED", response.getJSONObject("error").getString("code"))
-        assertEquals("Stopped", nodeStatus().state)
+        assertEquals(NodePhase.Stopped, nodeStatus().state)
     }
 
     @Test
@@ -42,15 +42,15 @@ class Phase7InstrumentedTest {
         val connectivity = AndroidConnectivityMonitor(context) {}.currentSnapshot()
         assertTrue(connectivity.policyBlockReason(), connectivity.networkModeAllowed)
         NodeRepository.stop(context)
-        awaitNodeState("Stopped", SHORT_TIMEOUT_MS)
+        awaitNodeState(NodePhase.Stopped, SHORT_TIMEOUT_MS)
 
         try {
             NodeRepository.startNetwork(context)
-            awaitNodeState("RunningNetwork", START_TIMEOUT_MS)
+            awaitNodeState(NodePhase.RunningNetwork, START_TIMEOUT_MS)
             val connected = awaitStatus(PEER_TIMEOUT_MS) {
-                nodeStatus().takeIf { it.state == "RunningNetwork" && it.peerCount > 0 }
+                nodeStatus().takeIf { it.state == NodePhase.RunningNetwork && it.peerCount > 0 }
             }
-            assertEquals("Network", connected.mode)
+            assertEquals(NodeMode.Network, connected.mode)
             assertTrue(connected.connectionAttempts >= 1)
             assertTrue(connected.successfulConnections >= 1)
             assertTrue(connected.bytesSent > 0)
@@ -68,7 +68,7 @@ class Phase7InstrumentedTest {
             )
         } finally {
             NodeRepository.stop(context)
-            awaitNodeState("Stopped", SHUTDOWN_TIMEOUT_MS)
+            awaitNodeState(NodePhase.Stopped, SHUTDOWN_TIMEOUT_MS)
         }
     }
 
@@ -78,17 +78,17 @@ class Phase7InstrumentedTest {
         val connectivity = AndroidConnectivityMonitor(context) {}.currentSnapshot()
         assertTrue(connectivity.policyBlockReason(), connectivity.networkModeAllowed)
         NodeRepository.stop(context)
-        awaitNodeState("Stopped", SHORT_TIMEOUT_MS)
+        awaitNodeState(NodePhase.Stopped, SHORT_TIMEOUT_MS)
 
         try {
             NodeRepository.startNetwork(context)
-            awaitNodeState("RunningNetwork", START_TIMEOUT_MS)
+            awaitNodeState(NodePhase.RunningNetwork, START_TIMEOUT_MS)
             val first = awaitStatus(PEER_TIMEOUT_MS) { nodeStatus().takeIf { it.peerCount > 0 } }
             val deadline = SystemClock.elapsedRealtime() + STABILITY_DURATION_MS
             var samples = 0
             while (SystemClock.elapsedRealtime() < deadline) {
                 val status = nodeStatus()
-                assertEquals(status.detail, "RunningNetwork", status.state)
+                assertEquals(status.detail, NodePhase.RunningNetwork, status.state)
                 assertTrue("Peer connection dropped during stability window", status.peerCount > 0)
                 assertEquals("Wi-Fi", status.currentNetworkType)
                 samples += 1
@@ -105,16 +105,16 @@ class Phase7InstrumentedTest {
             )
         } finally {
             NodeRepository.stop(context)
-            awaitNodeState("Stopped", SHUTDOWN_TIMEOUT_MS)
+            awaitNodeState(NodePhase.Stopped, SHUTDOWN_TIMEOUT_MS)
         }
     }
 
-    private fun awaitNodeState(expected: String, timeoutMs: Long): NodeStatusSnapshot =
+    private fun awaitNodeState(expected: NodePhase, timeoutMs: Long): NodeStatusSnapshot =
         awaitStatus(timeoutMs) {
             val status = nodeStatus()
             when (status.state) {
                 expected -> status
-                "Failed" -> error("Native node failed: ${status.detail}")
+                NodePhase.Failed -> error("Native node failed: ${status.detail}")
                 else -> null
             }
         }
