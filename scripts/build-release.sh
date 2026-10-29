@@ -37,12 +37,21 @@ install -m 0644 \
   "${repo_root}/android/app/src/main/jniLibs/arm64-v8a/libfreenet_android.so" \
   "${artifact_root}/native/arm64-v8a/libfreenet_android.so"
 
+mapping="${repo_root}/android/app/build/outputs/mapping/release/mapping.txt"
+if [[ -f "${mapping}" ]]; then
+  mkdir -p "${artifact_root}/mapping"
+  install -m 0644 "${mapping}" "${artifact_root}/mapping/release-mapping.txt"
+fi
+
 (
   cd "${artifact_root}"
   sha256sum \
     apk/freenet-android-node-release.apk \
     native/arm64-v8a/libfreenet_android.so \
     > SHA256SUMS.txt
+  if [[ -f mapping/release-mapping.txt ]]; then
+    sha256sum mapping/release-mapping.txt >> SHA256SUMS.txt
+  fi
 )
 
 echo "Exported build artifacts to ${artifact_root}"

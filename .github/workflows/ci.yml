@@ -725,6 +725,7 @@ jobs:
           path: |
             freenet-android-node/artifacts/apk/freenet-android-node-release.apk
             freenet-android-node/artifacts/SHA256SUMS.txt
+            freenet-android-node/artifacts/mapping/release-mapping.txt
           if-no-files-found: error
           retention-days: 90
 
@@ -742,6 +743,7 @@ jobs:
           files: |
             freenet-android-node/artifacts/apk/freenet-android-node-release.apk
             freenet-android-node/artifacts/SHA256SUMS.txt
+            freenet-android-node/artifacts/mapping/release-mapping.txt
 
       - name: Open an issue if the release build failed
         if: failure()
