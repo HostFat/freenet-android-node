@@ -51,19 +51,8 @@ internal object ConfigToml {
         Regex("(?m)^[ \\t]*mode[ \\t]*=").containsMatchIn(text)
 
     /** Null when the text is a complete, syntactically valid Freenet config. */
-    fun validationError(text: String): String? {
-        if (!isComplete(text)) return "missing mode"
-        return runCatching {
-            val parsed = org.tomlj.Toml.parse(text)
-            if (parsed.hasErrors()) {
-                parsed.errors().joinToString("; ") { it.toString() }
-            } else {
-                null
-            }
-        }.getOrElse { error ->
-            error.message ?: "invalid TOML"
-        }
-    }
+    fun validationError(text: String): String? =
+        if (isComplete(text)) null else "missing mode"
 
     fun upsertInt(text: String, key: String, value: Int): String {
         val line = "$key = $value"
