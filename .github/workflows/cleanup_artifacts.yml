@@ -18,7 +18,11 @@ jobs:
               repo: context.repo.repo,
               per_page: 100
             });
+            const keepNames = new Set(["freenet-android-release"]);
+            const cutoff = Date.now() - 7 * 24 * 60 * 60 * 1000;
             for (const artifact of artifacts.data.artifacts) {
+              if (keepNames.has(artifact.name)) continue;
+              if (new Date(artifact.created_at).getTime() >= cutoff) continue;
               await github.rest.actions.deleteArtifact({
                 owner: context.repo.owner,
                 repo: context.repo.repo,

@@ -23,7 +23,7 @@ on:
         description: "Create the GitHub release. Leave this off to upload a signed APK artifact without a tag."
         type: boolean
         required: false
-        default: true
+        default: false
       release_notes:
         description: "Extra text for the GitHub release description"
         required: false

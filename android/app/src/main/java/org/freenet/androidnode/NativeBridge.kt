@@ -43,6 +43,8 @@ object NativeBridge {
 
     external fun nativeQueryNodeDiagnostics(websocketPort: Int): String
 
+    external fun nativeValidateConfig(configText: String): String
+
     fun ping(): Result<String> = withLoadedLibrary(::nativePing)
 
     fun buildInfo(): Result<String> = withLoadedLibrary(::nativeBuildInfo)
@@ -78,6 +80,9 @@ object NativeBridge {
 
     fun queryNodeDiagnostics(websocketPort: Int): Result<String> =
         withLoadedLibrary { nativeQueryNodeDiagnostics(websocketPort) }
+
+    fun validateConfig(configText: String): Result<String> =
+        withLoadedLibrary { nativeValidateConfig(configText) }
 
     fun appendInfoLog(message: String): Result<String> =
         withLoadedLibrary { nativeAppendInfoLog(message) }

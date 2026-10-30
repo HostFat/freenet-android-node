@@ -12,8 +12,10 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
@@ -21,6 +23,9 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun ConfigEditorPanel(
@@ -30,7 +35,15 @@ internal fun ConfigEditorPanel(
 ) {
     val context = LocalContext.current
     var text by rememberSaveable { mutableStateOf(ConfigToml.read(context)) }
-    val configError = ConfigToml.validationError(text)
+    var configError by remember { mutableStateOf<String?>(null) }
+    var validating by remember { mutableStateOf(true) }
+
+    LaunchedEffect(text) {
+        validating = true
+        delay(250)
+        configError = withContext(Dispatchers.IO) { ConfigToml.validationError(text) }
+        validating = false
+    }
 
     Column(
         modifier = modifier
@@ -43,9 +56,8 @@ internal fun ConfigEditorPanel(
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
-                enabled = configError == null,
+                enabled = !validating && configError == null,
                 onClick = {
-                    if (ConfigToml.validationError(text) != null) return@Button
                     ConfigToml.write(context, text)
                     onSaved()
                 },

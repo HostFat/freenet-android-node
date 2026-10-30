@@ -7,8 +7,8 @@ import kotlinx.coroutines.flow.asStateFlow
 
 internal const val IDLE_NODE_DETAIL = "The foreground service is not running"
 
-internal fun crashSnapshotIsUseful(detail: String, ring: String, fileLog: String?): Boolean {
-    if (!fileLog.isNullOrBlank()) return true
+internal fun crashSnapshotIsUseful(detail: String, ring: String, hasFileLog: Boolean): Boolean {
+    if (hasFileLog) return true
     if (ring.isNotBlank()) return true
     val reason = detail.trim()
     return reason.isNotEmpty() && reason != IDLE_NODE_DETAIL
@@ -21,6 +21,8 @@ internal object CrashReportOffer {
     private const val RING_KEY = "ring"
     private const val NOTED_AT_KEY = "noted_at"
     private const val RING_LIMIT = 80_000
+    private const val DETAIL_LIMIT = 2_000
+    private const val STACK_LIMIT = 16_000
 
     private val mutablePending = MutableStateFlow(false)
     val pending: StateFlow<Boolean> = mutablePending.asStateFlow()
@@ -35,10 +37,31 @@ internal object CrashReportOffer {
         if (!crashSnapshotIsUseful(detail, savedRing, fileLog)) return
         prefs(context).edit()
             .putBoolean(PENDING_KEY, true)
-            .putString(DETAIL_KEY, detail.trim().take(2_000))
+            .putString(DETAIL_KEY, detail.trim().take(DETAIL_LIMIT))
             .putString(RING_KEY, savedRing)
             .putLong(NOTED_AT_KEY, System.currentTimeMillis())
             .apply()
+        mutablePending.value = true
+    }
+
+    /**
+     * Called from the uncaught-exception handler, where the process is about to
+     * die. Use a synchronous commit so the stack is on disk before that happens.
+     */
+    fun noteThrowable(context: Context, error: Throwable) {
+        val detail = buildString {
+            append(error.javaClass.name)
+            append(": ")
+            append(error.message.orEmpty())
+            append('\n')
+            append(error.stackTraceToString())
+        }.take(STACK_LIMIT)
+        prefs(context).edit()
+            .putBoolean(PENDING_KEY, true)
+            .putString(DETAIL_KEY, detail)
+            .putString(RING_KEY, "")
+            .putLong(NOTED_AT_KEY, System.currentTimeMillis())
+            .commit()
         mutablePending.value = true
     }
 

@@ -193,6 +193,24 @@ pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeQueryNode
     })
 }
 
+#[unsafe(no_mangle)]
+pub extern "system" fn Java_org_freenet_androidnode_NativeBridge_nativeValidateConfig(
+    mut env: JNIEnv,
+    _class: JClass,
+    config_text: JString,
+) -> jstring {
+    jni_response(&mut env, |env| match env.get_string(&config_text) {
+        Ok(text) => match toml::from_str::<toml::Value>(&text.to_string_lossy()) {
+            Ok(_) => success_response("valid"),
+            Err(error) => jni_error_response("INVALID_TOML", error.to_string()),
+        },
+        Err(error) => jni_error_response(
+            "INVALID_ARGUMENT",
+            format!("Failed to read configText from JNI: {error}"),
+        ),
+    })
+}
+
 fn freenet_build_info() -> String {
     let transport_generation = freenet::transport::version_mismatch_generation();
     format!(
