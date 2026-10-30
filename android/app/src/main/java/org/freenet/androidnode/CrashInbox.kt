@@ -45,7 +45,7 @@ internal object CrashInbox {
                 .toString(2),
         )
         jsonObject.put("network_status_error", org.json.JSONObject.NULL)
-        val body = HttpJson.postGzip(
+        val response = HttpJson.postGzip(
             CRASH_INBOX_URL,
             mapOf(
                 "Authorization" to "Bearer $token",
@@ -54,7 +54,7 @@ internal object CrashInbox {
             ),
             jsonObject.toString(),
         ).getOrThrow()
-        val id = JSONObject(body).optString("id").trim()
+        val id = JSONObject(response).optString("id").trim()
         require(id.isNotEmpty()) { "Upload succeeded but the inbox did not return an id" }
         id
     }

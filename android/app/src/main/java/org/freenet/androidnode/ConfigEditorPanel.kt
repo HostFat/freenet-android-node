@@ -51,8 +51,9 @@ internal fun ConfigEditorPanel(
             .padding(12.dp),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
-        if (configError != null) {
-            Text(stringResource(R.string.config_invalid, configError))
+        val error = configError
+        if (error != null) {
+            Text(stringResource(R.string.config_invalid, error))
         }
         Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
             Button(
