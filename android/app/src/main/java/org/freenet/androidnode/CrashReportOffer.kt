@@ -33,8 +33,8 @@ internal object CrashReportOffer {
 
     fun note(context: Context, detail: String, ring: String?) {
         val savedRing = ring.orEmpty().takeLast(RING_LIMIT)
-        val fileLog = if (ServiceReport.hasLogFiles(context)) "present" else null
-        if (!crashSnapshotIsUseful(detail, savedRing, fileLog)) return
+        val hasFileLog = ServiceReport.hasLogFiles(context)
+        if (!crashSnapshotIsUseful(detail, savedRing, hasFileLog)) return
         prefs(context).edit()
             .putBoolean(PENDING_KEY, true)
             .putString(DETAIL_KEY, detail.trim().take(DETAIL_LIMIT))
