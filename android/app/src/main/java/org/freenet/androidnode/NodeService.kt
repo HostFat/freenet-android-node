@@ -34,15 +34,19 @@ class NodeService : Service() {
     private var statusJob: Job? = null
     private var foregroundStarted = false
     private var shutdownCompleted = false
+    @Volatile
     private var startedAtElapsedRealtimeMs: Long? = null
     private var runningMode = NodeMode.Local
     private var latestStartId = 0
+    @Volatile
     private var userRequestedShutdown = false
     @Volatile
     private var appInitiatedStop = false
+    @Volatile
     private var crashRestartAttempt = 0
     private var crashRestartJob: Job? = null
     private var scheduleJob: Job? = null
+    @Volatile
     private var notifiedConnectedThisRun = false
 
     private val powerReceiver = object : BroadcastReceiver() {
@@ -228,12 +232,22 @@ class NodeService : Service() {
         appInitiatedStop = true
         statusJob?.cancel()
         if (!shutdownCompleted) {
-            val response = NativeBridge.stopNode().getOrElse {
-                "JNI error while destroying NodeService: ${it.message ?: "unknown error"}"
-            }
-            NodeRepository.publishLifecycleResponse(response)
-            val status = nativeStatus(response)
-            NodeRepository.publishUnexpectedServiceDestruction(status)
+            // The native stop call blocks. Keep it off the main thread so a
+            // wedged node cannot turn service destruction into an ANR.
+            Thread({
+                val response = NativeBridge.stopNode().getOrElse {
+                    "JNI error while destroying NodeService: ${it.message ?: "unknown error"}"
+                }
+                NodeRepository.publishLifecycleResponse(response)
+                val status = runCatching {
+                    parseNodeStatus(
+                        NativeBridge.nodeStatus().getOrElse { response },
+                    )
+                }.getOrElse {
+                    NodeStatusSnapshot(NodePhase.Failed, response, 0, null)
+                }
+                NodeRepository.publishUnexpectedServiceDestruction(status)
+            }, "freenet-service-shutdown").start()
         }
         if (foregroundStarted) {
             stopForeground(STOP_FOREGROUND_REMOVE)
@@ -542,7 +556,9 @@ class NodeService : Service() {
                             this@NodeService,
                             System.currentTimeMillis(),
                         )
-                        if (stamped) armSchedule()
+                        if (stamped) {
+                            withContext(Dispatchers.Main.immediate) { armSchedule() }
+                        }
                         if (!notifiedConnectedThisRun) {
                             notifiedConnectedThisRun = true
                             if (NodePolicyRepository.state.value.notifyConnected) {

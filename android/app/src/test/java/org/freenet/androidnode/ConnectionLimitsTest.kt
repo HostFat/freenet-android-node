@@ -48,11 +48,11 @@ class ConnectionLimitsTest {
 
     @Test
     fun crashReportIsUsefulOnlyWithAReasonOrLogs() {
-        assertEquals(false, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "", null))
-        assertEquals(false, crashSnapshotIsUseful("", "", ""))
-        assertEquals(true, crashSnapshotIsUseful("Native node stopped unexpectedly", "", null))
-        assertEquals(true, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "ERROR panic", null))
-        assertEquals(true, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "", "log line"))
+        assertEquals(false, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "", false))
+        assertEquals(false, crashSnapshotIsUseful("", "", false))
+        assertEquals(true, crashSnapshotIsUseful("Native node stopped unexpectedly", "", false))
+        assertEquals(true, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "ERROR panic", false))
+        assertEquals(true, crashSnapshotIsUseful(IDLE_NODE_DETAIL, "", true))
     }
 
     @Test

@@ -1,10 +1,6 @@
 package org.freenet.androidnode
 
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
-import java.net.HttpURLConnection
-import java.net.URL
-import java.util.zip.GZIPOutputStream
 
 internal const val CRASH_INBOX_URL =
     "https://freenet-android-crash-inbox.hostfat.workers.dev/v1/crash"
@@ -14,31 +10,31 @@ internal fun presetCrashReportComment(appVersion: String): String =
         "$SERVICE_REPORT_REPO\n" +
         "App version: $appVersion\n"
 
+internal fun buildCrashBody(detail: String, ring: String, hasFileLog: Boolean): String = buildString {
+    append("Crash detail:\n")
+    append(detail.ifBlank { "(none)" })
+    append("\n\n")
+    if (!hasFileLog) {
+        append("No log files were on disk.\n")
+    }
+    if (ring.isNotBlank()) {
+        append("\n--- ring captured at crash ---\n")
+        append(ring)
+    }
+}
+
 internal object CrashInbox {
     fun upload(context: android.content.Context, userMessage: String): Result<String> = runCatching {
         val token = BuildConfig.CRASH_REPORT_TOKEN.trim()
         require(token.isNotEmpty()) { "Crash reports are not configured in this build" }
         val detail = CrashReportOffer.detail(context)
         val ring = CrashReportOffer.ring(context)
-        val fileLog = ServiceReport.readFileLogs(context)
-        if (!crashSnapshotIsUseful(detail, ring, fileLog)) {
+        val hasFileLog = ServiceReport.hasLogFiles(context)
+        if (!crashSnapshotIsUseful(detail, ring, hasFileLog)) {
             error("Nothing useful to send")
         }
         val notedAt = CrashReportOffer.notedAtEpochMs(context)
-        val body = buildString {
-            append("Crash detail:\n")
-            append(detail.ifBlank { "(none)" })
-            append("\n\n")
-            if (fileLog.isNullOrBlank()) {
-                append("No log files were on disk.\n")
-            } else {
-                append(fileLog)
-            }
-            if (ring.isNotBlank()) {
-                append("\n--- ring captured at crash ---\n")
-                append(ring)
-            }
-        }
+        val body = buildCrashBody(detail, ring, hasFileLog)
         val jsonObject = ServiceReport.buildReportJson(context, userMessage, extraLog = body)
         jsonObject.put(
             "network_status",
@@ -49,39 +45,17 @@ internal object CrashInbox {
                 .toString(2),
         )
         jsonObject.put("network_status_error", org.json.JSONObject.NULL)
-        val json = jsonObject.toString()
-        val compressed = ByteArrayOutputStream().use { bytes ->
-            GZIPOutputStream(bytes).use { gzip ->
-                gzip.write(json.toByteArray(Charsets.UTF_8))
-            }
-            bytes.toByteArray()
-        }
-        val connection = (URL(CRASH_INBOX_URL).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            doOutput = true
-            connectTimeout = 30_000
-            readTimeout = 30_000
-            setRequestProperty("Authorization", "Bearer $token")
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Content-Encoding", "gzip")
-            setRequestProperty("X-App-Version", appVersionName(context))
-            setRequestProperty("X-Install-Id", InstallId.get(context))
-        }
-        try {
-            connection.outputStream.use { it.write(compressed) }
-            val body = (if (connection.responseCode in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream ?: connection.inputStream
-            })?.bufferedReader()?.readText().orEmpty()
-            if (connection.responseCode !in 200..299) {
-                error("Upload failed: ${connection.responseCode} $body")
-            }
-            val id = JSONObject(body).optString("id").trim()
-            require(id.isNotEmpty()) { "Upload succeeded but the inbox did not return an id" }
-            id
-        } finally {
-            connection.disconnect()
-        }
+        val body = HttpJson.postGzip(
+            CRASH_INBOX_URL,
+            mapOf(
+                "Authorization" to "Bearer $token",
+                "X-App-Version" to appVersionName(context),
+                "X-Install-Id" to InstallId.get(context),
+            ),
+            jsonObject.toString(),
+        ).getOrThrow()
+        val id = JSONObject(body).optString("id").trim()
+        require(id.isNotEmpty()) { "Upload succeeded but the inbox did not return an id" }
+        id
     }
 }

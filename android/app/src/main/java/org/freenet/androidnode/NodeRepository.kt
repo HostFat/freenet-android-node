@@ -9,6 +9,8 @@ import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.asStateFlow
+import kotlinx.coroutines.flow.update
+import kotlinx.coroutines.flow.updateAndGet
 import kotlinx.coroutines.launch
 import org.json.JSONObject
 
@@ -43,43 +45,29 @@ data class NodeUiState(
             ?: 0
 }
 
-data class StorageUiState(
-    val available: Boolean = false,
-    val detail: String = "Storage has not been measured",
-    val persistentBytes: Long = 0,
-    val temporaryBytes: Long = 0,
-    val identityBytes: Long = 0,
-    val totalBytes: Long = 0,
-    val identityFingerprint: String? = null,
-    val identityOwnerOnly: Boolean = false,
-    val secretMaterialInLogs: Boolean = false,
-    val layoutReady: Boolean = false,
-    val prototypeKeySecurityDebt: Boolean = true,
-)
-
 object NodeRepository {
     private val ioScope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
     private val mutableState = MutableStateFlow(NodeUiState())
-    private val mutableStorageState = MutableStateFlow(StorageUiState())
 
     val state: StateFlow<NodeUiState> = mutableState.asStateFlow()
-    val storageState: StateFlow<StorageUiState> = mutableStorageState.asStateFlow()
     val policies: StateFlow<NodePolicyState> = NodePolicyRepository.state
 
     fun startLocal(context: Context) {
         val appContext = context.applicationContext
         NodePolicyRepository.stopAutomaticScheduling(appContext)
-        mutableState.value = mutableState.value.copy(
-            state = NodePhase.Starting,
-            detail = "Submitting the foreground-service start request",
-            serviceActive = true,
-            mode = NodeMode.Local,
-            peers = 0,
-            startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
-            lastLifecycleResponse = "Starting local node through NodeService",
-            taskRemovedWhileRunning = false,
-            udpPortInUse = false,
-        )
+        mutableState.update {
+            it.copy(
+                state = NodePhase.Starting,
+                detail = "Submitting the foreground-service start request",
+                serviceActive = true,
+                mode = NodeMode.Local,
+                peers = 0,
+                startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                lastLifecycleResponse = "Starting local node through NodeService",
+                taskRemovedWhileRunning = false,
+                udpPortInUse = false,
+            )
+        }
         runCatching { appContext.startForegroundService(NodeService.startLocalIntent(appContext)) }
             .onFailure { error -> publishServiceStartBlocked(error) }
     }
@@ -88,17 +76,19 @@ object NodeRepository {
         val appContext = context.applicationContext
         NodePolicyRepository.initialize(appContext)
         NodePolicyRepository.setSuspended(appContext, false)
-        mutableState.value = mutableState.value.copy(
-            state = NodePhase.Starting,
-            detail = "Checking the selected power and network policies",
-            serviceActive = true,
-            mode = NodeMode.Network,
-            peers = 0,
-            startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
-            lastLifecycleResponse = "Starting network node through NodeService",
-            taskRemovedWhileRunning = false,
-            udpPortInUse = false,
-        )
+        mutableState.update {
+            it.copy(
+                state = NodePhase.Starting,
+                detail = "Checking the selected power and network policies",
+                serviceActive = true,
+                mode = NodeMode.Network,
+                peers = 0,
+                startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
+                lastLifecycleResponse = "Starting network node through NodeService",
+                taskRemovedWhileRunning = false,
+                udpPortInUse = false,
+            )
+        }
         runCatching { appContext.startForegroundService(NodeService.startNetworkIntent(appContext)) }
             .onFailure { error -> publishServiceStartBlocked(error) }
     }
@@ -110,7 +100,7 @@ object NodeRepository {
     }
 
     internal fun publishAutomaticStartBlocked(reason: String) {
-        mutableState.value = NodeStateMachine.automaticStartBlocked(mutableState.value, reason)
+        mutableState.update { NodeStateMachine.automaticStartBlocked(it, reason) }
     }
 
     fun stop(context: Context) {
@@ -204,36 +194,42 @@ object NodeRepository {
         val appContext = context.applicationContext
         NodePolicyRepository.initialize(appContext)
         NodePolicyRepository.setSuspended(appContext, false)
-        mutableState.value = mutableState.value.copy(
-            state = NodePhase.Starting,
-            detail = "Restarting the network node with the new connection limits",
-            serviceActive = true,
-            mode = NodeMode.Network,
-            lastLifecycleResponse = "Restarting network node through NodeService",
-            taskRemovedWhileRunning = false,
-            udpPortInUse = false,
-        )
+        mutableState.update {
+            it.copy(
+                state = NodePhase.Starting,
+                detail = "Restarting the network node with the new connection limits",
+                serviceActive = true,
+                mode = NodeMode.Network,
+                lastLifecycleResponse = "Restarting network node through NodeService",
+                taskRemovedWhileRunning = false,
+                udpPortInUse = false,
+            )
+        }
         appContext.startForegroundService(NodeService.restartNetworkIntent(appContext))
     }
 
     fun reportNotificationPermissionRequired() {
-        mutableState.value = mutableState.value.copy(
-            detail = "Notification permission is required before starting the node",
-            lastLifecycleResponse = "Start cancelled because notification permission was denied",
-        )
+        mutableState.update {
+            it.copy(
+                detail = "Notification permission is required before starting the node",
+                lastLifecycleResponse = "Start cancelled because notification permission was denied",
+            )
+        }
     }
 
     internal fun publishStarting(startedAtElapsedRealtimeMs: Long, mode: NodeMode) {
-        mutableState.value = NodeStateMachine.starting(
-            mutableState.value,
-            mode,
-            "The foreground service is starting the native node",
-            startedAtElapsedRealtimeMs,
-        )
+        mutableState.update {
+            NodeStateMachine.starting(
+                it,
+                mode,
+                "The foreground service is starting the native node",
+                startedAtElapsedRealtimeMs,
+            )
+        }
     }
 
     internal fun publishWaiting(detail: String, paused: Boolean = false) {
-        mutableState.value = NodeStateMachine.waiting(mutableState.value, detail, paused)
+        mutableState.update { NodeStateMachine.waiting(it, detail, paused) }
     }
 
     internal fun publishNativeStatus(
@@ -242,53 +238,54 @@ object NodeRepository {
         startedAtElapsedRealtimeMs: Long?,
     ): NodeUiState {
         val parsed = parseNodeStatus(response)
-        val next = NodeStateMachine.nativeStatus(
-            mutableState.value,
-            parsed,
-            serviceActive,
-            startedAtElapsedRealtimeMs,
-        )
-        mutableState.value = next
-        return next
+        return mutableState.updateAndGet {
+            NodeStateMachine.nativeStatus(it, parsed, serviceActive, startedAtElapsedRealtimeMs)
+        }
     }
 
     internal fun publishLifecycleResponse(response: String) {
-        mutableState.value = mutableState.value.copy(lastLifecycleResponse = response)
+        mutableState.update { it.copy(lastLifecycleResponse = response) }
     }
 
     internal fun publishPaused(status: NodeStatusSnapshot, response: String) {
-        mutableState.value = NodeStateMachine.stopped(
-            mutableState.value,
-            "The node was paused through a graceful native shutdown",
-            response,
-            completedStartCycles = status.completedStartCycles,
-        ).copy(state = NodePhase.Paused)
+        mutableState.update {
+            NodeStateMachine.stopped(
+                it,
+                "The node was paused through a graceful native shutdown",
+                response,
+                completedStartCycles = status.completedStartCycles,
+            ).copy(state = NodePhase.Paused)
+        }
     }
 
     internal fun publishAfterReset() {
-        mutableState.value = mutableState.value.copy(
-            state = NodePhase.Stopped,
-            detail = "Node data was reset. Identity and config.toml were kept.",
-            serviceActive = false,
-            startedAtElapsedRealtimeMs = null,
-            lastLifecycleResponse = "Node runtime data reset",
-            lastNetworkError = null,
-            udpPortInUse = false,
-            natHint = null,
-            peers = 0,
-            bytesSent = 0,
-            bytesReceived = 0,
-            udpPort = null,
-        )
+        mutableState.update {
+            it.copy(
+                state = NodePhase.Stopped,
+                detail = "Node data was reset. Identity and config.toml were kept.",
+                serviceActive = false,
+                startedAtElapsedRealtimeMs = null,
+                lastLifecycleResponse = "Node runtime data reset",
+                lastNetworkError = null,
+                udpPortInUse = false,
+                natHint = null,
+                peers = 0,
+                bytesSent = 0,
+                bytesReceived = 0,
+                udpPort = null,
+            )
+        }
     }
 
     internal fun publishStopped(status: NodeStatusSnapshot, response: String) {
-        mutableState.value = NodeStateMachine.stopped(
-            mutableState.value,
-            status.detail,
-            response,
-            completedStartCycles = status.completedStartCycles,
-        )
+        mutableState.update {
+            NodeStateMachine.stopped(
+                it,
+                status.detail,
+                response,
+                completedStartCycles = status.completedStartCycles,
+            )
+        }
     }
 
     internal fun publishPolicyStopped(
@@ -296,80 +293,81 @@ object NodeRepository {
         response: String,
         reason: String,
     ) {
-        mutableState.value = NodeStateMachine.stopped(
-            mutableState.value,
-            "Network mode stopped safely: $reason",
-            response,
-            completedStartCycles = status.completedStartCycles,
-            lastNetworkError = reason,
-        )
+        mutableState.update {
+            NodeStateMachine.stopped(
+                it,
+                "Network mode stopped safely: $reason",
+                response,
+                completedStartCycles = status.completedStartCycles,
+                lastNetworkError = reason,
+            )
+        }
     }
 
     internal fun publishFailure(detail: String, response: String) {
-        mutableState.value = NodeStateMachine.failed(mutableState.value, detail, response)
+        mutableState.update { NodeStateMachine.failed(it, detail, response) }
     }
 
     internal fun publishUdpPortInUse(detail: String, response: String) {
-        mutableState.value = mutableState.value.copy(
-            state = NodePhase.Failed,
-            detail = detail,
-            serviceActive = false,
-            startedAtElapsedRealtimeMs = null,
-            lastLifecycleResponse = response,
-            lastNetworkError = detail,
-            udpPortInUse = true,
-        )
+        mutableState.update {
+            it.copy(
+                state = NodePhase.Failed,
+                detail = detail,
+                serviceActive = false,
+                startedAtElapsedRealtimeMs = null,
+                lastLifecycleResponse = response,
+                lastNetworkError = detail,
+                udpPortInUse = true,
+            )
+        }
     }
 
     internal fun publishShutdownTimeout(detail: String, response: String) {
-        mutableState.value = mutableState.value.copy(
-            state = NodePhase.Stopping,
-            detail = detail,
-            serviceActive = true,
-            lastLifecycleResponse = response,
-        )
+        mutableState.update {
+            it.copy(
+                state = NodePhase.Stopping,
+                detail = detail,
+                serviceActive = true,
+                lastLifecycleResponse = response,
+            )
+        }
     }
 
     internal fun publishTaskRemoved() {
-        mutableState.value = mutableState.value.copy(
-            detail = "The Activity task was removed; the foreground node continues running",
-            taskRemovedWhileRunning = true,
-        )
+        mutableState.update {
+            it.copy(
+                detail = "The Activity task was removed; the foreground node continues running",
+                taskRemovedWhileRunning = true,
+            )
+        }
     }
 
     internal fun publishUnexpectedServiceDestruction(status: NodeStatusSnapshot) {
-        mutableState.value = mutableState.value.copy(
-            state = status.state,
-            detail = "NodeService was destroyed and requested cooperative native shutdown",
-            completedStartCycles = status.completedStartCycles,
-            serviceActive = false,
-            startedAtElapsedRealtimeMs = null,
-        )
-    }
-
-    fun refreshStorage(context: Context) {
-        val response = NativeBridge.storageStatus(androidNodeConfigJson(context)).getOrElse {
-            mutableStorageState.value = StorageUiState(
-                detail = "JNI storage error: ${it.message ?: "unknown error"}",
+        mutableState.update {
+            it.copy(
+                state = status.state,
+                detail = "NodeService was destroyed and requested cooperative native shutdown",
+                completedStartCycles = status.completedStartCycles,
+                serviceActive = false,
+                startedAtElapsedRealtimeMs = null,
             )
-            return
         }
-        mutableStorageState.value = parseStorageStatus(response)
     }
 
     internal fun publishNatHint(hint: String?) {
-        if (mutableState.value.natHint == hint) return
-        mutableState.value = mutableState.value.copy(natHint = hint)
+        mutableState.update { if (it.natHint == hint) it else it.copy(natHint = hint) }
     }
 
     internal fun publishConnectivity(snapshot: ConnectivitySnapshot, response: String) {
-        mutableState.value = mutableState.value.copy(
-            currentNetworkType = snapshot.networkType,
-            connectivityAvailable = snapshot.available,
-            networkMetered = snapshot.metered,
-            vpnActive = snapshot.vpn,
-            lastLifecycleResponse = response,
-        )
+        mutableState.update {
+            it.copy(
+                currentNetworkType = snapshot.networkType,
+                connectivityAvailable = snapshot.available,
+                networkMetered = snapshot.metered,
+                vpnActive = snapshot.vpn,
+                lastLifecycleResponse = response,
+            )
+        }
     }
 }
 
@@ -427,34 +425,6 @@ internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
         )
     }.getOrElse { error ->
         NodeStatusSnapshot(NodePhase.Failed, error.message ?: response, 0, null)
-    }
-}
-
-private fun parseStorageStatus(response: String): StorageUiState {
-    return runCatching {
-        val envelope = JSONObject(response)
-        if (!envelope.optBoolean("ok")) {
-            return@runCatching StorageUiState(
-                detail = envelope.optJSONObject("error")?.optString("message")
-                    ?: "Native storage measurement failed",
-            )
-        }
-        val data = envelope.getJSONObject("data")
-        StorageUiState(
-            available = true,
-            detail = "Android-private storage measured",
-            persistentBytes = data.optLong("persistentBytes"),
-            temporaryBytes = data.optLong("temporaryBytes"),
-            identityBytes = data.optLong("identityBytes"),
-            totalBytes = data.optLong("totalBytes"),
-            identityFingerprint = data.optionalString("identityFingerprint"),
-            identityOwnerOnly = data.optBoolean("identityOwnerOnly"),
-            secretMaterialInLogs = data.optBoolean("secretMaterialInLogs"),
-            layoutReady = data.optBoolean("layoutReady"),
-            prototypeKeySecurityDebt = data.optBoolean("prototypeKeySecurityDebt", true),
-        )
-    }.getOrElse { error ->
-        StorageUiState(detail = error.message ?: response)
     }
 }
 
