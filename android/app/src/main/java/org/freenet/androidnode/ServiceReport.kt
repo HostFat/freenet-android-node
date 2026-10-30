@@ -3,12 +3,8 @@ package org.freenet.androidnode
 import android.content.Context
 import android.os.Build
 import org.json.JSONObject
-import java.io.ByteArrayOutputStream
 import java.io.File
-import java.net.HttpURLConnection
-import java.net.URL
 import java.time.Instant
-import java.util.zip.GZIPOutputStream
 
 internal const val SERVICE_REPORT_SERVER = "https://nova.locut.us/api/reports"
 internal const val SERVICE_REPORT_REPO = "https://github.com/HostFat/freenet-android-node"
@@ -181,42 +177,18 @@ internal object ServiceReport {
             .toString(2)
 
     private fun postGzip(context: Context, json: String): String {
-        val compressed = ByteArrayOutputStream().use { bytes ->
-            GZIPOutputStream(bytes).use { gzip ->
-                gzip.write(json.toByteArray(Charsets.UTF_8))
-            }
-            bytes.toByteArray()
-        }
-        val connection = (URL(SERVICE_REPORT_SERVER).openConnection() as HttpURLConnection).apply {
-            requestMethod = "POST"
-            doOutput = true
-            connectTimeout = 30_000
-            readTimeout = 30_000
-            setRequestProperty("Content-Type", "application/json")
-            setRequestProperty("Content-Encoding", "gzip")
-            setRequestProperty("User-Agent", "freenet-report")
-            setRequestProperty("X-Install-Id", InstallId.get(context))
+        val headers = buildMap {
+            put("User-Agent", "freenet-report")
+            put("X-Install-Id", InstallId.get(context))
             // A service report uses its own token, never the crash token.
             BuildConfig.SERVICE_REPORT_TOKEN.trim().takeIf { it.isNotEmpty() }?.let { token ->
-                setRequestProperty("Authorization", "Bearer $token")
+                put("Authorization", "Bearer $token")
             }
         }
-        try {
-            connection.outputStream.use { it.write(compressed) }
-            val body = (if (connection.responseCode in 200..299) {
-                connection.inputStream
-            } else {
-                connection.errorStream ?: connection.inputStream
-            })?.bufferedReader()?.readText().orEmpty()
-            if (connection.responseCode !in 200..299) {
-                error("Upload failed: ${connection.responseCode} $body")
-            }
-            val code = JSONObject(body).optString("code").trim()
-            require(code.isNotEmpty()) { "Upload succeeded but the server did not return a report code" }
-            return code
-        } finally {
-            connection.disconnect()
-        }
+        val body = HttpJson.postGzip(SERVICE_REPORT_SERVER, headers, json).getOrThrow()
+        val code = JSONObject(body).optString("code").trim()
+        require(code.isNotEmpty()) { "Upload succeeded but the server did not return a report code" }
+        return code
     }
 }
 

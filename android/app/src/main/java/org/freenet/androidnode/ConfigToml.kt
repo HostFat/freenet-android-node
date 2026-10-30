@@ -53,16 +53,39 @@ internal object ConfigToml {
     /** Null when the text is a complete, syntactically valid Freenet config. */
     fun validationError(text: String): String? {
         if (!isComplete(text)) return "missing mode"
-        return runCatching {
-            val parsed = org.tomlj.Toml.parse(text)
-            if (parsed.hasErrors()) {
-                parsed.errors().joinToString("; ") { it.toString() }
-            } else {
-                null
-            }
-        }.getOrElse { error ->
-            error.message ?: "invalid TOML"
+        if (!NativeBridge.isLoaded) return fallbackValidationError(text)
+        val raw = NativeBridge.validateConfig(text).getOrElse { error ->
+            return error.message ?: "invalid TOML"
         }
+        val envelope = runCatching { org.json.JSONObject(raw) }.getOrNull()
+            ?: return "invalid TOML"
+        if (envelope.optBoolean("ok")) return null
+        return envelope.optJSONObject("error")?.optString("message")
+            ?.ifBlank { null }
+            ?: "invalid TOML"
+    }
+
+    /**
+     * Local unit tests and the first frame before JNI is ready use this check.
+     * It only catches unbalanced containers, so the compiler never ships a
+     * second TOML parser.
+     */
+    private fun fallbackValidationError(text: String): String? {
+        var square = 0
+        var curly = 0
+        var quoted = false
+        for (character in text) {
+            when {
+                character == '"' -> quoted = !quoted
+                quoted -> Unit
+                character == '[' -> square += 1
+                character == ']' -> square -= 1
+                character == '{' -> curly += 1
+                character == '}' -> curly -= 1
+            }
+            if (square < 0 || curly < 0) return "invalid TOML"
+        }
+        return if (square == 0 && curly == 0 && !quoted) null else "invalid TOML"
     }
 
     fun upsertInt(text: String, key: String, value: Int): String {

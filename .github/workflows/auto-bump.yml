@@ -166,7 +166,8 @@ jobs:
             --ref main \
             -f freenet_core_version="${{ steps.core.outputs.tag }}" \
             -f release_version="${{ steps.core.outputs.version }}" \
-            -f skip_prechecks=true
+            -f skip_prechecks=true \
+            -f publish_release=true
           echo "Dispatched CI release for ${{ steps.core.outputs.tag }}"
 
       - name: Open an issue if the bump failed

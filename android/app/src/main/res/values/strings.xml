@@ -162,4 +162,5 @@
     <string name="peer_count_accuracy_hint">The dashboard peer count is more accurate; this number can lag.</string>
     <string name="river_chat_invite_running">The node is running. You can now join the official Freenet chat in River.</string>
     <string name="river_chat_invite_get">Get an invite by tapping \"Join the Freenet chat room\" on: %1$s</string>
+    <string name="dashboard_local_hint">The core dashboard becomes available at 127.0.0.1:7509 while the node runs.</string>
 </resources>

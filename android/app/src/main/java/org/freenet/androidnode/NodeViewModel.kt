@@ -11,7 +11,6 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
     }
 
     val state = NodeRepository.state
-    val storageState = NodeRepository.storageState
     val policies = NodeRepository.policies
 
     fun startLocalNode() {
