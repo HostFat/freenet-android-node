@@ -20,10 +20,11 @@ export FREENET_ABIS="arm64-v8a"
 gradle_version_args+=("-Pabis=arm64-v8a")
 gradle_version_args+=("-PprebuiltNode=${PREBUILT_NODE:-false}")
 
-"${repo_root}/scripts/build-native.sh"
 if [[ "${PREBUILT_NODE:-false}" == "true" ]]; then
-  # build-native.sh recreates jniLibs, so the prebuilt binary must be added after it.
+  # Release runs the official binary; the JNI library is not built or shipped.
   "${repo_root}/scripts/fetch-prebuilt-node.sh"
+else
+  "${repo_root}/scripts/build-native.sh"
 fi
 "${repo_root}/android/gradlew" \
   -p "${repo_root}/android" \
@@ -31,16 +32,18 @@ fi
   "${gradle_version_args[@]}" \
   :app:assembleRelease
 
-mkdir -p \
-  "${artifact_root}/apk" \
-  "${artifact_root}/native/arm64-v8a"
+mkdir -p "${artifact_root}/apk"
 
 install -m 0644 \
   "${repo_root}/android/app/build/outputs/apk/release/app-release.apk" \
   "${artifact_root}/apk/freenet-android-node-release.apk"
-install -m 0644 \
-  "${repo_root}/android/app/src/main/jniLibs/arm64-v8a/libfreenet_android.so" \
-  "${artifact_root}/native/arm64-v8a/libfreenet_android.so"
+
+if [[ "${PREBUILT_NODE:-false}" != "true" ]]; then
+  mkdir -p "${artifact_root}/native/arm64-v8a"
+  install -m 0644 \
+    "${repo_root}/android/app/src/main/jniLibs/arm64-v8a/libfreenet_android.so" \
+    "${artifact_root}/native/arm64-v8a/libfreenet_android.so"
+fi
 
 mapping="${repo_root}/android/app/build/outputs/mapping/release/mapping.txt"
 if [[ -f "${mapping}" ]]; then
@@ -50,10 +53,10 @@ fi
 
 (
   cd "${artifact_root}"
-  sha256sum \
-    apk/freenet-android-node-release.apk \
-    native/arm64-v8a/libfreenet_android.so \
-    > SHA256SUMS.txt
+  sha256sum apk/freenet-android-node-release.apk > SHA256SUMS.txt
+  if [[ -f native/arm64-v8a/libfreenet_android.so ]]; then
+    sha256sum native/arm64-v8a/libfreenet_android.so >> SHA256SUMS.txt
+  fi
   if [[ -f mapping/release-mapping.txt ]]; then
     sha256sum mapping/release-mapping.txt >> SHA256SUMS.txt
   fi

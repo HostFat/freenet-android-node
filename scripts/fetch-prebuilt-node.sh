@@ -36,7 +36,13 @@ install_node() {
   echo "${abi}: $(sha256sum "${destination}/${abi}/libfreenet.so" | cut -d' ' -f1)"
 }
 
-install_node arm64-v8a aarch64-unknown-linux-musl
-install_node x86_64 x86_64-unknown-linux-musl
+# Release builds ask for one ABI; debug may keep both.
+for abi in ${FREENET_ABIS:-arm64-v8a}; do
+  case "${abi}" in
+    arm64-v8a) install_node arm64-v8a aarch64-unknown-linux-musl ;;
+    x86_64) install_node x86_64 x86_64-unknown-linux-musl ;;
+    *) echo "Unsupported ABI: ${abi}" >&2; exit 1 ;;
+  esac
+done
 
 echo "Freenet ${version} prebuilt binaries are ready in ${destination}"

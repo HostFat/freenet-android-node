@@ -31,6 +31,7 @@ class NodeService : Service() {
     private lateinit var nodeNotificationManager: NodeNotificationManager
     private lateinit var connectivityMonitor: AndroidConnectivityMonitor
     private lateinit var batteryManager: BatteryManager
+    private var lastConnectivity: ConnectivitySnapshot? = null
     private var statusJob: Job? = null
     private var foregroundStarted = false
     private var shutdownCompleted = false
@@ -524,12 +525,39 @@ class NodeService : Service() {
     }
 
     private suspend fun handleConnectivityChanged(snapshot: ConnectivitySnapshot) {
+        val previous = lastConnectivity
+        lastConnectivity = snapshot
         val response = withContext(Dispatchers.IO) {
             NodeBackend.updateConnectivity(snapshot.toJson()).getOrElse {
                 "JNI connectivity error: ${it.message ?: "unknown error"}"
             }
         }
         NodeRepository.publishConnectivity(snapshot, response)
+        val networkChanged = previous != null && (
+            previous.available != snapshot.available ||
+                previous.networkType != snapshot.networkType ||
+                previous.metered != snapshot.metered ||
+                previous.vpn != snapshot.vpn
+            )
+        if (BuildConfig.PREBUILT_NODE &&
+            networkChanged &&
+            runningMode == NodeMode.Network &&
+            !userRequestedShutdown
+        ) {
+            // The process has no connectivity callback: restart it on the new network.
+            lifecycleMutex.withLock {
+                if (userRequestedShutdown) return@withLock
+                if (nativeIsActive()) {
+                    shutDownNode(
+                        latestStartId,
+                        keepController = true,
+                        waitingDetail = "Restarting after a network change",
+                    )
+                }
+                reconcilePolicy(latestStartId, explicitStart = true)
+            }
+            return
+        }
         if (runningMode == NodeMode.Network) {
             lifecycleMutex.withLock { reconcilePolicy(latestStartId, explicitStart = false) }
         }
@@ -540,6 +568,7 @@ class NodeService : Service() {
         statusJob = serviceScope.launch(Dispatchers.IO) {
             var lastNotificationSecond = -1L
             var natTick = 0
+            var lastDashboardPoll = 0L
             while (isActive) {
                 val response = NodeBackend.status().getOrElse {
                     "JNI error: ${it.message ?: "unknown error"}"
@@ -549,6 +578,15 @@ class NodeService : Service() {
                     serviceActive = true,
                     startedAtElapsedRealtimeMs = startedAtElapsedRealtimeMs,
                 )
+                if (BuildConfig.PREBUILT_NODE) {
+                    val now = SystemClock.elapsedRealtime()
+                    if (now - lastDashboardPoll >= 5_000L) {
+                        lastDashboardPoll = now
+                        DashboardStatus.read()?.let { counts ->
+                            NodeRepository.publishDashboardCounts(counts.connections, counts.peers)
+                        }
+                    }
+                }
                 if (state.state == NodePhase.RunningNetwork) {
                     NodePolicyRepository.recordNetworkUp(this@NodeService)
                     crashRestartAttempt = 0

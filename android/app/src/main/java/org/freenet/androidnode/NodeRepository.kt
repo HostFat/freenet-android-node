@@ -238,8 +238,19 @@ object NodeRepository {
         startedAtElapsedRealtimeMs: Long?,
     ): NodeUiState {
         val parsed = parseNodeStatus(response)
-        return mutableState.updateAndGet {
-            NodeStateMachine.nativeStatus(it, parsed, serviceActive, startedAtElapsedRealtimeMs)
+        return mutableState.updateAndGet { current ->
+            val next = NodeStateMachine.nativeStatus(
+                current,
+                parsed,
+                serviceActive,
+                startedAtElapsedRealtimeMs,
+            )
+            // The process status has no peer count; keep the dashboard value.
+            if (BuildConfig.PREBUILT_NODE && next.peerCount == 0) {
+                next.copy(peerCount = current.peerCount)
+            } else {
+                next
+            }
         }
     }
 
@@ -356,6 +367,11 @@ object NodeRepository {
 
     internal fun publishNatHint(hint: String?) {
         mutableState.update { if (it.natHint == hint) it else it.copy(natHint = hint) }
+    }
+
+    internal fun publishDashboardCounts(connections: Int, peers: Int) {
+        val count = if (peers > 0) peers else connections
+        mutableState.update { if (it.peerCount == count) it else it.copy(peerCount = count) }
     }
 
     internal fun publishConnectivity(snapshot: ConnectivitySnapshot, response: String) {
