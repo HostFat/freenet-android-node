@@ -246,15 +246,19 @@ internal object PrebuiltNodeProcess {
         require(keyPaths.isNotEmpty()) { "no gateway keys in the index" }
         val roots = listOf(configDir, workingDir).distinctBy { it.canonicalPath }
         var downloaded = 0
+        var copied = 0
         for (path in keyPaths) {
-            val existing = roots.any { root ->
-                val target = File(root, path)
-                target.isFile && target.length() > 0L
-            }
-            if (existing) {
+            val present = roots.map { File(it, path) }
+            if (present.all { it.isFile && it.length() > 0L }) {
                 continue
             }
-            val pem = httpGet("https://freenet.org/$path", 5_000)
+            val local = present.firstOrNull { it.isFile && it.length() > 0L }
+            val pem = if (local != null) {
+                local.readText()
+            } else {
+                downloaded += 1
+                httpGet("https://freenet.org/$path", 5_000)
+            }
             require(pem.isNotBlank()) { "empty key $path" }
             for (root in roots) {
                 val target = File(root, path).canonicalFile
@@ -263,12 +267,18 @@ internal object PrebuiltNodeProcess {
                 target.parentFile?.mkdirs()
                 target.writeText(pem)
             }
-            downloaded += 1
-            appendInfoLog("gateway key $path (${pem.length} bytes)")
+            if (local != null) {
+                copied += 1
+                appendInfoLog("gateway key $path copied to both roots")
+            } else {
+                appendInfoLog("gateway key $path (${pem.length} bytes)")
+            }
         }
-        appendInfoLog("gateway files ready: ${keyPaths.size} keys, $downloaded downloaded")
+        appendInfoLog(
+            "gateway files ready: ${keyPaths.size} keys, $downloaded downloaded, $copied copied",
+        )
         return keyPaths.all { path ->
-            roots.any { root ->
+            roots.all { root ->
                 val target = File(root, path)
                 target.isFile && target.length() > 0L
             }
