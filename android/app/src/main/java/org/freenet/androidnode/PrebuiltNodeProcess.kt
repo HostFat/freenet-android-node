@@ -124,6 +124,8 @@ internal object PrebuiltNodeProcess {
             put("XDG_DATA_HOME", File(context.filesDir, "freenet").absolutePath)
             put("XDG_CACHE_HOME", context.cacheDir.absolutePath)
             put("TMPDIR", context.cacheDir.absolutePath)
+            put("RUST_LOG", "debug")
+            put("RUST_BACKTRACE", "1")
         }
 
         appendInfoLog("starting process: ${arguments.joinToString(" ")}")
