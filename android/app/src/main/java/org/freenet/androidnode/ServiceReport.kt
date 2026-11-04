@@ -90,17 +90,24 @@ internal object ServiceReport {
             .put("install_id", InstallId.get(context))
     }
 
+    private fun logDirectory(context: Context): File =
+        if (BuildConfig.PREBUILT_NODE) {
+            File(context.filesDir, "freenet/prebuilt/logs")
+        } else {
+            File(context.filesDir, "freenet/logs")
+        }
+
     internal fun hasLogFiles(context: Context): Boolean {
-        val logDir = File(context.filesDir, "freenet/logs")
+        val logDir = logDirectory(context)
         return logDir.listFiles()?.any { file ->
-            file.isFile && file.name.startsWith("freenet") && file.name.endsWith(".log") && file.length() > 0L
+            file.isFile && file.name.endsWith(".log") && file.length() > 0L
         } == true
     }
 
     internal fun readFileLogs(context: Context): String? {
-        val logDir = File(context.filesDir, "freenet/logs")
+        val logDir = logDirectory(context)
         val files = logDir.listFiles()
-            ?.filter { it.isFile && it.name.startsWith("freenet") && it.name.endsWith(".log") }
+            ?.filter { it.isFile && it.name.endsWith(".log") }
             ?.sortedBy { it.lastModified() }
             .orEmpty()
         val fromFiles = if (files.isEmpty()) {

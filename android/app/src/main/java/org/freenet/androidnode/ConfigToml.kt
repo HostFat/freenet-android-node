@@ -22,7 +22,11 @@ internal object ConfigToml {
     const val FILE_PROVIDER_SUFFIX = ".fileprovider"
 
     fun file(context: Context): File =
-        File(context.applicationContext.filesDir, "freenet/config/config.toml")
+        if (BuildConfig.PREBUILT_NODE) {
+            File(context.applicationContext.filesDir, "freenet/prebuilt/config/config.toml")
+        } else {
+            File(context.applicationContext.filesDir, "freenet/config/config.toml")
+        }
 
     fun read(context: Context): String {
         val target = file(context)

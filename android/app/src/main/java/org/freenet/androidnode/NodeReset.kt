@@ -3,13 +3,24 @@ package org.freenet.androidnode
 import android.content.Context
 import java.io.File
 
-internal fun nodeRuntimeResetPaths(filesDir: File, cacheDir: File): List<File> = listOf(
-    File(filesDir, "freenet/state"),
-    File(filesDir, "freenet/database"),
-    File(filesDir, "freenet/contracts"),
-    File(filesDir, "freenet/logs"),
-    File(cacheDir, "freenet"),
-)
+internal fun nodeRuntimeResetPaths(filesDir: File, cacheDir: File): List<File> =
+    if (BuildConfig.PREBUILT_NODE) {
+        listOf(
+            File(filesDir, "freenet/prebuilt/data/contracts"),
+            File(filesDir, "freenet/prebuilt/data/delegates"),
+            File(filesDir, "freenet/prebuilt/data/db"),
+            File(filesDir, "freenet/prebuilt/data/_EVENT_LOG"),
+            File(cacheDir, "wasmtime"),
+        )
+    } else {
+        listOf(
+            File(filesDir, "freenet/state"),
+            File(filesDir, "freenet/database"),
+            File(filesDir, "freenet/contracts"),
+            File(filesDir, "freenet/logs"),
+            File(cacheDir, "freenet"),
+        )
+    }
 
 internal fun canResetNode(serviceActive: Boolean, nativeState: NodePhase?): Boolean {
     if (serviceActive) return false

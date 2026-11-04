@@ -1853,6 +1853,9 @@ private fun oemTipRes(vendor: OemVendor): Int = when (vendor) {
 }
 
 internal fun formatRecentLogs(): String {
+    if (BuildConfig.PREBUILT_NODE) {
+        return PrebuiltNodeProcess.recentLogs(DIAGNOSTIC_LOG_ENTRIES)
+    }
     val raw = NativeBridge.recentLogs(DIAGNOSTIC_LOG_ENTRIES).getOrElse { error ->
         return error.message ?: "Could not read logs"
     }
@@ -1884,7 +1887,7 @@ internal fun diagnosticSnapshot(): String {
 
     return JSONObject()
         .put("capturedAtEpochMs", System.currentTimeMillis())
-        .put("nodeStatus", resultOrError(NativeBridge.nodeStatus()))
+        .put("nodeStatus", resultOrError(NodeBackend.status()))
         .put("recentLogs", resultOrError(NativeBridge.recentLogs(DIAGNOSTIC_LOG_ENTRIES)))
         .put("androidAdapter", resultOrError(NativeBridge.buildInfo()))
         .put("freenetCore", resultOrError(NativeBridge.freenetBuildInfo()))

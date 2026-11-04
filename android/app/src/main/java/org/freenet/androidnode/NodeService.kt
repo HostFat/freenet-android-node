@@ -241,7 +241,7 @@ class NodeService : Service() {
                 NodeRepository.publishLifecycleResponse(response)
                 val status = runCatching {
                     parseNodeStatus(
-                        NativeBridge.nodeStatus().getOrElse { response },
+                        NodeBackend.status().getOrElse { response },
                     )
                 }.getOrElse {
                     NodeStatusSnapshot(NodePhase.Failed, response, 0, null)
@@ -460,11 +460,16 @@ class NodeService : Service() {
                 policy.udpPortMode,
                 policy.udpPort,
             )
+            NodeBackend.appendInfoLog("NodeService starting network=$networkMode")
             val result = if (networkMode) {
-                NativeBridge.startNetworkNode(configJson)
+                NodeBackend.startNetwork(this@NodeService, configJson)
             } else {
-                NativeBridge.startLocalNode(configJson)
+                NodeBackend.startLocal(this@NodeService, configJson)
             }
+            NodeBackend.appendInfoLog(
+                "NodeService start result ok=${result.isSuccess} " +
+                    "message=${result.exceptionOrNull()?.message ?: "none"}",
+            )
             result.getOrElse {
                 "JNI error: ${it.message ?: "unknown error"}"
             }
@@ -520,7 +525,7 @@ class NodeService : Service() {
 
     private suspend fun handleConnectivityChanged(snapshot: ConnectivitySnapshot) {
         val response = withContext(Dispatchers.IO) {
-            NativeBridge.updateConnectivity(snapshot.toJson()).getOrElse {
+            NodeBackend.updateConnectivity(snapshot.toJson()).getOrElse {
                 "JNI connectivity error: ${it.message ?: "unknown error"}"
             }
         }
@@ -536,7 +541,7 @@ class NodeService : Service() {
             var lastNotificationSecond = -1L
             var natTick = 0
             while (isActive) {
-                val response = NativeBridge.nodeStatus().getOrElse {
+                val response = NodeBackend.status().getOrElse {
                     "JNI error: ${it.message ?: "unknown error"}"
                 }
                 val state = NodeRepository.publishNativeStatus(
@@ -616,7 +621,7 @@ class NodeService : Service() {
         }
 
         val response = withContext(Dispatchers.IO) {
-            NativeBridge.stopNode().getOrElse {
+            NodeBackend.stop().getOrElse {
                 "JNI error: ${it.message ?: "unknown error"}"
             }
         }
@@ -625,7 +630,7 @@ class NodeService : Service() {
         val deadline = SystemClock.elapsedRealtime() + SHUTDOWN_TIMEOUT_MS
         var finalStatus = NodeStatusSnapshot(NodePhase.Stopping, "Waiting for native shutdown", 0, null)
         while (SystemClock.elapsedRealtime() < deadline) {
-            val statusResponse = NativeBridge.nodeStatus().getOrElse { response }
+            val statusResponse = NodeBackend.status().getOrElse { response }
             finalStatus = runCatching { parseNodeStatus(statusResponse) }
                 .getOrElse { NodeStatusSnapshot(NodePhase.Failed, it.message ?: statusResponse, 0, null) }
             NodeRepository.publishNativeStatus(
@@ -741,10 +746,10 @@ class NodeService : Service() {
     private fun logControllerDetail(detail: String) {
         if (detail == lastLoggedControllerDetail) return
         lastLoggedControllerDetail = detail
-        NativeBridge.appendInfoLog(detail)
+        NodeBackend.appendInfoLog(detail)
     }
 
-    private fun nativeStatus(fallback: String): NodeStatusSnapshot = NativeBridge.nodeStatus()
+    private fun nativeStatus(fallback: String): NodeStatusSnapshot = NodeBackend.status()
         .map(::parseNodeStatus)
         .getOrElse { NodeStatusSnapshot(NodePhase.Failed, it.message ?: fallback, 0, null) }
 
