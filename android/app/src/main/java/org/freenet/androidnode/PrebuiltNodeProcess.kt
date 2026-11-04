@@ -38,16 +38,14 @@ internal object PrebuiltNodeProcess {
         val configDir = File(config.getString("configurationDirectory")).apply { mkdirs() }
         val logDir = File(config.getString("logDirectory")).apply { mkdirs() }
         val websocketPort = config.optInt("websocketPort", 7509)
-        val minConnections = config.optInt("minConnections", ConnectionLimits.DefaultMin)
-        val maxConnections = config.optInt("maxConnections", ConnectionLimits.DefaultMax)
         val customPort = config.optString("udpPortMode") == "custom"
 
+        // Connection limits are config.toml keys, not CLI flags in 0.2.155.
+        // The process starts with the node defaults until a complete config is written.
         val arguments = mutableListOf(
             binary.absolutePath,
             if (network) "network" else "local",
             "--config-dir", configDir.absolutePath,
-            "--min-number-of-connections", minConnections.toString(),
-            "--max-number-of-connections", maxConnections.toString(),
             "--ws-api-address", "127.0.0.1:$websocketPort",
             "--disable-auto-update",
         )
