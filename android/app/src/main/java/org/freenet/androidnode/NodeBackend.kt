@@ -41,5 +41,12 @@ internal object NodeBackend {
         if (prebuilt) PrebuiltNodeProcess.appendInfoLog(detail) else NativeBridge.appendInfoLog(detail)
     }
 
-    fun isActive(): Boolean = if (prebuilt) PrebuiltNodeProcess.isRunning() else NativeBridge.isActive()
+    fun isActive(): Boolean = if (prebuilt) {
+        PrebuiltNodeProcess.isRunning()
+    } else {
+        runCatching {
+            val state = parseNodeStatus(NativeBridge.nodeStatus().getOrThrow()).state
+            state != NodePhase.Stopped && state != NodePhase.Failed && state != NodePhase.Paused
+        }.getOrDefault(false)
+    }
 }
