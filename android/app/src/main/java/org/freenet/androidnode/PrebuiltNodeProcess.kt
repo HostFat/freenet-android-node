@@ -46,7 +46,8 @@ internal object PrebuiltNodeProcess {
             binary.absolutePath,
             if (network) "network" else "local",
             "--config-dir", configDir.absolutePath,
-            "--ws-api-address", "127.0.0.1:$websocketPort",
+            "--ws-api-address", "127.0.0.1",
+            "--ws-api-port", websocketPort.toString(),
             "--disable-auto-update",
         )
         if (network && customPort) {
