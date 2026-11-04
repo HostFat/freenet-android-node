@@ -71,28 +71,12 @@ internal object PrebuiltNodeProcess {
         // fetch the gateway index. Download it with the app's TLS stack and
         // hand the node a local file instead.
         val gatewaysFile = File(configDir, "gateways.toml")
-        if (network && (!gatewaysFile.isFile || gatewaysFile.length() == 0L)) {
-            appendInfoLog("fetching $GATEWAYS_INDEX")
+        val gatewaysReady = java.util.concurrent.atomic.AtomicBoolean(false)
+        if (network) {
+            appendInfoLog("checking gateway files")
             val downloader = Thread({
                 runCatching {
-                    val index = httpGet(GATEWAYS_INDEX, 5_000)
-                    require(index.isNotBlank()) { "empty gateway index" }
-                    gatewaysFile.writeText(index)
-                    val keyPaths = Regex("""public[_-]key\s*=\s*"([^"]+)"""")
-                        .findAll(index)
-                        .map { it.groupValues[1] }
-                        .toList()
-                    for (path in keyPaths) {
-                        val target = File(configDir, path).canonicalFile
-                        val root = configDir.canonicalPath + File.separator
-                        require(target.path.startsWith(root)) { "unsafe key path $path" }
-                        target.parentFile?.mkdirs()
-                        val pem = httpGet("https://freenet.org/$path", 5_000)
-                        require(pem.isNotBlank()) { "empty key $path" }
-                        target.writeText(pem)
-                        appendInfoLog("gateway key $path (${pem.length} bytes)")
-                    }
-                    appendInfoLog("gateways.toml and ${keyPaths.size} keys downloaded")
+                    gatewaysReady.set(ensureGateways(configDir, context.filesDir))
                 }.onFailure {
                     appendInfoLog("gateway download failed: ${it.message}")
                 }
@@ -106,7 +90,7 @@ internal object PrebuiltNodeProcess {
                 downloader.interrupt()
             }
         }
-        val hasLocalGateways = network && gatewaysFile.isFile && gatewaysFile.length() > 0L
+        val hasLocalGateways = network && gatewaysReady.get()
         Log.i(
             TAG,
             "config dir=${configDir.absolutePath} exists=${configDir.isDirectory} " +
@@ -234,6 +218,59 @@ internal object PrebuiltNodeProcess {
         }
         val file = synchronized(lock) { logFile } ?: return
         runCatching { file.appendText("$detail\n") }
+    }
+
+    /**
+     * Ensure gateways.toml and every key it references exist. The node resolves
+     * the relative key paths against its working directory, while the index is
+     * read from --config-dir, so write the keys under both roots.
+     */
+    private fun ensureGateways(configDir: File, workingDir: File): Boolean {
+        val gatewaysFile = File(configDir, "gateways.toml")
+        val index = if (gatewaysFile.isFile && gatewaysFile.length() > 0L) {
+            gatewaysFile.readText()
+        } else {
+            appendInfoLog("fetching $GATEWAYS_INDEX")
+            val body = httpGet(GATEWAYS_INDEX, 5_000)
+            require(body.isNotBlank()) { "empty gateway index" }
+            gatewaysFile.writeText(body)
+            appendInfoLog("gateways.toml downloaded (${body.length} bytes)")
+            body
+        }
+        val keyPaths = Regex("""public[_-]key\s*=\s*"([^"]+)"""")
+            .findAll(index)
+            .map { it.groupValues[1] }
+            .toList()
+        require(keyPaths.isNotEmpty()) { "no gateway keys in the index" }
+        val roots = listOf(configDir, workingDir).distinctBy { it.canonicalPath }
+        var downloaded = 0
+        for (path in keyPaths) {
+            val existing = roots.any { root ->
+                val target = File(root, path)
+                target.isFile && target.length() > 0L
+            }
+            if (existing) {
+                continue
+            }
+            val pem = httpGet("https://freenet.org/$path", 5_000)
+            require(pem.isNotBlank()) { "empty key $path" }
+            for (root in roots) {
+                val target = File(root, path).canonicalFile
+                val prefix = root.canonicalPath + File.separator
+                require(target.path.startsWith(prefix)) { "unsafe key path $path" }
+                target.parentFile?.mkdirs()
+                target.writeText(pem)
+            }
+            downloaded += 1
+            appendInfoLog("gateway key $path (${pem.length} bytes)")
+        }
+        appendInfoLog("gateway files ready: ${keyPaths.size} keys, $downloaded downloaded")
+        return keyPaths.all { path ->
+            roots.any { root ->
+                val target = File(root, path)
+                target.isFile && target.length() > 0L
+            }
+        }
     }
 
     private fun httpGet(url: String, timeoutMs: Int): String {
