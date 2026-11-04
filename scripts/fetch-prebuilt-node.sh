@@ -4,7 +4,8 @@
 # native library directory, so the binaries are packaged as libfreenet.so.
 set -euo pipefail
 
-version="${FREENET_PREBUILT_VERSION:-0.2.152}"
+version="${FREENET_PREBUILT_VERSION:-0.2.155}"
+version="${version#v}"
 base="https://github.com/freenet/freenet-core/releases/download/v${version}"
 repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 destination="${repo_root}/android/app/src/main/jniLibs"

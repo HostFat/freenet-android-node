@@ -714,6 +714,7 @@ jobs:
             --env APP_VERSION_CODE="${{ github.run_number }}" \
             --env APP_VERSION_NAME="${{ github.event.inputs.release_version }}" \
             --env PREBUILT_NODE="${{ github.event.inputs.prebuilt_node }}" \
+            --env FREENET_PREBUILT_VERSION="${{ github.event.inputs.freenet_core_version }}" \
             --env CRASH_REPORT_TOKEN="${CRASH_REPORT_TOKEN}" \
             "${{ env.DOCKER_IMAGE }}" \
             bash -lc '
