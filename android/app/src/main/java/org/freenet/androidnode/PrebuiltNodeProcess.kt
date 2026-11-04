@@ -65,6 +65,8 @@ internal object PrebuiltNodeProcess {
         val dbDir = File(dataDir, "db").apply { mkdirs() }
         val eventLogDir = File(dataDir, "_EVENT_LOG").apply { mkdirs() }
         val wasmtimeDir = File(context.cacheDir, "wasmtime").apply { mkdirs() }
+        val minConnections = config.optInt("minConnections", ConnectionLimits.DefaultMin)
+        val maxConnections = config.optInt("maxConnections", ConnectionLimits.DefaultMax)
         val configFile = File(configDir, "config.toml")
         if (!configFile.isFile || !configFile.readText().contains("log_level")) {
             configFile.writeText(
@@ -85,17 +87,16 @@ internal object PrebuiltNodeProcess {
                     } else {
                         UdpPorts.Default
                     },
-                    minConnections = config.optInt(
-                        "minConnections",
-                        ConnectionLimits.DefaultMin,
-                    ),
-                    maxConnections = config.optInt(
-                        "maxConnections",
-                        ConnectionLimits.DefaultMax,
-                    ),
+                    minConnections = minConnections,
+                    maxConnections = maxConnections,
                 ),
             )
             appendInfoLog("config.toml written (${configFile.length()} bytes)")
+        } else {
+            updateConnectionLimits(configFile, minConnections, maxConnections)
+            appendInfoLog(
+                "connection limits set min=$minConnections max=$maxConnections",
+            )
         }
 
         // The musl binary cannot use Android's DNS resolver, so it fails to
@@ -155,8 +156,6 @@ internal object PrebuiltNodeProcess {
             put("XDG_DATA_HOME", File(context.filesDir, "freenet").absolutePath)
             put("XDG_CACHE_HOME", context.cacheDir.absolutePath)
             put("TMPDIR", context.cacheDir.absolutePath)
-            put("RUST_LOG", "debug")
-            put("RUST_BACKTRACE", "1")
         }
 
         appendInfoLog("starting process: ${arguments.joinToString(" ")}")
@@ -393,13 +392,38 @@ internal object PrebuiltNodeProcess {
             val ip = runCatching {
                 java.net.InetAddress.getByName(host).hostAddress
             }.getOrNull()
-            if (ip != null) {
+            if (ip != null && ip != host) {
                 appendInfoLog("resolved $host -> $ip")
                 "hostname = \"$ip:$port\""
             } else {
                 match.value
             }
         }
+
+    /**
+     * The interface owns the connection limits, so rewrite only those two keys
+     * on every start. Other user edits in config.toml stay untouched.
+     */
+    private fun updateConnectionLimits(configFile: File, min: Int, max: Int) {
+        val lines = configFile.readLines().toMutableList()
+        var sawMin = false
+        var sawMax = false
+        for (index in lines.indices) {
+            when {
+                lines[index].startsWith("min-number-of-connections") -> {
+                    lines[index] = "min-number-of-connections = $min"
+                    sawMin = true
+                }
+                lines[index].startsWith("max-number-of-connections") -> {
+                    lines[index] = "max-number-of-connections = $max"
+                    sawMax = true
+                }
+            }
+        }
+        if (!sawMin) lines += "min-number-of-connections = $min"
+        if (!sawMax) lines += "max-number-of-connections = $max"
+        configFile.writeText(lines.joinToString("\n") + "\n")
+    }
 
     private val ansiPattern = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
 
