@@ -30,6 +30,7 @@ internal object PrebuiltNodeProcess {
     private val recentLines = ArrayDeque<String>()
 
     fun start(context: Context, configJson: String, network: Boolean): Result<String> = runCatching {
+        appendInfoLog("start requested network=$network")
         stop()
         val config = JSONObject(configJson)
         val binary = File(context.applicationInfo.nativeLibraryDir, "libfreenet.so")
@@ -37,6 +38,7 @@ internal object PrebuiltNodeProcess {
             "Prebuilt freenet binary is missing from ${binary.parent}"
         }
         binary.setExecutable(true)
+        appendInfoLog("binary=${binary.absolutePath} exists=${binary.isFile}")
 
         // Use a directory owned by this backend so a config left by the JNI
         // path cannot interfere, and create every path the node opens.
@@ -44,6 +46,11 @@ internal object PrebuiltNodeProcess {
         val configDir = File(root, "config").apply { mkdirs() }
         val dataDir = File(root, "data").apply { mkdirs() }
         val logDir = File(root, "logs").apply { mkdirs() }
+        synchronized(lock) { logFile = File(logDir, "node-process.log") }
+        appendInfoLog(
+            "dirs config=${configDir.isDirectory} data=${dataDir.isDirectory} " +
+                "logs=${logDir.isDirectory}",
+        )
         val websocketPort = config.optInt("websocketPort", 7509)
         val customPort = config.optString("udpPortMode") == "custom"
 
@@ -65,24 +72,35 @@ internal object PrebuiltNodeProcess {
         // hand the node a local file instead.
         val gatewaysFile = File(configDir, "gateways.toml")
         if (network && (!gatewaysFile.isFile || gatewaysFile.length() == 0L)) {
-            runCatching {
-                val connection = (java.net.URL(GATEWAYS_INDEX).openConnection()
-                    as java.net.HttpURLConnection).apply {
-                    connectTimeout = 20_000
-                    readTimeout = 20_000
-                    instanceFollowRedirects = true
-                    setRequestProperty("User-Agent", "freenet-android-node")
+            appendInfoLog("fetching $GATEWAYS_INDEX")
+            val downloader = Thread({
+                runCatching {
+                    val connection = (java.net.URL(GATEWAYS_INDEX).openConnection()
+                        as java.net.HttpURLConnection).apply {
+                        connectTimeout = 8_000
+                        readTimeout = 8_000
+                        instanceFollowRedirects = true
+                        setRequestProperty("User-Agent", "freenet-android-node")
+                    }
+                    try {
+                        val body = connection.inputStream.bufferedReader().use { it.readText() }
+                        require(body.isNotBlank()) { "empty gateway index" }
+                        gatewaysFile.writeText(body)
+                        appendInfoLog("gateways.toml downloaded (${body.length} bytes)")
+                    } finally {
+                        connection.disconnect()
+                    }
+                }.onFailure {
+                    appendInfoLog("gateway index download failed: ${it.message}")
                 }
-                try {
-                    val body = connection.inputStream.bufferedReader().use { it.readText() }
-                    require(body.isNotBlank()) { "empty gateway index" }
-                    gatewaysFile.writeText(body)
-                    Log.i(TAG, "gateways.toml downloaded (${body.length} bytes)")
-                } finally {
-                    connection.disconnect()
-                }
-            }.onFailure {
-                Log.i(TAG, "gateway index download failed: ${it.message}")
+            }, "gateways-download").apply {
+                isDaemon = true
+                start()
+            }
+            downloader.join(10_000)
+            if (downloader.isAlive) {
+                appendInfoLog("gateway index download timed out")
+                downloader.interrupt()
             }
         }
         val hasLocalGateways = network && gatewaysFile.isFile && gatewaysFile.length() > 0L
@@ -121,6 +139,7 @@ internal object PrebuiltNodeProcess {
             put("TMPDIR", context.cacheDir.absolutePath)
         }
 
+        appendInfoLog("starting process: ${arguments.joinToString(" ")}")
         val started = builder.start()
         val nodeLog = File(logDir, "node-process.log")
         synchronized(lock) {
@@ -134,7 +153,7 @@ internal object PrebuiltNodeProcess {
         }
         readerThread(started, nodeLog)
         exitThread(started)
-        Log.i(TAG, "started ${if (network) "network" else "local"} process")
+        appendInfoLog("process started pid=${started.pid()}")
         successEnvelope("Starting", "Prebuilt Freenet process started")
     }
 
@@ -204,6 +223,12 @@ internal object PrebuiltNodeProcess {
 
     fun appendInfoLog(detail: String) {
         Log.i(TAG, detail)
+        synchronized(lock) {
+            recentLines.addLast(detail)
+            if (recentLines.size > RECENT_LINES) {
+                recentLines.removeFirst()
+            }
+        }
         val file = synchronized(lock) { logFile } ?: return
         runCatching { file.appendText("$detail\n") }
     }

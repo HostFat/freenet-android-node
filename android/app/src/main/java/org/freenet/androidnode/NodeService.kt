@@ -460,11 +460,16 @@ class NodeService : Service() {
                 policy.udpPortMode,
                 policy.udpPort,
             )
+            NodeBackend.appendInfoLog("NodeService starting network=$networkMode")
             val result = if (networkMode) {
                 NodeBackend.startNetwork(this@NodeService, configJson)
             } else {
                 NodeBackend.startLocal(this@NodeService, configJson)
             }
+            NodeBackend.appendInfoLog(
+                "NodeService start result ok=${result.isSuccess} " +
+                    "message=${result.exceptionOrNull()?.message ?: "none"}",
+            )
             result.getOrElse {
                 "JNI error: ${it.message ?: "unknown error"}"
             }
