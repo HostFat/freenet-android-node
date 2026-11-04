@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       freenet_core_version:
-        description: "freenet-core ref to build against (e.g. v0.2.139)"
+        description: "freenet-core ref to build against (e.g. v0.2.155)"
         required: true
-        default: "v0.2.139"
+        default: "v0.2.155"
       release_version:
         description: "App release version, no leading v (e.g. 0.2.0-beta.2)"
         required: true
@@ -47,7 +47,7 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  FREENET_CORE_VERSION: "v0.2.139"
+  FREENET_CORE_VERSION: "v0.2.155"
   DOCKER_IMAGE: freenet-android-node-dev
 
 jobs:
@@ -786,3 +786,4 @@ jobs:
           else
             gh issue create --repo "${{ github.repository }}" --title "${title}" --body "${body}" --assignee HostFat
           fi
+
