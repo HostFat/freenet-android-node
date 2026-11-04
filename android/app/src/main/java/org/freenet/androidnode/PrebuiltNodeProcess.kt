@@ -54,17 +54,45 @@ internal object PrebuiltNodeProcess {
         val websocketPort = config.optInt("websocketPort", 7509)
         val customPort = config.optString("udpPortMode") == "custom"
 
-        // The node generates a complete config.toml on first boot. Do not write
-        // a partial file: it would fail the required-field parser. Remove the
-        // partial file left by the earlier exploratory build.
+        // The node loads config.toml and does not create it. Write a complete
+        // file once; a partial file fails the required-field parser.
+        val contractsDir = File(dataDir, "contracts").apply { mkdirs() }
+        val delegatesDir = File(dataDir, "delegates").apply { mkdirs() }
+        val secretsDir = File(dataDir, if (network) "secrets" else "secrets_local").apply { mkdirs() }
+        val dbDir = File(dataDir, "db").apply { mkdirs() }
+        val eventLogDir = File(dataDir, "_EVENT_LOG").apply { mkdirs() }
+        val wasmtimeDir = File(context.cacheDir, "wasmtime").apply { mkdirs() }
         val configFile = File(configDir, "config.toml")
-        if (configFile.isFile && !configFile.readText().contains("log_level")) {
-            configFile.delete()
-        }
-        if (network && customPort) {
-            // A custom port still needs the file; the node fills the rest on boot.
-            // Passing it as a flag is not supported in v0.2.155.
-            Log.i(TAG, "custom network port is ignored until the node writes its config")
+        if (!configFile.isFile || !configFile.readText().contains("log_level")) {
+            configFile.writeText(
+                completeConfig(
+                    network = network,
+                    configDir = configDir,
+                    dataDir = dataDir,
+                    logDir = logDir,
+                    contractsDir = contractsDir,
+                    delegatesDir = delegatesDir,
+                    secretsDir = secretsDir,
+                    dbDir = dbDir,
+                    eventLogDir = eventLogDir,
+                    wasmtimeDir = wasmtimeDir,
+                    websocketPort = websocketPort,
+                    networkPort = if (customPort) {
+                        config.optInt("udpPort", UdpPorts.Default)
+                    } else {
+                        UdpPorts.Default
+                    },
+                    minConnections = config.optInt(
+                        "minConnections",
+                        ConnectionLimits.DefaultMin,
+                    ),
+                    maxConnections = config.optInt(
+                        "maxConnections",
+                        ConnectionLimits.DefaultMax,
+                    ),
+                ),
+            )
+            appendInfoLog("config.toml written (${configFile.length()} bytes)")
         }
 
         // The musl binary cannot use Android's DNS resolver, so it fails to
@@ -283,6 +311,51 @@ internal object PrebuiltNodeProcess {
                 target.isFile && target.length() > 0L
             }
         }
+    }
+
+    /**
+     * Mirrors the fields a released config.toml must carry. Secret paths are
+     * deliberately omitted: the node resolves them from secrets_dir and
+     * generates the key material there.
+     */
+    private fun completeConfig(
+        network: Boolean,
+        configDir: File,
+        dataDir: File,
+        logDir: File,
+        contractsDir: File,
+        delegatesDir: File,
+        secretsDir: File,
+        dbDir: File,
+        eventLogDir: File,
+        wasmtimeDir: File,
+        websocketPort: Int,
+        networkPort: Int,
+        minConnections: Int,
+        maxConnections: Int,
+    ): String = buildString {
+        appendLine("mode = \"${if (network) "network" else "local"}\"")
+        appendLine("network-address = \"${if (network) "0.0.0.0" else "127.0.0.1"}\"")
+        appendLine("network-port = $networkPort")
+        appendLine("min-number-of-connections = $minConnections")
+        appendLine("max-number-of-connections = $maxConnections")
+        appendLine("skip_load_from_network = true")
+        appendLine("ws-api-address = \"127.0.0.1\"")
+        appendLine("ws-api-port = $websocketPort")
+        appendLine("log_level = \"info\"")
+        appendLine("is_gateway = false")
+        appendLine("enable-event-log = false")
+        appendLine("telemetry-enabled = false")
+        appendLine("max_blocking_threads = 4")
+        appendLine("config_dir = \"${configDir.absolutePath}\"")
+        appendLine("data_dir = \"${dataDir.absolutePath}\"")
+        appendLine("log_dir = \"${logDir.absolutePath}\"")
+        appendLine("contracts_dir = \"${contractsDir.absolutePath}\"")
+        appendLine("delegates_dir = \"${delegatesDir.absolutePath}\"")
+        appendLine("secrets_dir = \"${secretsDir.absolutePath}\"")
+        appendLine("db_dir = \"${dbDir.absolutePath}\"")
+        appendLine("event_log = \"${eventLogDir.absolutePath}\"")
+        appendLine("wasmtime_cache_dir = \"${wasmtimeDir.absolutePath}\"")
     }
 
     private fun httpGet(url: String, timeoutMs: Int): String {
