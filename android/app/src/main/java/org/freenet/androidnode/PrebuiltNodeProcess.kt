@@ -17,6 +17,7 @@ internal object PrebuiltNodeProcess {
     private const val STARTUP_GRACE_MS = 8_000L
     private const val STOP_TIMEOUT_SECONDS = 10L
     private const val RECENT_LINES = 200
+    private const val GATEWAYS_INDEX = "https://freenet.org/keys/gateways.toml"
 
     private val lock = Any()
     private var process: Process? = null
@@ -58,6 +59,33 @@ internal object PrebuiltNodeProcess {
             // Passing it as a flag is not supported in v0.2.155.
             Log.i(TAG, "custom network port is ignored until the node writes its config")
         }
+
+        // The musl binary cannot use Android's DNS resolver, so it fails to
+        // fetch the gateway index. Download it with the app's TLS stack and
+        // hand the node a local file instead.
+        val gatewaysFile = File(configDir, "gateways.toml")
+        if (network && (!gatewaysFile.isFile || gatewaysFile.length() == 0L)) {
+            runCatching {
+                val connection = (java.net.URL(GATEWAYS_INDEX).openConnection()
+                    as java.net.HttpURLConnection).apply {
+                    connectTimeout = 20_000
+                    readTimeout = 20_000
+                    instanceFollowRedirects = true
+                    setRequestProperty("User-Agent", "freenet-android-node")
+                }
+                try {
+                    val body = connection.inputStream.bufferedReader().use { it.readText() }
+                    require(body.isNotBlank()) { "empty gateway index" }
+                    gatewaysFile.writeText(body)
+                    Log.i(TAG, "gateways.toml downloaded (${body.length} bytes)")
+                } finally {
+                    connection.disconnect()
+                }
+            }.onFailure {
+                Log.i(TAG, "gateway index download failed: ${it.message}")
+            }
+        }
+        val hasLocalGateways = network && gatewaysFile.isFile && gatewaysFile.length() > 0L
         Log.i(
             TAG,
             "config dir=${configDir.absolutePath} exists=${configDir.isDirectory} " +
@@ -77,6 +105,9 @@ internal object PrebuiltNodeProcess {
         )
         if (network && customPort) {
             arguments += listOf("--network-port", config.optInt("udpPort", UdpPorts.Default).toString())
+        }
+        if (hasLocalGateways) {
+            arguments += "--skip-load-from-network"
         }
 
         val builder = ProcessBuilder(arguments)
