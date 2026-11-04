@@ -156,7 +156,7 @@ internal object PrebuiltNodeProcess {
         }
         readerThread(started, nodeLog)
         exitThread(started)
-        appendInfoLog("process started pid=${started.pid()}")
+        appendInfoLog("process started")
         successEnvelope("Starting", "Prebuilt Freenet process started")
     }
 
