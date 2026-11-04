@@ -720,9 +720,6 @@ jobs:
             bash -lc '
               set -euo pipefail
               cd /workspace/freenet-android-node
-              if [[ "${PREBUILT_NODE:-false}" == "true" ]]; then
-                ./scripts/fetch-prebuilt-node.sh
-              fi
               ./scripts/build-release.sh
 
               echo "Verifying release APK signature:"

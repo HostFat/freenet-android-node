@@ -392,6 +392,9 @@ internal data class NodeStatusSnapshot(
 )
 
 internal fun parseNodeStatus(response: String): NodeStatusSnapshot {
+    if (!response.trimStart().startsWith("{")) {
+        return NodeStatusSnapshot(NodePhase.Failed, response, 0, null)
+    }
     return runCatching {
         val envelope = JSONObject(response)
         if (!envelope.optBoolean("ok")) {

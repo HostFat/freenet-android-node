@@ -21,6 +21,10 @@ gradle_version_args+=("-Pabis=arm64-v8a")
 gradle_version_args+=("-PprebuiltNode=${PREBUILT_NODE:-false}")
 
 "${repo_root}/scripts/build-native.sh"
+if [[ "${PREBUILT_NODE:-false}" == "true" ]]; then
+  # build-native.sh recreates jniLibs, so the prebuilt binary must be added after it.
+  "${repo_root}/scripts/fetch-prebuilt-node.sh"
+fi
 "${repo_root}/android/gradlew" \
   -p "${repo_root}/android" \
   --no-daemon \
