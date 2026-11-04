@@ -257,15 +257,21 @@ internal object PrebuiltNodeProcess {
      */
     private fun ensureGateways(configDir: File, workingDir: File): Boolean {
         val gatewaysFile = File(configDir, "gateways.toml")
-        val index = if (gatewaysFile.isFile && gatewaysFile.length() > 0L) {
+        val rawIndex = if (gatewaysFile.isFile && gatewaysFile.length() > 0L) {
             gatewaysFile.readText()
         } else {
             appendInfoLog("fetching $GATEWAYS_INDEX")
             val body = httpGet(GATEWAYS_INDEX, 5_000)
             require(body.isNotBlank()) { "empty gateway index" }
-            gatewaysFile.writeText(body)
-            appendInfoLog("gateways.toml downloaded (${body.length} bytes)")
             body
+        }
+        // The node's resolver reads /etc/resolv.conf, absent on Android, and
+        // fails before it can resolve a gateway hostname. Resolve here with the
+        // Android DNS stack and persist the IP in the file.
+        val index = resolveGatewayHosts(rawIndex)
+        if (index != gatewaysFile.readText()) {
+            gatewaysFile.writeText(index)
+            appendInfoLog("gateways.toml written (${index.length} bytes)")
         }
         val keyPaths = Regex("""public[_-]key\s*=\s*"([^"]+)"""")
             .findAll(index)
@@ -357,6 +363,21 @@ internal object PrebuiltNodeProcess {
         appendLine("event_log = \"${eventLogDir.absolutePath}\"")
         appendLine("wasmtime_cache_dir = \"${wasmtimeDir.absolutePath}\"")
     }
+
+    private fun resolveGatewayHosts(toml: String): String =
+        Regex("""hostname\s*=\s*"([^":]+):(\d+)"""").replace(toml) { match ->
+            val host = match.groupValues[1]
+            val port = match.groupValues[2]
+            val ip = runCatching {
+                java.net.InetAddress.getByName(host).hostAddress
+            }.getOrNull()
+            if (ip != null) {
+                appendInfoLog("resolved $host -> $ip")
+                "hostname = \"$ip:$port\""
+            } else {
+                match.value
+            }
+        }
 
     private fun httpGet(url: String, timeoutMs: Int): String {
         val connection = (java.net.URL(url).openConnection()
