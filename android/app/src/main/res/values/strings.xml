@@ -29,6 +29,10 @@
     <string name="update_notification_title">Freenet Android APK available</string>
     <string name="check_for_updates">Check for updates</string>
     <string name="open_github_release">Open GitHub release</string>
+    <string name="update_download_install">Download and install</string>
+    <string name="update_downloading">Downloading…</string>
+    <string name="update_install_started">Confirm the installation in the system dialog.</string>
+    <string name="update_download_failed">Update failed: %1$s</string>
     <string name="auto_check_interval">New version auto-check every</string>
     <string name="start_on_boot">Start on boot</string>
     <string name="start_on_boot_hint">After a reboot or app update, try to start the network node. Android can still block this; also turn off battery limits. Charging/Always still apply if selected.</string>

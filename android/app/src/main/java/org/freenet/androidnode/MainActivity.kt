@@ -58,6 +58,7 @@ import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
+import androidx.compose.material3.LinearProgressIndicator
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
@@ -595,6 +596,76 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             message,
                             style = MaterialTheme.typography.bodySmall,
                         )
+                    }
+                    val apkVersion = updateState.apkVersion
+                    var updateInstalling by remember { mutableStateOf(false) }
+                    var updateProgress by remember { mutableStateOf<UpdateInstaller.Progress?>(null) }
+                    var updateInstallError by remember { mutableStateOf<String?>(null) }
+                    var updateInstallStarted by remember { mutableStateOf(false) }
+                    if (apkVersion != null) {
+                        Button(
+                            enabled = !updateInstalling,
+                            onClick = {
+                                updateInstalling = true
+                                updateInstallError = null
+                                updateInstallStarted = false
+                                updateProgress = null
+                                scope.launch {
+                                    runCatching {
+                                        val file = withContext(Dispatchers.IO) {
+                                            UpdateInstaller.download(context, apkVersion) { progress ->
+                                                updateProgress = progress
+                                            }
+                                        }
+                                        val signatureOk = withContext(Dispatchers.IO) {
+                                            UpdateInstaller.verifySignature(context, file)
+                                        }
+                                        if (!signatureOk) {
+                                            error("Downloaded APK is signed with a different key")
+                                        }
+                                        UpdateInstaller.install(context, file)
+                                        updateInstallStarted = true
+                                    }.onFailure { error ->
+                                        updateInstallError = error.message ?: "Update failed"
+                                    }
+                                    updateInstalling = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(
+                                if (updateInstalling) {
+                                    stringResource(R.string.update_downloading)
+                                } else {
+                                    stringResource(R.string.update_download_install)
+                                },
+                            )
+                        }
+                        if (updateInstalling) {
+                            LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
+                            val progress = updateProgress
+                            if (progress != null && progress.total > 0) {
+                                val percent = (progress.downloaded * 100 / progress.total)
+                                    .coerceIn(0, 100)
+                                Text(
+                                    "$percent%",
+                                    style = MaterialTheme.typography.bodySmall,
+                                )
+                            }
+                        }
+                        if (updateInstallStarted) {
+                            Text(
+                                stringResource(R.string.update_install_started),
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
+                        updateInstallError?.let { error ->
+                            Text(
+                                stringResource(R.string.update_download_failed, error),
+                                color = MaterialTheme.colorScheme.error,
+                                style = MaterialTheme.typography.bodySmall,
+                            )
+                        }
                     }
                     if (updateState.releaseUrl != null) {
                         Button(

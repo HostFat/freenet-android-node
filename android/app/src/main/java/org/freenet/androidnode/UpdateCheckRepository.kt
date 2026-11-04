@@ -25,6 +25,7 @@ internal data class UpdateUiState(
     val kind: UpdateKind = UpdateKind.None,
     val message: String? = null,
     val releaseUrl: String? = null,
+    val apkVersion: SemVer? = null,
     val lastError: String? = null,
 )
 
@@ -80,6 +81,7 @@ internal object UpdateCheckRepository {
                         kind = decision.kind,
                         message = decision.message,
                         releaseUrl = decision.releaseUrl,
+                        apkVersion = decision.apkVersion,
                     )
                     if (decision.kind == UpdateKind.ApkAvailable && decision.apkVersion != null) {
                         maybeNotifyApk(context, decision)
