@@ -37,8 +37,12 @@ internal object PrebuiltNodeProcess {
         }
         binary.setExecutable(true)
 
-        val configDir = File(config.getString("configurationDirectory")).apply { mkdirs() }
-        val logDir = File(config.getString("logDirectory")).apply { mkdirs() }
+        // Use a directory owned by this backend so a config left by the JNI
+        // path cannot interfere, and create every path the node opens.
+        val root = File(context.filesDir, "freenet/prebuilt").apply { mkdirs() }
+        val configDir = File(root, "config").apply { mkdirs() }
+        val dataDir = File(root, "data").apply { mkdirs() }
+        val logDir = File(root, "logs").apply { mkdirs() }
         val websocketPort = config.optInt("websocketPort", 7509)
         val customPort = config.optString("udpPortMode") == "custom"
         val minConnections = config.optInt("minConnections", ConnectionLimits.DefaultMin)
@@ -51,6 +55,9 @@ internal object PrebuiltNodeProcess {
             configFile.writeText(
                 buildString {
                     append("mode = \"").append(if (network) "network" else "local").append("\"\n")
+                    append("config_dir = \"").append(configDir.absolutePath).append("\"\n")
+                    append("data_dir = \"").append(dataDir.absolutePath).append("\"\n")
+                    append("log_dir = \"").append(logDir.absolutePath).append("\"\n")
                     if (network && customPort) {
                         append("network-port = ")
                             .append(config.optInt("udpPort", UdpPorts.Default))
@@ -61,11 +68,19 @@ internal object PrebuiltNodeProcess {
                 },
             )
         }
+        Log.i(
+            TAG,
+            "config dir=${configDir.absolutePath} exists=${configDir.isDirectory} " +
+                "file=${configFile.absolutePath} exists=${configFile.isFile} " +
+                "data=${dataDir.isDirectory} logs=${logDir.isDirectory}",
+        )
 
         val arguments = mutableListOf(
             binary.absolutePath,
             if (network) "network" else "local",
             "--config-dir", configDir.absolutePath,
+            "--data-dir", dataDir.absolutePath,
+            "--log-dir", logDir.absolutePath,
             "--ws-api-address", "127.0.0.1",
             "--ws-api-port", websocketPort.toString(),
             "--disable-auto-update",
