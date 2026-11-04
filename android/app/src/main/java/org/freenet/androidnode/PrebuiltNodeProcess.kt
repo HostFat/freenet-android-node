@@ -75,31 +75,34 @@ internal object PrebuiltNodeProcess {
             appendInfoLog("fetching $GATEWAYS_INDEX")
             val downloader = Thread({
                 runCatching {
-                    val connection = (java.net.URL(GATEWAYS_INDEX).openConnection()
-                        as java.net.HttpURLConnection).apply {
-                        connectTimeout = 8_000
-                        readTimeout = 8_000
-                        instanceFollowRedirects = true
-                        setRequestProperty("User-Agent", "freenet-android-node")
+                    val index = httpGet(GATEWAYS_INDEX, 5_000)
+                    require(index.isNotBlank()) { "empty gateway index" }
+                    gatewaysFile.writeText(index)
+                    val keyPaths = Regex("""public[_-]key\s*=\s*"([^"]+)"""")
+                        .findAll(index)
+                        .map { it.groupValues[1] }
+                        .toList()
+                    for (path in keyPaths) {
+                        val target = File(configDir, path).canonicalFile
+                        val root = configDir.canonicalPath + File.separator
+                        require(target.path.startsWith(root)) { "unsafe key path $path" }
+                        target.parentFile?.mkdirs()
+                        val pem = httpGet("https://freenet.org/$path", 5_000)
+                        require(pem.isNotBlank()) { "empty key $path" }
+                        target.writeText(pem)
+                        appendInfoLog("gateway key $path (${pem.length} bytes)")
                     }
-                    try {
-                        val body = connection.inputStream.bufferedReader().use { it.readText() }
-                        require(body.isNotBlank()) { "empty gateway index" }
-                        gatewaysFile.writeText(body)
-                        appendInfoLog("gateways.toml downloaded (${body.length} bytes)")
-                    } finally {
-                        connection.disconnect()
-                    }
+                    appendInfoLog("gateways.toml and ${keyPaths.size} keys downloaded")
                 }.onFailure {
-                    appendInfoLog("gateway index download failed: ${it.message}")
+                    appendInfoLog("gateway download failed: ${it.message}")
                 }
             }, "gateways-download").apply {
                 isDaemon = true
                 start()
             }
-            downloader.join(10_000)
+            downloader.join(25_000)
             if (downloader.isAlive) {
-                appendInfoLog("gateway index download timed out")
+                appendInfoLog("gateway download timed out")
                 downloader.interrupt()
             }
         }
@@ -231,6 +234,21 @@ internal object PrebuiltNodeProcess {
         }
         val file = synchronized(lock) { logFile } ?: return
         runCatching { file.appendText("$detail\n") }
+    }
+
+    private fun httpGet(url: String, timeoutMs: Int): String {
+        val connection = (java.net.URL(url).openConnection()
+            as java.net.HttpURLConnection).apply {
+            connectTimeout = timeoutMs
+            readTimeout = timeoutMs
+            instanceFollowRedirects = true
+            setRequestProperty("User-Agent", "freenet-android-node")
+        }
+        try {
+            return connection.inputStream.bufferedReader().use { it.readText() }
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun readerThread(started: Process, nodeLog: File) {
