@@ -19,6 +19,9 @@ android {
 
         testInstrumentationRunner = "org.freenet.androidnode.FreenetAndroidTestRunner"
 
+        val prebuiltNode = (project.findProperty("prebuiltNode") as String?)?.toBoolean() ?: false
+        buildConfigField("Boolean", "PREBUILT_NODE", prebuiltNode.toString())
+
         val abis = (project.findProperty("abis") as String?)
             ?.split(",")
             ?.map { it.trim() }
@@ -79,7 +82,9 @@ android {
 
     packaging {
         jniLibs {
-            useLegacyPackaging = false
+            // The experimental backend executes libfreenet.so from the
+            // extracted native library directory.
+            useLegacyPackaging = (project.findProperty("prebuiltNode") as String?)?.toBoolean() ?: false
         }
     }
 }

@@ -18,6 +18,7 @@ fi
 # Release packages target real phones. Debug builds keep x86_64 for emulators.
 export FREENET_ABIS="arm64-v8a"
 gradle_version_args+=("-Pabis=arm64-v8a")
+gradle_version_args+=("-PprebuiltNode=${PREBUILT_NODE:-false}")
 
 "${repo_root}/scripts/build-native.sh"
 "${repo_root}/android/gradlew" \

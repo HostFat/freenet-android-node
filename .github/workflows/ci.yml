@@ -24,6 +24,12 @@ on:
         type: boolean
         required: false
         default: false
+
+      prebuilt_node:
+        description: "Experimental: run the official prebuilt Freenet binary as a process instead of the JNI build."
+        type: boolean
+        required: false
+        default: false
       release_notes:
         description: "Extra text for the GitHub release description"
         required: false
@@ -65,6 +71,7 @@ jobs:
               - 'scripts/build-debug.sh'
               - 'scripts/build-native.sh'
               - 'scripts/build-release.sh'
+              - 'scripts/fetch-prebuilt-node.sh'
               - 'scripts/check.sh'
               - 'scripts/check-freenet-baseline.sh'
               - 'scripts/bump-core-version.py'
@@ -706,11 +713,15 @@ jobs:
             --env RELEASE_KEY_PASSWORD="${RELEASE_KEY_PASSWORD}" \
             --env APP_VERSION_CODE="${{ github.run_number }}" \
             --env APP_VERSION_NAME="${{ github.event.inputs.release_version }}" \
+            --env PREBUILT_NODE="${{ github.event.inputs.prebuilt_node }}" \
             --env CRASH_REPORT_TOKEN="${CRASH_REPORT_TOKEN}" \
             "${{ env.DOCKER_IMAGE }}" \
             bash -lc '
               set -euo pipefail
               cd /workspace/freenet-android-node
+              if [[ "${PREBUILT_NODE:-false}" == "true" ]]; then
+                ./scripts/fetch-prebuilt-node.sh
+              fi
               ./scripts/build-release.sh
 
               echo "Verifying release APK signature:"
