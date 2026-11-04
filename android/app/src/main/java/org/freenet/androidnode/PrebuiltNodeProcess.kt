@@ -45,28 +45,18 @@ internal object PrebuiltNodeProcess {
         val logDir = File(root, "logs").apply { mkdirs() }
         val websocketPort = config.optInt("websocketPort", 7509)
         val customPort = config.optString("udpPortMode") == "custom"
-        val minConnections = config.optInt("minConnections", ConnectionLimits.DefaultMin)
-        val maxConnections = config.optInt("maxConnections", ConnectionLimits.DefaultMax)
 
-        // The binary loads config.toml from --config-dir and does not create it.
-        // Only write the minimal file when it is missing, so user edits survive.
+        // The node generates a complete config.toml on first boot. Do not write
+        // a partial file: it would fail the required-field parser. Remove the
+        // partial file left by the earlier exploratory build.
         val configFile = File(configDir, "config.toml")
-        if (!configFile.exists()) {
-            configFile.writeText(
-                buildString {
-                    append("mode = \"").append(if (network) "network" else "local").append("\"\n")
-                    append("config_dir = \"").append(configDir.absolutePath).append("\"\n")
-                    append("data_dir = \"").append(dataDir.absolutePath).append("\"\n")
-                    append("log_dir = \"").append(logDir.absolutePath).append("\"\n")
-                    if (network && customPort) {
-                        append("network-port = ")
-                            .append(config.optInt("udpPort", UdpPorts.Default))
-                            .append('\n')
-                    }
-                    append("min-number-of-connections = ").append(minConnections).append('\n')
-                    append("max-number-of-connections = ").append(maxConnections).append('\n')
-                },
-            )
+        if (configFile.isFile && !configFile.readText().contains("log_level")) {
+            configFile.delete()
+        }
+        if (network && customPort) {
+            // A custom port still needs the file; the node fills the rest on boot.
+            // Passing it as a flag is not supported in v0.2.155.
+            Log.i(TAG, "custom network port is ignored until the node writes its config")
         }
         Log.i(
             TAG,
