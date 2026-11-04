@@ -41,9 +41,27 @@ internal object PrebuiltNodeProcess {
         val logDir = File(config.getString("logDirectory")).apply { mkdirs() }
         val websocketPort = config.optInt("websocketPort", 7509)
         val customPort = config.optString("udpPortMode") == "custom"
+        val minConnections = config.optInt("minConnections", ConnectionLimits.DefaultMin)
+        val maxConnections = config.optInt("maxConnections", ConnectionLimits.DefaultMax)
 
-        // Connection limits are config.toml keys, not CLI flags in 0.2.155.
-        // The process starts with the node defaults until a complete config is written.
+        // The binary loads config.toml from --config-dir and does not create it.
+        // Only write the minimal file when it is missing, so user edits survive.
+        val configFile = File(configDir, "config.toml")
+        if (!configFile.exists()) {
+            configFile.writeText(
+                buildString {
+                    append("mode = \"").append(if (network) "network" else "local").append("\"\n")
+                    if (network && customPort) {
+                        append("network-port = ")
+                            .append(config.optInt("udpPort", UdpPorts.Default))
+                            .append('\n')
+                    }
+                    append("min-number-of-connections = ").append(minConnections).append('\n')
+                    append("max-number-of-connections = ").append(maxConnections).append('\n')
+                },
+            )
+        }
+
         val arguments = mutableListOf(
             binary.absolutePath,
             if (network) "network" else "local",
