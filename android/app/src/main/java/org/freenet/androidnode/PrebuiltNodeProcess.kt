@@ -16,6 +16,7 @@ internal object PrebuiltNodeProcess {
     private const val TAG = "PrebuiltNode"
     private const val STARTUP_GRACE_MS = 8_000L
     private const val STOP_TIMEOUT_SECONDS = 10L
+    private const val RECENT_LINES = 200
 
     private val lock = Any()
     private var process: Process? = null
@@ -25,6 +26,7 @@ internal object PrebuiltNodeProcess {
     private var startedAtElapsed = 0L
     private var lastExitCode: Int? = null
     private var lastDetail = "Prebuilt Freenet process is not running"
+    private val recentLines = ArrayDeque<String>()
 
     fun start(context: Context, configJson: String, network: Boolean): Result<String> = runCatching {
         stop()
@@ -129,6 +131,20 @@ internal object PrebuiltNodeProcess {
 
     fun isRunning(): Boolean = synchronized(lock) { process?.isAlive == true }
 
+    fun recentLogs(limit: Int): String {
+        val buffered = synchronized(lock) { recentLines.toList() }
+        if (buffered.isNotEmpty()) {
+            return buffered.takeLast(limit).joinToString("\n")
+        }
+        val file = synchronized(lock) { logFile }
+        if (file == null || !file.isFile) {
+            return "No process output yet."
+        }
+        return runCatching {
+            file.readLines().takeLast(limit).joinToString("\n")
+        }.getOrElse { "Could not read ${file.absolutePath}: ${it.message}" }
+    }
+
     fun updateConnectivity(@Suppress("UNUSED_PARAMETER") json: String): Result<String> =
         Result.success("""{"ok":true,"data":"connectivity is owned by the OS process"}""")
 
@@ -143,7 +159,13 @@ internal object PrebuiltNodeProcess {
             runCatching {
                 started.inputStream.bufferedReader().useLines { lines ->
                     lines.forEach { line ->
-                        synchronized(lock) { lastDetail = line.take(400) }
+                        synchronized(lock) {
+                            lastDetail = line.take(400)
+                            recentLines.addLast(line)
+                            if (recentLines.size > RECENT_LINES) {
+                                recentLines.removeFirst()
+                            }
+                        }
                         runCatching { nodeLog.appendText("$line\n") }
                         Log.i(TAG, line)
                     }
@@ -160,7 +182,15 @@ internal object PrebuiltNodeProcess {
             val code = runCatching { started.waitFor() }.getOrDefault(-1)
             synchronized(lock) {
                 lastExitCode = code
-                lastDetail = "Prebuilt Freenet process exited with code $code"
+                val tail = recentLines.takeLast(3).joinToString(" | ")
+                lastDetail = buildString {
+                    append("Prebuilt Freenet process exited with code ")
+                    append(code)
+                    if (tail.isNotBlank()) {
+                        append(": ")
+                        append(tail.take(600))
+                    }
+                }
             }
             Log.i(TAG, "process exited with code $code")
         }, "freenet-process-wait").apply {
