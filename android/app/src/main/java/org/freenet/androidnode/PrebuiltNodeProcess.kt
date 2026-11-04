@@ -28,10 +28,13 @@ internal object PrebuiltNodeProcess {
     private var lastExitCode: Int? = null
     private var lastDetail = "Prebuilt Freenet process is not running"
     private val recentLines = ArrayDeque<String>()
+    @Volatile
+    private var stopRequested = false
 
     fun start(context: Context, configJson: String, network: Boolean): Result<String> = runCatching {
         appendInfoLog("start requested network=$network")
         stop()
+        stopRequested = false
         val config = JSONObject(configJson)
         val binary = File(context.applicationInfo.nativeLibraryDir, "libfreenet.so")
         require(binary.isFile) {
@@ -175,9 +178,14 @@ internal object PrebuiltNodeProcess {
     }
 
     fun stop(): Result<String> = runCatching {
+        stopRequested = true
         val current = synchronized(lock) { process }
         if (current == null || !current.isAlive) {
-            synchronized(lock) { process = null }
+            synchronized(lock) {
+                process = null
+                lastExitCode = null
+                lastDetail = "Prebuilt Freenet process is not running"
+            }
             return@runCatching successEnvelope("Stopped", "Prebuilt Freenet process was already stopped")
         }
         current.destroy()
@@ -185,7 +193,11 @@ internal object PrebuiltNodeProcess {
             current.destroyForcibly()
             current.waitFor(5, TimeUnit.SECONDS)
         }
-        synchronized(lock) { process = null }
+        synchronized(lock) {
+            process = null
+            lastExitCode = null
+            lastDetail = "Prebuilt Freenet process stopped"
+        }
         successEnvelope("Stopped", "Prebuilt Freenet process stopped")
     }
 
@@ -201,20 +213,30 @@ internal object PrebuiltNodeProcess {
             )
         }
         when {
+            !snapshot.alive && stopRequested ->
+                successEnvelope("Stopped", "Prebuilt Freenet process stopped")
             !snapshot.alive && snapshot.exitCode != null ->
                 errorEnvelope("Prebuilt Freenet process exited with code ${snapshot.exitCode}")
             !snapshot.alive ->
                 errorEnvelope("Prebuilt Freenet process is not running")
             else -> {
                 val elapsed = SystemClock.elapsedRealtime() - snapshot.startedAt
-                val state = if (elapsed < STARTUP_GRACE_MS) {
+                val starting = elapsed < STARTUP_GRACE_MS
+                val state = if (starting) {
                     "Starting"
                 } else if (snapshot.mode == NodeMode.Network) {
                     "RunningNetwork"
                 } else {
                     "RunningLocal"
                 }
-                successEnvelope(state, snapshot.detail, snapshot.mode, snapshot.udpPort)
+                // Keep process output out of the status line: it carries ANSI
+                // codes and is only useful in Recent logs.
+                val detail = if (starting) {
+                    "Prebuilt Freenet process is starting"
+                } else {
+                    "Prebuilt Freenet process is running"
+                }
+                successEnvelope(state, detail, snapshot.mode, snapshot.udpPort)
             }
         }
     }
@@ -379,6 +401,10 @@ internal object PrebuiltNodeProcess {
             }
         }
 
+    private val ansiPattern = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
+
+    private fun stripAnsi(value: String): String = value.replace(ansiPattern, "")
+
     private fun httpGet(url: String, timeoutMs: Int): String {
         val connection = (java.net.URL(url).openConnection()
             as java.net.HttpURLConnection).apply {
@@ -398,9 +424,9 @@ internal object PrebuiltNodeProcess {
         Thread({
             runCatching {
                 started.inputStream.bufferedReader().useLines { lines ->
-                    lines.forEach { line ->
+                    lines.forEach { rawLine ->
+                        val line = stripAnsi(rawLine)
                         synchronized(lock) {
-                            lastDetail = line.take(400)
                             recentLines.addLast(line)
                             if (recentLines.size > RECENT_LINES) {
                                 recentLines.removeFirst()
@@ -421,14 +447,19 @@ internal object PrebuiltNodeProcess {
         Thread({
             val code = runCatching { started.waitFor() }.getOrDefault(-1)
             synchronized(lock) {
-                lastExitCode = code
-                val tail = recentLines.takeLast(3).joinToString(" | ")
-                lastDetail = buildString {
-                    append("Prebuilt Freenet process exited with code ")
-                    append(code)
-                    if (tail.isNotBlank()) {
-                        append(": ")
-                        append(tail.take(600))
+                if (stopRequested) {
+                    lastExitCode = null
+                    lastDetail = "Prebuilt Freenet process stopped"
+                } else {
+                    lastExitCode = code
+                    val tail = recentLines.takeLast(3).joinToString(" | ")
+                    lastDetail = buildString {
+                        append("Prebuilt Freenet process exited with code ")
+                        append(code)
+                        if (tail.isNotBlank()) {
+                            append(": ")
+                            append(tail.take(600))
+                        }
                     }
                 }
             }
