@@ -74,5 +74,8 @@
                 <action android:name="org.freenet.androidnode.action.SCHEDULE_TICK" />
             </intent-filter>
         </receiver>
+        <receiver
+            android:name=".UpdateStatusReceiver"
+            android:exported="false" />
     </application>
 </manifest>
