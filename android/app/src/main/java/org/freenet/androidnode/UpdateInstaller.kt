@@ -96,15 +96,18 @@ internal object UpdateInstaller {
                 apk.inputStream().use { it.copyTo(output) }
                 session.fsync(output)
             }
-            val intent = Intent(context, MainActivity::class.java).apply {
-                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP)
+            val intent = Intent(context, UpdateStatusReceiver::class.java).apply {
+                setPackage(context.packageName)
             }
-            val pending = PendingIntent.getActivity(
-                context,
-                1001,
-                intent,
-                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-            )
+            // PackageInstaller writes the status into the PendingIntent, so it
+            // must be mutable from Android 12 on.
+            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    PendingIntent.FLAG_MUTABLE
+                } else {
+                    0
+                }
+            val pending = PendingIntent.getBroadcast(context, 1001, intent, flags)
             session.commit(pending.intentSender)
         }
     }
