@@ -1246,14 +1246,14 @@ private fun NodeControlStrip(
         ) {
             if (state.serviceActive) {
                 OutlinedButton(
-                    enabled = NativeBridge.isLoaded,
+                    enabled = NodeBackend.isAvailable(),
                     onClick = if (state.state == NodePhase.Paused) onStartNetwork else onPause,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(if (state.state == NodePhase.Paused) "Resume node" else "Pause node")
                 }
                 Button(
-                    enabled = NativeBridge.isLoaded,
+                    enabled = NodeBackend.isAvailable(),
                     onClick = onStop,
                     modifier = Modifier.weight(1f),
                 ) {
@@ -1261,14 +1261,14 @@ private fun NodeControlStrip(
                 }
             } else {
                 Button(
-                    enabled = NativeBridge.isLoaded,
+                    enabled = NodeBackend.isAvailable(),
                     onClick = onStartNetwork,
                     modifier = Modifier.weight(1f),
                 ) {
                     Text(stringResource(R.string.start_network_node))
                 }
                 OutlinedButton(
-                    enabled = NativeBridge.isLoaded,
+                    enabled = NodeBackend.isAvailable(),
                     onClick = onStartLocal,
                     modifier = Modifier.weight(1f),
                 ) {
@@ -1281,14 +1281,14 @@ private fun NodeControlStrip(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             OutlinedButton(
-                enabled = NativeBridge.isLoaded,
+                enabled = NodeBackend.isAvailable(),
                 onClick = onRestart,
                 modifier = Modifier.weight(1f),
             ) {
                 Text(stringResource(R.string.restart_node))
             }
             OutlinedButton(
-                enabled = NativeBridge.isLoaded,
+                enabled = NodeBackend.isAvailable(),
                 onClick = onReset,
                 modifier = Modifier.weight(1f),
                 colors = ButtonDefaults.outlinedButtonColors(
@@ -1550,7 +1550,7 @@ private fun PolicyControls(
             if (scheduleWaiting) {
                 Button(
                     onClick = onConnectNow,
-                    enabled = NativeBridge.isLoaded,
+                    enabled = NodeBackend.isAvailable(),
                     modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.schedule_connect_now))

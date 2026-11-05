@@ -41,6 +41,8 @@ internal object NodeBackend {
         if (prebuilt) PrebuiltNodeProcess.appendInfoLog(detail) else NativeBridge.appendInfoLog(detail)
     }
 
+    fun isAvailable(): Boolean = if (prebuilt) true else NativeBridge.isLoaded
+
     fun isActive(): Boolean = if (prebuilt) {
         PrebuiltNodeProcess.isRunning()
     } else {
