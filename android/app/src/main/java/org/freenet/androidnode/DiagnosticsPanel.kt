@@ -159,7 +159,8 @@ internal fun DiagnosticsPanel(
     Column(
         modifier = modifier
             .fillMaxSize()
-            .padding(12.dp),
+            .padding(12.dp)
+            .verticalScroll(rememberScrollState()),
         verticalArrangement = Arrangement.spacedBy(8.dp),
     ) {
         OutlinedButton(
@@ -325,6 +326,23 @@ internal fun DiagnosticsPanel(
             )
         }
         HorizontalDivider()
+        Row(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            Text(stringResource(R.string.diagnostics_json), style = MaterialTheme.typography.titleMedium)
+            Button(onClick = { copyToClipboard(context, snapshot) }) {
+                Text(stringResource(R.string.copy_json))
+            }
+        }
+        ScrollableMonospaceBox(
+            text = snapshot,
+            modifier = Modifier
+                .fillMaxWidth()
+                .height(320.dp),
+        )
+        HorizontalDivider()
         UdpPortSettings(
             policies = policies,
             udpPortInUse = udpPortInUse,
@@ -346,23 +364,6 @@ internal fun DiagnosticsPanel(
         Text(
             stringResource(R.string.include_prereleases_hint),
             style = MaterialTheme.typography.bodySmall,
-        )
-        HorizontalDivider()
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Text(stringResource(R.string.diagnostics_json), style = MaterialTheme.typography.titleMedium)
-            Button(onClick = { copyToClipboard(context, snapshot) }) {
-                Text(stringResource(R.string.copy_json))
-            }
-        }
-        ScrollableMonospaceBox(
-            text = snapshot,
-            modifier = Modifier
-                .fillMaxWidth()
-                .weight(1f),
         )
     }
 }
