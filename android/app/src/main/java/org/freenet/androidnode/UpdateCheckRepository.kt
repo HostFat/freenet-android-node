@@ -196,7 +196,8 @@ internal object UpdateCheckRepository {
                 val version = SemVer.parse(
                     release.optString("tag_name").removePrefix("v"),
                 ) ?: continue
-                if (best == null || version > best.version) {
+                val current = best?.version
+                if (current == null || version > current) {
                     best = GithubRelease(version, release.optString("html_url"))
                 }
             }
