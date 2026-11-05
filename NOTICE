@@ -1,0 +1,11 @@
+This application bundles the freenet-core node binary, licensed under the
+GNU Affero General Public License v3.0.
+
+freenet-core source code:
+https://github.com/freenet/freenet-core
+
+This Android application source code:
+https://github.com/HostFat/freenet-android-node
+
+The full license text is in LICENSE. The Freenet name and mark belong to the
+Freenet Project; this is an unofficial application.

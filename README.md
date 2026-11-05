@@ -119,6 +119,13 @@ permission from Ian. Both are gratefully acknowledged for their work and
 support; neither is affiliated with, endorses, or is responsible for this
 unofficial app.
 
+## License
+
+This project is licensed under the GNU Affero General Public License v3.0.
+See [`LICENSE`](LICENSE) and [`NOTICE`](NOTICE). Release APKs bundle the
+[freenet-core](https://github.com/freenet/freenet-core) node binary, whose
+source is published by the Freenet Project.
+
 ## For developers
 
 Build instructions, checks, architecture notes, and the manual/automated
