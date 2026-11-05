@@ -65,6 +65,10 @@ internal fun DiagnosticsPanel(
     minConnections: Int,
     maxConnections: Int,
     onSaveConnectionLimits: (Int, Int) -> Unit,
+    notifyConnected: Boolean,
+    notifyStopped: Boolean,
+    onNotifyConnected: (Boolean) -> Unit,
+    onNotifyStopped: (Boolean) -> Unit,
     includePrereleases: Boolean,
     onIncludePrereleases: (Boolean) -> Unit,
     onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
@@ -362,6 +366,25 @@ internal fun DiagnosticsPanel(
             min = minConnections,
             max = maxConnections,
             onSave = onSaveConnectionLimits,
+        )
+        HorizontalDivider()
+        Text(
+            stringResource(R.string.event_notifications),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            stringResource(R.string.event_notifications_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        SettingsCheckbox(
+            checked = notifyConnected,
+            label = stringResource(R.string.notify_connected),
+            onCheckedChange = onNotifyConnected,
+        )
+        SettingsCheckbox(
+            checked = notifyStopped,
+            label = stringResource(R.string.notify_stopped),
+            onCheckedChange = onNotifyStopped,
         )
         HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {

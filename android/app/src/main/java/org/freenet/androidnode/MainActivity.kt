@@ -542,8 +542,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         startOnBoot = policyState.startOnBoot,
                         onStartOnBoot = nodeViewModel::setStartOnBoot,
                         onAutoRestartOnCrash = nodeViewModel::setAutoRestartOnCrash,
-                        onNotifyConnected = nodeViewModel::setNotifyConnected,
-                        onNotifyStopped = nodeViewModel::setNotifyStopped,
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -788,6 +786,10 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     minConnections = policyState.minConnections,
                     maxConnections = policyState.maxConnections,
                     onSaveConnectionLimits = ::saveConnectionLimits,
+                    notifyConnected = policyState.notifyConnected,
+                    notifyStopped = policyState.notifyStopped,
+                    onNotifyConnected = nodeViewModel::setNotifyConnected,
+                    onNotifyStopped = nodeViewModel::setNotifyStopped,
                     includePrereleases = includePrereleases,
                     onIncludePrereleases = {
                         UpdateCheckRepository.setIncludePrereleases(context, it)
@@ -1491,8 +1493,6 @@ private fun PolicyControls(
     startOnBoot: Boolean,
     onStartOnBoot: (Boolean) -> Unit,
     onAutoRestartOnCrash: (Boolean) -> Unit,
-    onNotifyConnected: (Boolean) -> Unit,
-    onNotifyStopped: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -1565,25 +1565,6 @@ private fun PolicyControls(
         Text(
             stringResource(R.string.auto_restart_on_crash_hint),
             style = MaterialTheme.typography.bodySmall,
-        )
-        HorizontalDivider()
-        Text(
-            stringResource(R.string.event_notifications),
-            style = MaterialTheme.typography.titleMedium,
-        )
-        Text(
-            stringResource(R.string.event_notifications_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        SettingsCheckbox(
-            checked = policies.notifyConnected,
-            label = stringResource(R.string.notify_connected),
-            onCheckedChange = onNotifyConnected,
-        )
-        SettingsCheckbox(
-            checked = policies.notifyStopped,
-            label = stringResource(R.string.notify_stopped),
-            onCheckedChange = onNotifyStopped,
         )
         HorizontalDivider()
         Text(stringResource(R.string.network_data), style = MaterialTheme.typography.titleMedium)
