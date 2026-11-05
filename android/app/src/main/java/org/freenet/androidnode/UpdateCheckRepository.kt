@@ -33,11 +33,23 @@ internal object UpdateCheckRepository {
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(UpdateUiState())
     private val mutableInterval = MutableStateFlow(UpdateCheckInterval.Default)
+    private val mutableIncludePrereleases = MutableStateFlow(false)
     val state: StateFlow<UpdateUiState> = mutableState.asStateFlow()
     val interval: StateFlow<UpdateCheckInterval> = mutableInterval.asStateFlow()
+    val includePrereleases: StateFlow<Boolean> = mutableIncludePrereleases.asStateFlow()
 
     fun initialize(context: Context) {
+        val prefs = prefs(context.applicationContext)
         mutableInterval.value = loadInterval(context.applicationContext)
+        mutableIncludePrereleases.value = prefs.getBoolean(KEY_INCLUDE_PRERELEASES, false)
+    }
+
+    fun setIncludePrereleases(context: Context, enabled: Boolean) {
+        prefs(context.applicationContext)
+            .edit()
+            .putBoolean(KEY_INCLUDE_PRERELEASES, enabled)
+            .apply()
+        mutableIncludePrereleases.value = enabled
     }
 
     fun setInterval(context: Context, interval: UpdateCheckInterval) {
@@ -109,8 +121,17 @@ internal object UpdateCheckRepository {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionName
             }.getOrNull(),
         )
-        val coreRelease = fetchLatestRelease(UpdateUrls.CORE_RELEASES_PAGE)
-        val apkRelease = fetchLatestRelease(UpdateUrls.APK_RELEASES_PAGE)
+        val includePrereleases = mutableIncludePrereleases.value
+        val coreRelease = if (includePrereleases) {
+            fetchNewestRelease(CORE_RELEASES_API)
+        } else {
+            fetchLatestRelease(UpdateUrls.CORE_RELEASES_PAGE)
+        }
+        val apkRelease = if (includePrereleases) {
+            fetchNewestRelease(APK_RELEASES_API)
+        } else {
+            fetchLatestRelease(UpdateUrls.APK_RELEASES_PAGE)
+        }
         return decideUpdate(
             installedCore = installedCore,
             installedApp = installedApp,
@@ -145,6 +166,41 @@ internal object UpdateCheckRepository {
                 ?: throw IOException("Could not parse a release tag from GitHub")
             val htmlUrl = if (resolved.contains("/releases/tag/")) resolved else latestUrl
             return GithubRelease(version = version, htmlUrl = htmlUrl)
+        } finally {
+            connection.disconnect()
+        }
+    }
+
+    private fun fetchNewestRelease(apiUrl: String): GithubRelease {
+        val connection = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
+            connectTimeout = 15_000
+            readTimeout = 15_000
+            setRequestProperty("User-Agent", USER_AGENT)
+            setRequestProperty("Accept", "application/vnd.github+json")
+        }
+        try {
+            val code = connection.responseCode
+            if (code == 403 || code == 429) {
+                throw IOException("GitHub rate limit (HTTP $code); try again later")
+            }
+            if (code !in 200..299) {
+                throw IOException("GitHub returned HTTP $code")
+            }
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val releases = org.json.JSONArray(body)
+            var best: GithubRelease? = null
+            for (index in 0 until releases.length()) {
+                val release = releases.getJSONObject(index)
+                if (release.optBoolean("draft")) continue
+                if (release.optBoolean("prerelease") && !mutableIncludePrereleases.value) continue
+                val version = SemVer.parse(
+                    release.optString("tag_name").removePrefix("v"),
+                ) ?: continue
+                if (best == null || version > best.version) {
+                    best = GithubRelease(version, release.optString("html_url"))
+                }
+            }
+            return best ?: throw IOException("No release found")
         } finally {
             connection.disconnect()
         }
@@ -220,6 +276,11 @@ internal object UpdateCheckRepository {
     private const val KEY_LAST_CHECK_MS = "last_check_ms"
     private const val KEY_NOTIFIED_APK = "notified_apk_version"
     private const val KEY_INTERVAL_HOURS = "auto_interval_hours"
+    private const val KEY_INCLUDE_PRERELEASES = "include_prereleases"
+    private const val CORE_RELEASES_API =
+        "https://api.github.com/repos/freenet/freenet-core/releases?per_page=30"
+    private const val APK_RELEASES_API =
+        "https://api.github.com/repos/HostFat/freenet-android-node/releases?per_page=30"
     private const val USER_AGENT = "freenet-android-node"
     private const val CHANNEL_ID = "freenet_apk_updates"
     private const val NOTIFICATION_ID = 7510

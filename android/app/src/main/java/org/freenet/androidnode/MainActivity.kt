@@ -231,6 +231,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val policyState by nodeViewModel.policies.collectAsState()
     val updateState by UpdateCheckRepository.state.collectAsState()
     val updateInterval by UpdateCheckRepository.interval.collectAsState()
+    val includePrereleases by UpdateCheckRepository.includePrereleases.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     var restrictionSnapshot by remember { mutableStateOf(readRestrictionSnapshot(context)) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
@@ -522,7 +523,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     HorizontalDivider()
                     PolicyControls(
                         policies = policyState,
-                        udpPortInUse = nodeState.udpPortInUse,
                         onPowerPolicy = { policy ->
                             if (policy == NodePowerPolicy.Manual) {
                                 nodeViewModel.setPowerPolicy(policy)
@@ -540,9 +540,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             withNotificationPermission(nodeViewModel::startNetworkNode)
                         },
                         onSaveConnectionLimits = ::saveConnectionLimits,
-                        onSaveUdpPortSettings = ::saveUdpPortSettings,
-                        onUseSavedUdp = { applyUdpFallback(UdpPortMode.Saved) },
-                        onUseRandomUdp = { applyUdpFallback(UdpPortMode.Random) },
                         startOnBoot = policyState.startOnBoot,
                         onStartOnBoot = nodeViewModel::setStartOnBoot,
                         onAutoRestartOnCrash = nodeViewModel::setAutoRestartOnCrash,
@@ -782,6 +779,15 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             }
                         }
                     },
+                    policies = policyState,
+                    udpPortInUse = nodeState.udpPortInUse,
+                    includePrereleases = includePrereleases,
+                    onIncludePrereleases = {
+                        UpdateCheckRepository.setIncludePrereleases(context, it)
+                    },
+                    onSaveUdpPortSettings = ::saveUdpPortSettings,
+                    onUseSavedUdp = { applyUdpFallback(UdpPortMode.Saved) },
+                    onUseRandomUdp = { applyUdpFallback(UdpPortMode.Random) },
                 )
             } else {
                 DashboardPanel(
@@ -1438,7 +1444,7 @@ private fun PowerChoiceRow(
 }
 
 @Composable
-private fun <T> CompactChoiceRow(
+internal fun <T> CompactChoiceRow(
     options: List<T>,
     selected: T,
     label: (T) -> String,
@@ -1469,7 +1475,6 @@ private fun <T> CompactChoiceRow(
 @Composable
 private fun PolicyControls(
     policies: NodePolicyState,
-    udpPortInUse: Boolean,
     onPowerPolicy: (NodePowerPolicy) -> Unit,
     onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
     onScheduleEveryHours: (Int) -> Unit,
@@ -1477,9 +1482,6 @@ private fun PolicyControls(
     scheduleWaiting: Boolean,
     onConnectNow: () -> Unit,
     onSaveConnectionLimits: (Int, Int) -> Unit,
-    onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
-    onUseSavedUdp: () -> Unit,
-    onUseRandomUdp: () -> Unit,
     startOnBoot: Boolean,
     onStartOnBoot: (Boolean) -> Unit,
     onAutoRestartOnCrash: (Boolean) -> Unit,
@@ -1491,16 +1493,10 @@ private fun PolicyControls(
     val context = LocalContext.current
     var draftMin by remember { mutableStateOf(policies.minConnections) }
     var draftMax by remember { mutableStateOf(policies.maxConnections) }
-    var draftUdpMode by remember { mutableStateOf(policies.udpPortMode) }
-    var draftUdpPort by remember { mutableStateOf(policies.udpPort) }
     val focusManager = LocalFocusManager.current
     LaunchedEffect(policies.minConnections, policies.maxConnections) {
         draftMin = policies.minConnections
         draftMax = policies.maxConnections
-    }
-    LaunchedEffect(policies.udpPortMode, policies.udpPort) {
-        draftUdpMode = policies.udpPortMode
-        draftUdpPort = policies.udpPort
     }
     val dirty = connectionLimitsAreDirty(
         draftMin,
@@ -1508,13 +1504,6 @@ private fun PolicyControls(
         policies.minConnections,
         policies.maxConnections,
     )
-    val udpDirty = udpPortSettingsAreDirty(
-        draftUdpMode,
-        draftUdpPort,
-        policies.udpPortMode,
-        policies.udpPort,
-    )
-    val savedUdpPort = ConfigToml.parseInt(ConfigToml.read(context), ConfigToml.NETWORK_PORT_KEY)
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.node_runs_when), style = MaterialTheme.typography.titleMedium)
@@ -1683,78 +1672,6 @@ private fun PolicyControls(
             stringResource(R.string.connection_limits_apply_next_start),
             style = MaterialTheme.typography.bodySmall,
         )
-        HorizontalDivider()
-        Text(stringResource(R.string.udp_port), style = MaterialTheme.typography.titleMedium)
-        CompactChoiceRow(
-            options = UdpPortMode.entries,
-            selected = draftUdpMode,
-            label = { it.shortLabel },
-            onSelect = { draftUdpMode = it },
-        )
-        Text(
-            stringResource(
-                when (draftUdpMode) {
-                    UdpPortMode.Saved -> R.string.udp_port_saved_hint
-                    UdpPortMode.Custom -> R.string.udp_port_custom_hint
-                    UdpPortMode.Random -> R.string.udp_port_random_hint
-                },
-            ),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (draftUdpMode == UdpPortMode.Saved && savedUdpPort != null) {
-            Text(
-                stringResource(R.string.udp_port_current, savedUdpPort),
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        if (draftUdpMode == UdpPortMode.Custom) {
-            ConnectionLimitField(
-                value = draftUdpPort,
-                label = stringResource(R.string.udp_port),
-                upperBound = UdpPorts.Ceiling,
-                rangeText = stringResource(R.string.udp_port_range),
-                ceiling = UdpPorts.Ceiling,
-                onChange = { draftUdpPort = UdpPorts.coerce(it) },
-            )
-        }
-        Button(
-            onClick = {
-                focusManager.clearFocus()
-                onSaveUdpPortSettings(draftUdpMode, draftUdpPort)
-            },
-            enabled = udpDirty,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.save_udp_port))
-        }
-        if (udpPortInUse) {
-            Text(
-                stringResource(R.string.udp_port_in_use),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onUseSavedUdp,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.udp_use_saved))
-                }
-                OutlinedButton(
-                    onClick = onUseRandomUdp,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.udp_use_random))
-                }
-            }
-        }
-        Text(
-            stringResource(R.string.connection_limits_apply_next_start),
-            style = MaterialTheme.typography.bodySmall,
-        )
     }
 }
 
@@ -1783,7 +1700,7 @@ private fun SettingsCheckbox(
 }
 
 @Composable
-private fun ConnectionLimitField(
+internal fun ConnectionLimitField(
     value: Int,
     label: String,
     upperBound: Int,

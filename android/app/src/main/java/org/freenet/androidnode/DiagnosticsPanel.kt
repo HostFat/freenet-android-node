@@ -21,6 +21,8 @@ import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
+import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -56,6 +58,13 @@ internal fun DiagnosticsPanel(
     onIdentityRestored: () -> Unit,
     onEditConfig: () -> Unit,
     onOpenExternal: () -> Unit,
+    policies: NodePolicyState,
+    udpPortInUse: Boolean,
+    includePrereleases: Boolean,
+    onIncludePrereleases: (Boolean) -> Unit,
+    onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
+    onUseSavedUdp: () -> Unit,
+    onUseRandomUdp: () -> Unit,
 ) {
     val context = LocalContext.current
     var snapshot by remember { mutableStateOf("Collecting diagnostics…") }
@@ -315,6 +324,30 @@ internal fun DiagnosticsPanel(
                 },
             )
         }
+        HorizontalDivider()
+        UdpPortSettings(
+            policies = policies,
+            udpPortInUse = udpPortInUse,
+            onSave = onSaveUdpPortSettings,
+            onUseSaved = onUseSavedUdp,
+            onUseRandom = onUseRandomUdp,
+        )
+        HorizontalDivider()
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Checkbox(
+                checked = includePrereleases,
+                onCheckedChange = onIncludePrereleases,
+            )
+            Text(
+                stringResource(R.string.include_prereleases),
+                modifier = Modifier.padding(start = 8.dp),
+            )
+        }
+        Text(
+            stringResource(R.string.include_prereleases_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        HorizontalDivider()
         Row(
             modifier = Modifier.fillMaxWidth(),
             horizontalArrangement = Arrangement.SpaceBetween,
