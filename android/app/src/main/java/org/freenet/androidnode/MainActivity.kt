@@ -704,7 +704,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         }.getOrNull()
                     }
                     val nodeVersion = remember {
-                        coreVersionFromBuildInfo(NativeBridge.freenetBuildInfo().getOrNull())
+                        if (BuildConfig.PREBUILT_NODE) {
+                            BuildConfig.CORE_VERSION
+                        } else {
+                            coreVersionFromBuildInfo(NativeBridge.freenetBuildInfo().getOrNull())
+                        }
                     }
                     val (appLabel, nodeLabel) = panelVersionLabels(appVersion, nodeVersion)
                     val versionLink = SpanStyle(

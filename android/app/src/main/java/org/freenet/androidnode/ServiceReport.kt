@@ -62,8 +62,13 @@ internal object ServiceReport {
         val config = ConfigToml.read(context)
         val lastState = NodeRepository.state.value
         val (networkStatus, networkError) = collectNetworkStatus(lastState)
-        val coreInfo = NativeBridge.freenetBuildInfo().getOrNull().orEmpty()
-        val coreVersion = coreVersionFromBuildInfo(coreInfo) ?: "unknown"
+        val coreVersion = if (BuildConfig.PREBUILT_NODE) {
+            BuildConfig.CORE_VERSION
+        } else {
+            coreVersionFromBuildInfo(
+                NativeBridge.freenetBuildInfo().getOrNull().orEmpty(),
+            ) ?: "unknown"
+        }
         val message = userMessage.trim().ifEmpty { null }
         return JSONObject()
             .put("client_timestamp", Instant.now().toString())

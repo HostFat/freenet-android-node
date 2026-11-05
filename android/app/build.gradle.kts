@@ -21,6 +21,9 @@ android {
 
         val prebuiltNode = (project.findProperty("prebuiltNode") as String?)?.toBoolean() ?: false
         buildConfigField("Boolean", "PREBUILT_NODE", prebuiltNode.toString())
+        val coreVersion = (project.findProperty("coreVersion") as String?)?.removePrefix("v")
+            ?: "unknown"
+        buildConfigField("String", "CORE_VERSION", "\"$coreVersion\"")
 
         val abis = (project.findProperty("abis") as String?)
             ?.split(",")

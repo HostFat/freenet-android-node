@@ -19,6 +19,7 @@ fi
 export FREENET_ABIS="arm64-v8a"
 gradle_version_args+=("-Pabis=arm64-v8a")
 gradle_version_args+=("-PprebuiltNode=${PREBUILT_NODE:-false}")
+gradle_version_args+=("-PcoreVersion=${FREENET_PREBUILT_VERSION:-unknown}")
 
 if [[ "${PREBUILT_NODE:-false}" == "true" ]]; then
   # Release runs the official binary; the JNI library is not built or shipped.
