@@ -81,6 +81,10 @@ internal object UpdateInstaller {
     }
 
     fun install(context: Context, apk: File) {
+        // The installer kills the app but not necessarily the child node
+        // process. Stop it first so the new version starts with clean sockets.
+        runCatching { NodeBackend.stop() }
+        runCatching { context.stopService(Intent(context, NodeService::class.java)) }
         val installer = context.packageManager.packageInstaller
         val params = PackageInstaller.SessionParams(
             PackageInstaller.SessionParams.MODE_FULL_INSTALL,
