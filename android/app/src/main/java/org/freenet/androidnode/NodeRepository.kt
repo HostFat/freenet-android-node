@@ -246,8 +246,16 @@ object NodeRepository {
                 startedAtElapsedRealtimeMs,
             )
             // The process status has no peer count; keep the dashboard value.
-            if (BuildConfig.PREBUILT_NODE && next.peers == 0) {
-                next.copy(peers = current.peers)
+            if (BuildConfig.PREBUILT_NODE) {
+                next.copy(
+                    peers = if (next.peers == 0) current.peers else next.peers,
+                    bytesSent = if (next.bytesSent == 0L) current.bytesSent else next.bytesSent,
+                    bytesReceived = if (next.bytesReceived == 0L) {
+                        current.bytesReceived
+                    } else {
+                        next.bytesReceived
+                    },
+                )
             } else {
                 next
             }
@@ -369,9 +377,20 @@ object NodeRepository {
         mutableState.update { if (it.natHint == hint) it else it.copy(natHint = hint) }
     }
 
-    internal fun publishDashboardCounts(connections: Int, peers: Int) {
+    internal fun publishDashboardCounts(
+        connections: Int,
+        peers: Int,
+        bytesSent: Long,
+        bytesReceived: Long,
+    ) {
         val count = if (peers > 0) peers else connections
-        mutableState.update { if (it.peers == count) it else it.copy(peers = count) }
+        mutableState.update {
+            it.copy(
+                peers = count,
+                bytesSent = bytesSent,
+                bytesReceived = bytesReceived,
+            )
+        }
     }
 
     internal fun publishConnectivity(snapshot: ConnectivitySnapshot, response: String) {

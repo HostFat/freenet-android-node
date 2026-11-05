@@ -32,6 +32,7 @@ class NodeService : Service() {
     private lateinit var connectivityMonitor: AndroidConnectivityMonitor
     private lateinit var batteryManager: BatteryManager
     private var lastConnectivity: ConnectivitySnapshot? = null
+    private var connectivityRestartJob: Job? = null
     private var statusJob: Job? = null
     private var foregroundStarted = false
     private var shutdownCompleted = false
@@ -230,6 +231,7 @@ class NodeService : Service() {
         connectivityMonitor.unregister()
         runCatching { unregisterReceiver(powerReceiver) }
         crashRestartJob?.cancel()
+        connectivityRestartJob?.cancel()
         appInitiatedStop = true
         statusJob?.cancel()
         if (!shutdownCompleted) {
@@ -544,17 +546,22 @@ class NodeService : Service() {
             runningMode == NodeMode.Network &&
             !userRequestedShutdown
         ) {
-            // The process has no connectivity callback: restart it on the new network.
-            lifecycleMutex.withLock {
-                if (userRequestedShutdown) return@withLock
-                if (nativeIsActive()) {
-                    shutDownNode(
-                        latestStartId,
-                        keepController = true,
-                        waitingDetail = "Restarting after a network change",
-                    )
+            // The process has no connectivity callback. Wait for the new
+            // network to settle, then restart it on the current interface.
+            connectivityRestartJob?.cancel()
+            connectivityRestartJob = serviceScope.launch {
+                delay(3_000)
+                lifecycleMutex.withLock {
+                    if (userRequestedShutdown) return@withLock
+                    if (nativeIsActive()) {
+                        shutDownNode(
+                            latestStartId,
+                            keepController = true,
+                            waitingDetail = "Restarting after a network change",
+                        )
+                    }
+                    reconcilePolicy(latestStartId, explicitStart = true)
                 }
-                reconcilePolicy(latestStartId, explicitStart = true)
             }
             return
         }
@@ -583,7 +590,12 @@ class NodeService : Service() {
                     if (now - lastDashboardPoll >= 5_000L) {
                         lastDashboardPoll = now
                         DashboardStatus.read()?.let { counts ->
-                            NodeRepository.publishDashboardCounts(counts.connections, counts.peers)
+                            NodeRepository.publishDashboardCounts(
+                                connections = counts.connections,
+                                peers = counts.peers,
+                                bytesSent = counts.bytesSent,
+                                bytesReceived = counts.bytesReceived,
+                            )
                         }
                     }
                 }
@@ -640,6 +652,7 @@ class NodeService : Service() {
         waitingDetail: String? = null,
     ) {
         appInitiatedStop = true
+        connectivityRestartJob?.cancel()
         statusJob?.cancelAndJoin()
         statusJob = null
         if (!nativeIsActive()) {
