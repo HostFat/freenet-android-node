@@ -539,14 +539,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onConnectNow = {
                             withNotificationPermission(nodeViewModel::startNetworkNode)
                         },
-                        onSaveConnectionLimits = ::saveConnectionLimits,
                         startOnBoot = policyState.startOnBoot,
                         onStartOnBoot = nodeViewModel::setStartOnBoot,
                         onAutoRestartOnCrash = nodeViewModel::setAutoRestartOnCrash,
                         onNotifyConnected = nodeViewModel::setNotifyConnected,
                         onNotifyStopped = nodeViewModel::setNotifyStopped,
-                        onNotifyUdpBusy = nodeViewModel::setNotifyUdpBusy,
-                        onNotifyUpdate = nodeViewModel::setNotifyUpdate,
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -567,6 +564,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         selected = updateInterval,
                         label = { "${it.hours}h" },
                         onSelect = { UpdateCheckRepository.setInterval(context, it) },
+                    )
+                    SettingsCheckbox(
+                        checked = policyState.notifyUpdate,
+                        label = stringResource(R.string.notify_update),
+                        onCheckedChange = nodeViewModel::setNotifyUpdate,
                     )
                     OutlinedButton(
                         enabled = !updateState.checking,
@@ -781,6 +783,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     },
                     policies = policyState,
                     udpPortInUse = nodeState.udpPortInUse,
+                    notifyUdpBusy = policyState.notifyUdpBusy,
+                    onNotifyUdpBusy = nodeViewModel::setNotifyUdpBusy,
+                    minConnections = policyState.minConnections,
+                    maxConnections = policyState.maxConnections,
+                    onSaveConnectionLimits = ::saveConnectionLimits,
                     includePrereleases = includePrereleases,
                     onIncludePrereleases = {
                         UpdateCheckRepository.setIncludePrereleases(context, it)
@@ -1481,29 +1488,13 @@ private fun PolicyControls(
     onScheduleOnMinutes: (Int) -> Unit,
     scheduleWaiting: Boolean,
     onConnectNow: () -> Unit,
-    onSaveConnectionLimits: (Int, Int) -> Unit,
     startOnBoot: Boolean,
     onStartOnBoot: (Boolean) -> Unit,
     onAutoRestartOnCrash: (Boolean) -> Unit,
     onNotifyConnected: (Boolean) -> Unit,
     onNotifyStopped: (Boolean) -> Unit,
-    onNotifyUdpBusy: (Boolean) -> Unit,
-    onNotifyUpdate: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
-    var draftMin by remember { mutableStateOf(policies.minConnections) }
-    var draftMax by remember { mutableStateOf(policies.maxConnections) }
-    val focusManager = LocalFocusManager.current
-    LaunchedEffect(policies.minConnections, policies.maxConnections) {
-        draftMin = policies.minConnections
-        draftMax = policies.maxConnections
-    }
-    val dirty = connectionLimitsAreDirty(
-        draftMin,
-        draftMax,
-        policies.minConnections,
-        policies.maxConnections,
-    )
 
     Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
         Text(stringResource(R.string.node_runs_when), style = MaterialTheme.typography.titleMedium)
@@ -1594,16 +1585,6 @@ private fun PolicyControls(
             label = stringResource(R.string.notify_stopped),
             onCheckedChange = onNotifyStopped,
         )
-        SettingsCheckbox(
-            checked = policies.notifyUdpBusy,
-            label = stringResource(R.string.notify_udp_busy),
-            onCheckedChange = onNotifyUdpBusy,
-        )
-        SettingsCheckbox(
-            checked = policies.notifyUpdate,
-            label = stringResource(R.string.notify_update),
-            onCheckedChange = onNotifyUpdate,
-        )
         HorizontalDivider()
         Text(stringResource(R.string.network_data), style = MaterialTheme.typography.titleMedium)
         CompactChoiceRow(
@@ -1616,67 +1597,11 @@ private fun PolicyControls(
             stringResource(R.string.network_data_hint),
             style = MaterialTheme.typography.bodySmall,
         )
-        HorizontalDivider()
-        Text(stringResource(R.string.peer_connections), style = MaterialTheme.typography.titleMedium)
-        Text(
-            stringResource(R.string.connection_limits_resource_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            stringResource(R.string.connection_limits_mobile_default),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            stringResource(R.string.connection_limits_desktop_note),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            stringResource(R.string.connection_limits_experimental),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        ConnectionLimitField(
-            value = draftMin,
-            label = stringResource(R.string.min_connections),
-            upperBound = draftMax,
-            rangeText = stringResource(
-                R.string.connection_limits_min_range,
-                draftMax,
-            ),
-            onChange = { next ->
-                draftMin = next.coerceAtMost(draftMax)
-            },
-        )
-        ConnectionLimitField(
-            value = draftMax,
-            label = stringResource(R.string.max_connections),
-            upperBound = ConnectionLimits.Ceiling,
-            rangeText = stringResource(R.string.connection_limits_range),
-            onChange = { next ->
-                draftMax = next
-                if (draftMin > next) {
-                    draftMin = next
-                }
-            },
-        )
-        Button(
-            onClick = {
-                focusManager.clearFocus()
-                onSaveConnectionLimits(draftMin, draftMax)
-            },
-            enabled = dirty,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.save_connection_limits))
-        }
-        Text(
-            stringResource(R.string.connection_limits_apply_next_start),
-            style = MaterialTheme.typography.bodySmall,
-        )
     }
 }
 
 @Composable
-private fun SettingsCheckbox(
+internal fun SettingsCheckbox(
     checked: Boolean,
     label: String,
     onCheckedChange: (Boolean) -> Unit,

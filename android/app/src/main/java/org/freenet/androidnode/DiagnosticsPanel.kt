@@ -60,6 +60,11 @@ internal fun DiagnosticsPanel(
     onOpenExternal: () -> Unit,
     policies: NodePolicyState,
     udpPortInUse: Boolean,
+    notifyUdpBusy: Boolean,
+    onNotifyUdpBusy: (Boolean) -> Unit,
+    minConnections: Int,
+    maxConnections: Int,
+    onSaveConnectionLimits: (Int, Int) -> Unit,
     includePrereleases: Boolean,
     onIncludePrereleases: (Boolean) -> Unit,
     onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
@@ -346,9 +351,17 @@ internal fun DiagnosticsPanel(
         UdpPortSettings(
             policies = policies,
             udpPortInUse = udpPortInUse,
+            notifyUdpBusy = notifyUdpBusy,
+            onNotifyUdpBusy = onNotifyUdpBusy,
             onSave = onSaveUdpPortSettings,
             onUseSaved = onUseSavedUdp,
             onUseRandom = onUseRandomUdp,
+        )
+        HorizontalDivider()
+        ConnectionLimitsSettings(
+            min = minConnections,
+            max = maxConnections,
+            onSave = onSaveConnectionLimits,
         )
         HorizontalDivider()
         Row(verticalAlignment = Alignment.CenterVertically) {

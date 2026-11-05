@@ -24,6 +24,8 @@ import androidx.compose.ui.unit.dp
 internal fun UdpPortSettings(
     policies: NodePolicyState,
     udpPortInUse: Boolean,
+    notifyUdpBusy: Boolean,
+    onNotifyUdpBusy: (Boolean) -> Unit,
     onSave: (UdpPortMode, Int) -> Unit,
     onUseSaved: () -> Unit,
     onUseRandom: () -> Unit,
@@ -116,5 +118,85 @@ internal fun UdpPortSettings(
                 }
             }
         }
+        SettingsCheckbox(
+            checked = notifyUdpBusy,
+            label = stringResource(R.string.notify_udp_busy),
+            onCheckedChange = onNotifyUdpBusy,
+        )
+    }
+}
+
+@Composable
+internal fun ConnectionLimitsSettings(
+    min: Int,
+    max: Int,
+    onSave: (Int, Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var draftMin by remember { mutableStateOf(min) }
+    var draftMax by remember { mutableStateOf(max) }
+    val focusManager = LocalFocusManager.current
+    LaunchedEffect(min, max) {
+        draftMin = min
+        draftMax = max
+    }
+    val dirty = connectionLimitsAreDirty(draftMin, draftMax, min, max)
+    Column(
+        modifier = modifier,
+        verticalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        Text(
+            stringResource(R.string.peer_connections),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        Text(
+            stringResource(R.string.connection_limits_resource_hint),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(R.string.connection_limits_mobile_default),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(R.string.connection_limits_desktop_note),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        Text(
+            stringResource(R.string.connection_limits_experimental),
+            style = MaterialTheme.typography.bodySmall,
+        )
+        ConnectionLimitField(
+            value = draftMin,
+            label = stringResource(R.string.min_connections),
+            upperBound = draftMax,
+            rangeText = stringResource(R.string.connection_limits_min_range, draftMax),
+            onChange = { next -> draftMin = next.coerceAtMost(draftMax) },
+        )
+        ConnectionLimitField(
+            value = draftMax,
+            label = stringResource(R.string.max_connections),
+            upperBound = ConnectionLimits.Ceiling,
+            rangeText = stringResource(R.string.connection_limits_range),
+            onChange = { next ->
+                draftMax = next
+                if (draftMin > next) {
+                    draftMin = next
+                }
+            },
+        )
+        Button(
+            onClick = {
+                focusManager.clearFocus()
+                onSave(draftMin, draftMax)
+            },
+            enabled = dirty,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.save_connection_limits))
+        }
+        Text(
+            stringResource(R.string.connection_limits_apply_next_start),
+            style = MaterialTheme.typography.bodySmall,
+        )
     }
 }
