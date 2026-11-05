@@ -313,6 +313,7 @@ jobs:
             --env CARGO_TARGET_DIR=/workspace/target/cargo \
             --env GRADLE_USER_HOME=/workspace/cache/gradle \
             --env ANDROID_USER_HOME=/workspace/cache/gradle/android-user \
+            --env PREBUILT_NODE="${{ github.event.inputs.prebuilt_node }}" \
             "${{ env.DOCKER_IMAGE }}" \
             bash -lc '
               set -euo pipefail
@@ -589,7 +590,8 @@ jobs:
       (needs.android-unit.result == 'success' || needs.android-unit.result == 'skipped') &&
       github.event_name == 'workflow_dispatch' &&
       needs.setup.result == 'success' &&
-      (needs.lint.result == 'success' || needs.lint.result == 'skipped')
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      github.event.inputs.prebuilt_node != 'true'
     timeout-minutes: 60
     permissions:
       contents: write
@@ -787,3 +789,123 @@ jobs:
             gh issue create --repo "${{ github.repository }}" --title "${title}" --body "${body}" --assignee HostFat
           fi
 
+
+  release-prebuilt:
+    name: Build & Publish Prebuilt APK
+    runs-on: ubuntu-latest
+    needs: [setup, lint, android-unit]
+    if: >
+      always() &&
+      !cancelled() &&
+      (needs.android-unit.result == 'success' || needs.android-unit.result == 'skipped') &&
+      github.event_name == 'workflow_dispatch' &&
+      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
+      github.event.inputs.prebuilt_node == 'true'
+    timeout-minutes: 30
+    permissions:
+      contents: write
+      issues: write
+    steps:
+      - name: Checkout freenet-android-node
+        uses: actions/checkout@v4
+        with:
+          path: freenet-android-node
+
+      - name: Set up JDK
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Set up Android SDK
+        uses: android-actions/setup-android@v3
+        with:
+          packages: platform-tools
+
+      - name: Cache Gradle
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.gradle/caches
+            ~/.gradle/wrapper
+          key: ${{ runner.os }}-gradle-prebuilt-${{ hashFiles('freenet-android-node/android/**/*.gradle*', 'freenet-android-node/android/gradle/wrapper/gradle-wrapper.properties') }}
+          restore-keys: |
+            ${{ runner.os }}-gradle-prebuilt-
+
+      - name: Decode release keystore
+        run: |
+          mkdir -p /tmp/.release-keystore
+          echo "${{ secrets.RELEASE_KEYSTORE_BASE64 }}" | base64 -d > /tmp/.release-keystore/release.keystore
+          chmod 600 /tmp/.release-keystore/release.keystore
+
+      - name: Build & sign prebuilt APK
+        env:
+          RELEASE_KEYSTORE_PASSWORD: ${{ secrets.RELEASE_KEYSTORE_PASSWORD }}
+          RELEASE_KEY_ALIAS: ${{ secrets.RELEASE_KEY_ALIAS }}
+          RELEASE_KEY_PASSWORD: ${{ secrets.RELEASE_KEY_PASSWORD }}
+          CRASH_REPORT_TOKEN: ${{ secrets.CRASH_REPORT_TOKEN }}
+        run: |
+          set -euo pipefail
+          cd freenet-android-node
+          export PREBUILT_NODE=true
+          export FREENET_PREBUILT_VERSION="${{ github.event.inputs.freenet_core_version }}"
+          export APP_VERSION_CODE="${{ github.run_number }}"
+          export APP_VERSION_NAME="${{ github.event.inputs.release_version }}"
+          export RELEASE_KEYSTORE_PATH=/tmp/.release-keystore/release.keystore
+          ./scripts/build-release.sh
+          apksigner="$(find "$ANDROID_HOME/build-tools" -name apksigner | sort -V | tail -1)"
+          "$apksigner" verify --print-certs artifacts/apk/freenet-android-node-release.apk
+
+      - name: Upload prebuilt APK artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: freenet-android-release
+          path: |
+            freenet-android-node/artifacts/apk/freenet-android-node-release.apk
+            freenet-android-node/artifacts/SHA256SUMS.txt
+            freenet-android-node/artifacts/mapping/release-mapping.txt
+          if-no-files-found: error
+          retention-days: 90
+
+      - name: Create GitHub release
+        if: github.event.inputs.publish_release != 'false'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v${{ github.event.inputs.release_version }}
+          name: v${{ github.event.inputs.release_version }}
+          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          make_latest: ${{ github.event.inputs.prerelease != 'true' }}
+          body: |
+            App version: ${{ github.event.inputs.release_version }}
+            freenet-core: ${{ github.event.inputs.freenet_core_version }}
+
+            ${{ github.event.inputs.release_notes }}
+          files: |
+            freenet-android-node/artifacts/apk/freenet-android-node-release.apk
+            freenet-android-node/artifacts/SHA256SUMS.txt
+
+      - name: Open an issue if the prebuilt release failed
+        if: failure()
+        continue-on-error: true
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          title="Prebuilt APK release failed for v${{ github.event.inputs.release_version }}"
+          existing="$(gh issue list --repo "${{ github.repository }}" --state open --search "in:title $title" --json number --jq '.[0].number' || true)"
+          body="$(cat <<EOF
+          The prebuilt APK release job failed.
+
+          - Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - App version: ${{ github.event.inputs.release_version }}
+          - freenet-core: ${{ github.event.inputs.freenet_core_version }}
+
+          Typical causes: the prebuilt asset is missing, the signing secrets are
+          absent, or the Gradle build failed. The APK was **not** published.
+          EOF
+          )"
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --repo "${{ github.repository }}" --body "${body}"
+          else
+            gh issue create --repo "${{ github.repository }}" --title "${title}" --body "${body}" --assignee HostFat
+          fi
