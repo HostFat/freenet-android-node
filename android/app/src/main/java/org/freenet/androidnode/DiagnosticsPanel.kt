@@ -74,6 +74,9 @@ internal fun DiagnosticsPanel(
     onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
     onUseSavedUdp: () -> Unit,
     onUseRandomUdp: () -> Unit,
+    onStartLocal: () -> Unit,
+    onReset: () -> Unit,
+    canStartLocal: Boolean,
 ) {
     val context = LocalContext.current
     var snapshot by remember { mutableStateOf("Collecting diagnostics…") }
@@ -401,6 +404,25 @@ internal fun DiagnosticsPanel(
             stringResource(R.string.include_prereleases_hint),
             style = MaterialTheme.typography.bodySmall,
         )
+        HorizontalDivider()
+        Text(
+            stringResource(R.string.node_actions),
+            style = MaterialTheme.typography.titleMedium,
+        )
+        OutlinedButton(
+            enabled = NodeBackend.isAvailable() && canStartLocal,
+            onClick = onStartLocal,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.start_local_node))
+        }
+        OutlinedButton(
+            enabled = NodeBackend.isAvailable(),
+            onClick = onReset,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.reset_node))
+        }
     }
 }
 

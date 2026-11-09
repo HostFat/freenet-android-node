@@ -461,18 +461,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                showDiagnostics = false
-                                showConfigEditor = false
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(stringResource(R.string.dashboard_title))
-                    }
                     if (nodeState.state.isRunning) {
                         OutlinedButton(
                             onClick = {
@@ -490,9 +478,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         state = nodeState,
                         lastUpEpochMs = policyState.lastNetworkUpEpochMs,
                         resetMessage = resetMessage,
-                        onStartLocal = {
-                            withNotificationPermission(nodeViewModel::startLocalNode)
-                        },
                         onStartNetwork = {
                             withNotificationPermission(nodeViewModel::startNetworkNode)
                         },
@@ -505,7 +490,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onRestart = {
                             withNotificationPermission(nodeViewModel::restartNetworkNode)
                         },
-                        onReset = { pendingReset = true },
                         crashReportPending = crashReportPending,
                         onDismissCrashLog = {
                             CrashReportOffer.clear(context)
@@ -806,12 +790,44 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     onSaveUdpPortSettings = ::saveUdpPortSettings,
                     onUseSavedUdp = { applyUdpFallback(UdpPortMode.Saved) },
                     onUseRandomUdp = { applyUdpFallback(UdpPortMode.Random) },
+                    onStartLocal = {
+                        withNotificationPermission(nodeViewModel::startLocalNode)
+                    },
+                    onReset = { pendingReset = true },
+                    canStartLocal = !nodeState.serviceActive,
                 )
             } else {
-                DashboardPanel(
-                    state = nodeState,
-                    modifier = Modifier.fillMaxSize(),
-                )
+                Box(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .padding(24.dp),
+                    contentAlignment = Alignment.Center,
+                ) {
+                    Column(
+                        horizontalAlignment = Alignment.CenterHorizontally,
+                        verticalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Text(
+                            stringResource(R.string.dashboard_title),
+                            style = MaterialTheme.typography.titleMedium,
+                        )
+                        Text(
+                            stringResource(R.string.dashboard_local_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                        if (nodeState.state.isRunning) {
+                            Button(
+                                onClick = {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(DASHBOARD_URL)),
+                                    )
+                                },
+                            ) {
+                                Text(stringResource(R.string.open_dashboard_browser))
+                            }
+                        }
+                    }
+                }
             }
             if (
                 menuPeek.value > 0.5f &&
@@ -1135,12 +1151,10 @@ private fun NodeControlStrip(
     state: NodeUiState,
     lastUpEpochMs: Long,
     resetMessage: String? = null,
-    onStartLocal: () -> Unit,
     onStartNetwork: () -> Unit,
     onPause: () -> Unit,
     onStop: () -> Unit,
     onRestart: () -> Unit,
-    onReset: () -> Unit,
     crashReportPending: Boolean = false,
     onSendCrashLog: () -> Unit = {},
     onDismissCrashLog: () -> Unit = {},
@@ -1298,13 +1312,6 @@ private fun NodeControlStrip(
                 ) {
                     Text(stringResource(R.string.start_network_node))
                 }
-                OutlinedButton(
-                    enabled = NodeBackend.isAvailable(),
-                    onClick = onStartLocal,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.start_local_node))
-                }
             }
         }
         Row(
@@ -1314,19 +1321,9 @@ private fun NodeControlStrip(
             OutlinedButton(
                 enabled = NodeBackend.isAvailable(),
                 onClick = onRestart,
-                modifier = Modifier.weight(1f),
+                modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.restart_node))
-            }
-            OutlinedButton(
-                enabled = NodeBackend.isAvailable(),
-                onClick = onReset,
-                modifier = Modifier.weight(1f),
-                colors = ButtonDefaults.outlinedButtonColors(
-                    contentColor = MaterialTheme.colorScheme.error,
-                ),
-            ) {
-                Text(stringResource(R.string.reset_node))
             }
         }
         resetMessage?.let { message ->

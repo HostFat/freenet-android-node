@@ -36,6 +36,7 @@
     <string name="update_download_failed">Update failed: %1$s</string>
     <string name="include_prereleases">Include pre-releases (beta)</string>
     <string name="include_prereleases_hint">When enabled, update checks also offer beta releases from GitHub.</string>
+    <string name="node_actions">Node actions</string>
     <string name="auto_check_interval">New version auto-check every</string>
     <string name="start_on_boot">Start on boot</string>
     <string name="start_on_boot_hint">After a reboot or app update, try to start the network node. Android can still block this; also turn off battery limits. Charging/Always still apply if selected.</string>
