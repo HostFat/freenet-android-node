@@ -65,6 +65,16 @@ internal object PrebuiltNodeProcess {
         val dbDir = File(dataDir, "db").apply { mkdirs() }
         val eventLogDir = File(dataDir, "_EVENT_LOG").apply { mkdirs() }
         val wasmtimeDir = File(context.cacheDir, "wasmtime").apply { mkdirs() }
+        // The node keeps a per-mode store below these directories but does not
+        // create the mode folder itself.
+        listOf(
+            File(contractsDir, "local"),
+            File(contractsDir, "network"),
+            File(delegatesDir, "local"),
+            File(delegatesDir, "network"),
+            File(dbDir, "local"),
+            File(dbDir, "network"),
+        ).forEach { it.mkdirs() }
         val minConnections = config.optInt("minConnections", ConnectionLimits.DefaultMin)
         val maxConnections = config.optInt("maxConnections", ConnectionLimits.DefaultMax)
         val configFile = File(configDir, "config.toml")
@@ -123,6 +133,12 @@ internal object PrebuiltNodeProcess {
             }
         }
         val hasLocalGateways = network && gatewaysReady.get()
+        if (network && !hasLocalGateways) {
+            appendInfoLog("gateways.toml is not ready; refusing to start the node")
+            return Result.failure(
+                IllegalStateException("Gateway file is not ready; check the network and retry"),
+            )
+        }
         Log.i(
             TAG,
             "config dir=${configDir.absolutePath} exists=${configDir.isDirectory} " +
@@ -277,7 +293,13 @@ internal object PrebuiltNodeProcess {
      * read from --config-dir, so write the keys under both roots.
      */
     private fun ensureGateways(configDir: File, workingDir: File): Boolean {
+        configDir.mkdirs()
         val gatewaysFile = File(configDir, "gateways.toml")
+        appendInfoLog(
+            "gateway write target: dir=${configDir.absolutePath} " +
+                "exists=${configDir.exists()} isDirectory=${configDir.isDirectory} " +
+                "canWrite=${configDir.canWrite()}",
+        )
         val rawIndex = if (gatewaysFile.isFile && gatewaysFile.length() > 0L) {
             gatewaysFile.readText()
         } else {
@@ -291,8 +313,7 @@ internal object PrebuiltNodeProcess {
         // Android DNS stack and persist the IP in the file.
         val index = resolveGatewayHosts(rawIndex)
         if (index != gatewaysFile.readText()) {
-            gatewaysFile.writeText(index)
-            appendInfoLog("gateways.toml written (${index.length} bytes)")
+            writeGatewayFile(configDir, gatewaysFile, index)
         }
         val keyPaths = Regex("""public[_-]key\s*=\s*"([^"]+)"""")
             .findAll(index)
@@ -383,6 +404,20 @@ internal object PrebuiltNodeProcess {
         appendLine("db_dir = \"${dbDir.absolutePath}\"")
         appendLine("event_log = \"${eventLogDir.absolutePath}\"")
         appendLine("wasmtime_cache_dir = \"${wasmtimeDir.absolutePath}\"")
+    }
+
+    private fun writeGatewayFile(configDir: File, gatewaysFile: File, index: String) {
+        runCatching {
+            gatewaysFile.writeText(index)
+        }.onFailure { first ->
+            appendInfoLog(
+                "gateways.toml write failed: ${first.message}; retrying after mkdirs",
+            )
+            configDir.mkdirs()
+            gatewaysFile.parentFile?.mkdirs()
+            gatewaysFile.writeText(index)
+        }
+        appendInfoLog("gateways.toml written (${index.length} bytes)")
     }
 
     private fun resolveGatewayHosts(toml: String): String =
