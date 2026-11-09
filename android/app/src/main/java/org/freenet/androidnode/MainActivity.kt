@@ -794,37 +794,10 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     canStartLocal = !nodeState.serviceActive,
                 )
             } else {
-                Box(
-                    modifier = Modifier
-                        .fillMaxSize()
-                        .padding(24.dp),
-                    contentAlignment = Alignment.Center,
-                ) {
-                    Column(
-                        horizontalAlignment = Alignment.CenterHorizontally,
-                        verticalArrangement = Arrangement.spacedBy(8.dp),
-                    ) {
-                        Text(
-                            stringResource(R.string.dashboard_title),
-                            style = MaterialTheme.typography.titleMedium,
-                        )
-                        Text(
-                            stringResource(R.string.dashboard_local_hint),
-                            style = MaterialTheme.typography.bodySmall,
-                        )
-                        if (nodeState.state.isRunning) {
-                            Button(
-                                onClick = {
-                                    context.startActivity(
-                                        Intent(Intent.ACTION_VIEW, Uri.parse(DASHBOARD_URL)),
-                                    )
-                                },
-                            ) {
-                                Text(stringResource(R.string.open_dashboard_browser))
-                            }
-                        }
-                    }
-                }
+                DashboardPanel(
+                    state = nodeState,
+                    modifier = Modifier.fillMaxSize(),
+                )
             }
             if (
                 menuPeek.value > 0.5f &&
@@ -1135,8 +1108,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         )
     }
 }
-
-private const val DASHBOARD_URL = "http://127.0.0.1:7509/"
 
 private sealed class PendingRestart {
     data class Connections(val min: Int, val max: Int) : PendingRestart()
