@@ -1136,6 +1136,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     }
 }
 
+private const val DASHBOARD_URL = "http://127.0.0.1:7509/"
+
 private sealed class PendingRestart {
     data class Connections(val min: Int, val max: Int) : PendingRestart()
     data object ConfigFile : PendingRestart()
