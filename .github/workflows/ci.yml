@@ -909,3 +909,17 @@ jobs:
           else
             gh issue create --repo "${{ github.repository }}" --title "${title}" --body "${body}" --assignee HostFat
           fi
+
+  announce-river:
+    name: Announce release on River
+    runs-on: [self-hosted, oracle]
+    needs: [release, release-prebuilt]
+    if: >
+      always() &&
+      !cancelled() &&
+      github.event_name == 'workflow_dispatch' &&
+      github.event.inputs.publish_release != 'false' &&
+      (needs.release.result == 'success' || needs.release-prebuilt.result == 'success')
+    steps:
+      - name: Run the River announcement script
+        run: /home/ubuntu/.config/unofficial-android/announce.sh
