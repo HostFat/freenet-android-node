@@ -507,6 +507,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         },
                         onReset = { pendingReset = true },
                         crashReportPending = crashReportPending,
+                        onDismissCrashLog = {
+                            CrashReportOffer.clear(context)
+                            crashSentId = null
+                            crashError = null
+                        },
                         onSendCrashLog = {
                             crashComment = presetCrashReportComment(appVersionName(context))
                             crashSentId = null
@@ -1138,6 +1143,7 @@ private fun NodeControlStrip(
     onReset: () -> Unit,
     crashReportPending: Boolean = false,
     onSendCrashLog: () -> Unit = {},
+    onDismissCrashLog: () -> Unit = {},
     onCopyFingerprint: (String) -> Unit,
     onUseSavedUdp: () -> Unit,
     onUseRandomUdp: () -> Unit,
@@ -1257,6 +1263,12 @@ private fun NodeControlStrip(
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.send_crash_log))
+            }
+            TextButton(
+                onClick = onDismissCrashLog,
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Text(stringResource(R.string.dismiss_crash_log))
             }
         }
         Row(
