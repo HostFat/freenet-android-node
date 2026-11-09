@@ -20,6 +20,8 @@ internal object CrashReportOffer {
     private const val DETAIL_KEY = "detail"
     private const val RING_KEY = "ring"
     private const val NOTED_AT_KEY = "noted_at"
+    private const val APP_VERSION_KEY = "app_version"
+    private const val CORE_VERSION_KEY = "core_version"
     private const val RING_LIMIT = 80_000
     private const val DETAIL_LIMIT = 2_000
     private const val STACK_LIMIT = 16_000
@@ -40,6 +42,8 @@ internal object CrashReportOffer {
             .putString(DETAIL_KEY, detail.trim().take(DETAIL_LIMIT))
             .putString(RING_KEY, savedRing)
             .putLong(NOTED_AT_KEY, System.currentTimeMillis())
+            .putString(APP_VERSION_KEY, BuildConfig.VERSION_NAME)
+            .putString(CORE_VERSION_KEY, BuildConfig.CORE_VERSION)
             .apply()
         mutablePending.value = true
     }
@@ -61,6 +65,8 @@ internal object CrashReportOffer {
             .putString(DETAIL_KEY, detail)
             .putString(RING_KEY, "")
             .putLong(NOTED_AT_KEY, System.currentTimeMillis())
+            .putString(APP_VERSION_KEY, BuildConfig.VERSION_NAME)
+            .putString(CORE_VERSION_KEY, BuildConfig.CORE_VERSION)
             .commit()
         mutablePending.value = true
     }
@@ -78,6 +84,12 @@ internal object CrashReportOffer {
 
     fun notedAtEpochMs(context: Context): Long =
         prefs(context).getLong(NOTED_AT_KEY, 0L)
+
+    fun appVersion(context: Context): String =
+        prefs(context).getString(APP_VERSION_KEY, "").orEmpty()
+
+    fun coreVersion(context: Context): String =
+        prefs(context).getString(CORE_VERSION_KEY, "").orEmpty()
 
     private fun prefs(context: Context) =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
