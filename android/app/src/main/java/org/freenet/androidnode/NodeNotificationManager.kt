@@ -43,18 +43,6 @@ class NodeNotificationManager(private val context: Context) {
             },
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
-        val pause = PendingIntent.getService(
-            context,
-            REQUEST_PAUSE,
-            NodeService.pauseIntent(context),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
-        val resume = PendingIntent.getService(
-            context,
-            REQUEST_RESUME,
-            NodeService.startNetworkIntent(context),
-            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
-        )
         val stop = PendingIntent.getService(
             context,
             REQUEST_STOP,
@@ -71,28 +59,13 @@ class NodeNotificationManager(private val context: Context) {
             .setOngoing(true)
             .setOnlyAlertOnce(true)
             .setShowWhen(false)
-        val primaryAction = if (state.state == NodePhase.Paused) {
+        builder.addAction(
             Notification.Action.Builder(
                 Icon.createWithResource(context, R.drawable.ic_node_notification),
-                context.getString(R.string.resume_node),
-                resume,
-            ).build()
-        } else {
-            Notification.Action.Builder(
-                Icon.createWithResource(context, R.drawable.ic_node_notification),
-                context.getString(R.string.pause_node),
-                pause,
-            ).build()
-        }
-        builder
-            .addAction(primaryAction)
-            .addAction(
-                Notification.Action.Builder(
-                    Icon.createWithResource(context, R.drawable.ic_node_notification),
-                    context.getString(R.string.stop_node),
-                    stop,
-                ).build(),
-            )
+                context.getString(R.string.stop_node),
+                stop,
+            ).build(),
+        )
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             builder.setForegroundServiceBehavior(Notification.FOREGROUND_SERVICE_IMMEDIATE)
@@ -200,8 +173,6 @@ class NodeNotificationManager(private val context: Context) {
         const val EVENT_UDP_BUSY_ID = 7513
 
         private const val REQUEST_OPEN_APP = 1
-        private const val REQUEST_PAUSE = 2
         private const val REQUEST_STOP = 3
-        private const val REQUEST_RESUME = 4
     }
 }

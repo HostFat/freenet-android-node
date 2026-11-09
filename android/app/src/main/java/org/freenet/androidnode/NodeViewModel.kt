@@ -27,10 +27,6 @@ class NodeViewModel(application: Application) : AndroidViewModel(application) {
 
     fun resetNode(): String = NodeReset.resetRuntimeData(getApplication())
 
-    fun pauseNode() {
-        NodeRepository.pause(getApplication())
-    }
-
     fun reportNotificationPermissionRequired() {
         NodeRepository.reportNotificationPermissionRequired()
     }

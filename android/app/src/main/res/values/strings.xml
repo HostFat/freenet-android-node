@@ -156,7 +156,7 @@
     <string name="alpha_accept_risks">I have read and accept the risks and notices in this disclaimer</string>
     <string name="dashboard_title">Dashboard</string>
     <string name="for_nerds_title">For nerds</string>
-    <string name="start_network_node">Start network node</string>
+    <string name="start_network_node">Start</string>
     <string name="start_local_node">Start local node</string>
     <string name="dashboard_not_ready">Dashboard is not ready yet</string>
     <string name="retry">Retry</string>

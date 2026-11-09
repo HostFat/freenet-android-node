@@ -481,9 +481,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onStartNetwork = {
                             withNotificationPermission(nodeViewModel::startNetworkNode)
                         },
-                        onPause = {
-                            nodeViewModel.pauseNode()
-                        },
                         onStop = {
                             nodeViewModel.stopNode()
                         },
@@ -1152,7 +1149,6 @@ private fun NodeControlStrip(
     lastUpEpochMs: Long,
     resetMessage: String? = null,
     onStartNetwork: () -> Unit,
-    onPause: () -> Unit,
     onStop: () -> Unit,
     onRestart: () -> Unit,
     crashReportPending: Boolean = false,
@@ -1290,17 +1286,10 @@ private fun NodeControlStrip(
             horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
             if (state.serviceActive) {
-                OutlinedButton(
-                    enabled = NodeBackend.isAvailable(),
-                    onClick = if (state.state == NodePhase.Paused) onStartNetwork else onPause,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(if (state.state == NodePhase.Paused) "Resume node" else "Pause node")
-                }
                 Button(
                     enabled = NodeBackend.isAvailable(),
                     onClick = onStop,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.stop_node))
                 }
@@ -1308,16 +1297,13 @@ private fun NodeControlStrip(
                 Button(
                     enabled = NodeBackend.isAvailable(),
                     onClick = onStartNetwork,
-                    modifier = Modifier.weight(1f),
+                    modifier = Modifier.fillMaxWidth(),
                 ) {
                     Text(stringResource(R.string.start_network_node))
                 }
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
+        if (state.state.isRunning) {
             OutlinedButton(
                 enabled = NodeBackend.isAvailable(),
                 onClick = onRestart,

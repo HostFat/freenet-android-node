@@ -136,25 +136,6 @@ class NodeService : Service() {
                 }
             }
 
-            ACTION_PAUSE -> serviceScope.launch {
-                userRequestedShutdown = true
-                crashRestartJob?.cancel()
-                crashRestartJob = null
-                scheduleJob?.cancel()
-                scheduleJob = null
-                NodeScheduleAlarm.cancel(this@NodeService)
-                NodePolicyRepository.setSuspended(this@NodeService, true)
-                lifecycleMutex.withLock {
-                    val automatic = NodePolicyRepository.state.value.automatic
-                    shutDownNode(
-                        startId = startId,
-                        paused = true,
-                        keepController = automatic,
-                        waitingDetail = "Node paused by the user",
-                    )
-                }
-            }
-
             ACTION_STOP -> serviceScope.launch {
                 userRequestedShutdown = true
                 crashRestartJob?.cancel()
@@ -828,7 +809,6 @@ class NodeService : Service() {
         const val ACTION_START_LOCAL = "org.freenet.androidnode.action.START_LOCAL"
         const val ACTION_START_NETWORK = "org.freenet.androidnode.action.START_NETWORK"
         const val ACTION_RECONCILE_POLICY = "org.freenet.androidnode.action.RECONCILE_POLICY"
-        const val ACTION_PAUSE = "org.freenet.androidnode.action.PAUSE"
         const val ACTION_STOP = "org.freenet.androidnode.action.STOP"
         const val ACTION_RESTART_NETWORK = "org.freenet.androidnode.action.RESTART_NETWORK"
 
@@ -852,9 +832,6 @@ class NodeService : Service() {
 
         fun reconcilePolicyIntent(context: Context): Intent =
             Intent(context, NodeService::class.java).setAction(ACTION_RECONCILE_POLICY)
-
-        fun pauseIntent(context: Context): Intent =
-            Intent(context, NodeService::class.java).setAction(ACTION_PAUSE)
 
         fun stopIntent(context: Context): Intent =
             Intent(context, NodeService::class.java).setAction(ACTION_STOP)

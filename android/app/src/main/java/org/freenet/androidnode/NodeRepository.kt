@@ -127,11 +127,6 @@ object NodeRepository {
         context.applicationContext.startService(NodeService.stopIntent(context.applicationContext))
     }
 
-    fun pause(context: Context) {
-        NodePolicyRepository.setSuspended(context.applicationContext, true)
-        context.applicationContext.startService(NodeService.pauseIntent(context.applicationContext))
-    }
-
     fun setPowerPolicy(context: Context, policy: NodePowerPolicy) {
         val appContext = context.applicationContext
         NodePolicyRepository.setPower(appContext, policy)
