@@ -12,6 +12,7 @@
     <string name="pause_node">Pause</string>
     <string name="resume_node">Resume</string>
     <string name="stop_node">Stop</string>
+    <string name="stopping_node">Stopping…</string>
     <string name="restart_node">Restart node</string>
     <string name="send_crash_log">Send crash log</string>
     <string name="dismiss_crash_log">Dismiss</string>

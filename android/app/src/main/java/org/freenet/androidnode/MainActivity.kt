@@ -1261,11 +1261,17 @@ private fun NodeControlStrip(
         ) {
             if (state.serviceActive) {
                 Button(
-                    enabled = NodeBackend.isAvailable(),
+                    enabled = NodeBackend.isAvailable() && state.state != NodePhase.Stopping,
                     onClick = onStop,
                     modifier = Modifier.fillMaxWidth(),
                 ) {
-                    Text(stringResource(R.string.stop_node))
+                    Text(
+                        if (state.state == NodePhase.Stopping) {
+                            stringResource(R.string.stopping_node)
+                        } else {
+                            stringResource(R.string.stop_node)
+                        },
+                    )
                 }
             } else {
                 Button(

@@ -15,7 +15,7 @@ import java.util.concurrent.TimeUnit
 internal object PrebuiltNodeProcess {
     private const val TAG = "PrebuiltNode"
     private const val STARTUP_GRACE_MS = 8_000L
-    private const val STOP_TIMEOUT_SECONDS = 10L
+    private const val STOP_TIMEOUT_SECONDS = 4L
     private const val RECENT_LINES = 200
     private const val GATEWAYS_INDEX = "https://freenet.org/keys/gateways.toml"
 
@@ -206,7 +206,7 @@ internal object PrebuiltNodeProcess {
         current.destroy()
         if (!current.waitFor(STOP_TIMEOUT_SECONDS, TimeUnit.SECONDS)) {
             current.destroyForcibly()
-            current.waitFor(5, TimeUnit.SECONDS)
+            current.waitFor(2, TimeUnit.SECONDS)
         }
         synchronized(lock) {
             process = null

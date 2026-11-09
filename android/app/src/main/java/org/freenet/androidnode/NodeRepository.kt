@@ -336,6 +336,16 @@ object NodeRepository {
         }
     }
 
+    internal fun publishStopping(detail: String = "Stopping the node…") {
+        mutableState.update {
+            it.copy(
+                state = NodePhase.Stopping,
+                detail = detail,
+                serviceActive = true,
+            )
+        }
+    }
+
     internal fun publishShutdownTimeout(detail: String, response: String) {
         mutableState.update {
             it.copy(
