@@ -77,6 +77,8 @@ internal fun DiagnosticsPanel(
     onStartLocal: () -> Unit,
     onReset: () -> Unit,
     canStartLocal: Boolean,
+    autoRestartOnCrash: Boolean,
+    onAutoRestartOnCrash: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
     var snapshot by remember { mutableStateOf("Collecting diagnostics…") }
@@ -408,6 +410,15 @@ internal fun DiagnosticsPanel(
         Text(
             stringResource(R.string.node_actions),
             style = MaterialTheme.typography.titleMedium,
+        )
+        SettingsCheckbox(
+            checked = autoRestartOnCrash,
+            label = stringResource(R.string.auto_restart_on_crash),
+            onCheckedChange = onAutoRestartOnCrash,
+        )
+        Text(
+            stringResource(R.string.auto_restart_on_crash_hint),
+            style = MaterialTheme.typography.bodySmall,
         )
         OutlinedButton(
             enabled = NodeBackend.isAvailable() && canStartLocal,

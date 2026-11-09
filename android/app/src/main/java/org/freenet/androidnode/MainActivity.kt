@@ -527,7 +527,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         },
                         startOnBoot = policyState.startOnBoot,
                         onStartOnBoot = nodeViewModel::setStartOnBoot,
-                        onAutoRestartOnCrash = nodeViewModel::setAutoRestartOnCrash,
                     )
                     HorizontalDivider()
                     BackgroundLimitsPanel(
@@ -792,6 +791,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     },
                     onReset = { pendingReset = true },
                     canStartLocal = !nodeState.serviceActive,
+                    autoRestartOnCrash = policyState.autoRestartOnCrash,
+                    onAutoRestartOnCrash = nodeViewModel::setAutoRestartOnCrash,
                 )
             } else {
                 DashboardPanel(
@@ -1464,7 +1465,6 @@ private fun PolicyControls(
     onConnectNow: () -> Unit,
     startOnBoot: Boolean,
     onStartOnBoot: (Boolean) -> Unit,
-    onAutoRestartOnCrash: (Boolean) -> Unit,
 ) {
     val context = LocalContext.current
 
@@ -1527,15 +1527,6 @@ private fun PolicyControls(
         }
         Text(
             stringResource(R.string.start_on_boot_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        SettingsCheckbox(
-            checked = policies.autoRestartOnCrash,
-            label = stringResource(R.string.auto_restart_on_crash),
-            onCheckedChange = onAutoRestartOnCrash,
-        )
-        Text(
-            stringResource(R.string.auto_restart_on_crash_hint),
             style = MaterialTheme.typography.bodySmall,
         )
         HorizontalDivider()
