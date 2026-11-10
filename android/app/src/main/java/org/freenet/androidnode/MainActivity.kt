@@ -237,6 +237,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val scope = rememberCoroutineScope()
     var pendingNotificationAction by remember { mutableStateOf<(() -> Unit)?>(null) }
     var showDiagnostics by rememberSaveable { mutableStateOf(false) }
+    var showSites by rememberSaveable { mutableStateOf(false) }
     var showConfigEditor by rememberSaveable { mutableStateOf(false) }
     var showNoEditor by rememberSaveable { mutableStateOf(false) }
     var showExternalGuideConfirm by rememberSaveable { mutableStateOf(false) }
@@ -461,6 +462,19 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                showSites = true
+                                showDiagnostics = false
+                                showConfigEditor = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.freenet_sites))
+                    }
                     if (nodeState.state.isRunning) {
                         OutlinedButton(
                             onClick = {
@@ -666,6 +680,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onClick = {
                             scope.launch {
                                 drawerState.close()
+                                showSites = false
                                 showDiagnostics = true
                             }
                         },
@@ -730,6 +745,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         adoptConfigFingerprint(userInitiatedEdit = true)
                     },
                 )
+            } else if (showSites) {
+                SitesPanel(
+                    modifier = Modifier.fillMaxSize(),
+                    onClose = { showSites = false },
+                )
             } else if (showDiagnostics) {
                 DiagnosticsPanel(
                     modifier = Modifier.fillMaxSize(),
@@ -742,6 +762,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     },
                     onEditConfig = {
                         configFingerprint = ConfigToml.fingerprint(context)
+                        showSites = false
                         showConfigEditor = true
                     },
                     onOpenExternal = {
