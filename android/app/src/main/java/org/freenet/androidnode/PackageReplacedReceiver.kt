@@ -12,7 +12,8 @@ import android.content.Intent
 class PackageReplacedReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
         if (intent.action != Intent.ACTION_MY_PACKAGE_REPLACED) return
-        PrebuiltNodeProcess.killOrphan(context)
+        // Start the service immediately; it moves to the foreground first and
+        // then terminates any orphan on a background thread.
         val prefs = context.getSharedPreferences("node_runtime", Context.MODE_PRIVATE)
         if (!prefs.getBoolean("was_active", false)) return
         val mode = prefs.getString("mode", "network")

@@ -71,6 +71,13 @@ class NodeService : Service() {
         NodePolicyRepository.initialize(this)
         nodeNotificationManager = NodeNotificationManager(this)
         nodeNotificationManager.ensureChannel()
+        // Android gives a startForegroundService five seconds to call
+        // startForeground. Do it before any disk or process work.
+        startForeground(
+            NodeNotificationManager.NOTIFICATION_ID,
+            nodeNotificationManager.build(NodeRepository.state.value),
+        )
+        foregroundStarted = true
         batteryManager = getSystemService(BatteryManager::class.java)
         connectivityMonitor = AndroidConnectivityMonitor(this) { snapshot ->
             serviceScope.launch { handleConnectivityChanged(snapshot) }
