@@ -4,22 +4,34 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.net.Uri
 import android.os.Build
+import android.view.View
+import android.util.Log
+import android.webkit.ConsoleMessage
+import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
 import android.webkit.WebResourceResponse
 import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
+import androidx.compose.foundation.background
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.itemsIndexed
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -32,6 +44,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
@@ -40,6 +53,7 @@ import androidx.compose.ui.viewinterop.AndroidView
 import java.io.ByteArrayInputStream
 
 private const val LOOPBACK_PREFIX = "http://127.0.0.1:7509"
+private const val SITE_TAG = "FreenetSiteView"
 private val CONTRACT_ROOT = Regex(
     """^(http://127\.0\.0\.1:7509/v1/contract/web/[^/]+/)""",
 )
@@ -61,6 +75,7 @@ internal fun SitesPanel(
     openSite?.let { site ->
         FreenetSiteView(
             site = site,
+            savedUrls = sites.map { it.url },
             modifier = modifier,
             onClose = { openSite = null },
             onAdd = { name, url -> sites = FreenetSites.add(context, name, url) },
@@ -220,8 +235,28 @@ internal fun SitesPanel(
 }
 
 @Composable
+private fun AddSiteButton(onClick: () -> Unit) {
+    Box(
+        modifier = Modifier
+            .size(32.dp)
+            .clip(RoundedCornerShape(8.dp))
+            .background(MaterialTheme.colorScheme.secondaryContainer)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center,
+    ) {
+        Icon(
+            imageVector = Icons.Default.Star,
+            contentDescription = stringResource(R.string.add_this_site),
+            tint = MaterialTheme.colorScheme.onSecondaryContainer,
+            modifier = Modifier.size(18.dp),
+        )
+    }
+}
+
+@Composable
 private fun FreenetSiteView(
     site: FreenetSite,
+    savedUrls: List<String>,
     modifier: Modifier = Modifier,
     onClose: () -> Unit,
     onAdd: (String, String) -> Unit,
@@ -230,7 +265,11 @@ private fun FreenetSiteView(
     var currentUrl by remember(site) { mutableStateOf(site.url) }
     var pageTitle by remember(site) { mutableStateOf(site.name) }
     var pageLoaded by remember(site) { mutableStateOf(false) }
+    var loadError by remember(site) { mutableStateOf<String?>(null) }
     val contractRoot = CONTRACT_ROOT.find(currentUrl)?.groupValues?.getOrNull(1)
+    val canAddRoot = contractRoot?.takeIf { root ->
+        pageLoaded && savedUrls.none { it.trimEnd('/') == root.trimEnd('/') }
+    }
 
     Column(
         modifier = modifier
@@ -240,20 +279,35 @@ private fun FreenetSiteView(
     ) {
         Row(
             modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.SpaceBetween,
+            verticalAlignment = Alignment.CenterVertically,
+            horizontalArrangement = Arrangement.spacedBy(6.dp),
         ) {
-            Text(pageTitle, style = MaterialTheme.typography.titleMedium)
+            Row(
+                modifier = Modifier.weight(1f),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(6.dp),
+            ) {
+                Text(
+                    pageTitle,
+                    style = MaterialTheme.typography.titleMedium,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                    modifier = Modifier.weight(1f, fill = false),
+                )
+                if (canAddRoot != null) {
+                    AddSiteButton(onClick = { onAdd(pageTitle, canAddRoot) })
+                }
+            }
             OutlinedButton(onClick = onClose) {
                 Text(stringResource(R.string.config_close))
             }
         }
-        if (contractRoot != null && pageLoaded) {
-            Button(
-                onClick = { onAdd(pageTitle, contractRoot) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.add_this_site))
-            }
+        loadError?.let { message ->
+            Text(
+                stringResource(R.string.site_load_error, message, currentUrl),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
         AndroidView(
             modifier = Modifier
@@ -269,10 +323,23 @@ private fun FreenetSiteView(
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         settings.safeBrowsingEnabled = true
                     }
+                    webChromeClient = object : WebChromeClient() {
+                        override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                            if (BuildConfig.DEBUG) {
+                                Log.d(
+                                    SITE_TAG,
+                                    "console ${message.messageLevel()} ${message.message()} " +
+                                        "(${message.sourceId()}:${message.lineNumber()})",
+                                )
+                            }
+                            return true
+                        }
+                    }
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             if (url != null) currentUrl = url
                             pageLoaded = false
+                            loadError = null
                         }
 
                         override fun onPageFinished(view: WebView?, url: String?) {
@@ -308,10 +375,11 @@ private fun FreenetSiteView(
                             request: WebResourceRequest,
                         ): WebResourceResponse? {
                             val uri = request.url
+                            val network = uri.scheme == "http" || uri.scheme == "https"
                             val loopback = uri.scheme == "http" &&
                                 uri.host == "127.0.0.1" &&
                                 uri.port == 7509
-                            return if (loopback) {
+                            return if (!network || loopback) {
                                 null
                             } else {
                                 WebResourceResponse(
@@ -330,10 +398,27 @@ private fun FreenetSiteView(
                             request: WebResourceRequest,
                             error: WebResourceError,
                         ) {
-                            if (request.isForMainFrame) pageLoaded = false
+                            Log.w(
+                                SITE_TAG,
+                                "error ${error.errorCode} ${error.description} ${request.url}",
+                            )
+                            if (request.isForMainFrame) {
+                                pageLoaded = false
+                                loadError = "${error.errorCode}: ${error.description}"
+                            }
                         }
                     }
-                    loadUrl(site.url)
+                    var loaded = false
+                    addOnAttachStateChangeListener(object : View.OnAttachStateChangeListener {
+                        override fun onViewAttachedToWindow(view: View) {
+                            if (!loaded) {
+                                loaded = true
+                                loadUrl(site.url)
+                            }
+                        }
+
+                        override fun onViewDetachedFromWindow(view: View) = Unit
+                    })
                 }
             },
         )
