@@ -58,6 +58,14 @@ internal object UpdateUrls {
         "https://raw.githubusercontent.com/HostFat/freenet-android-node/updates/releases.json"
 }
 
+/**
+ * raw.githubusercontent.com caches releases.json for five minutes and has
+ * held an older copy longer. A minute bucket gives each check a distinct URL,
+ * so a release published now is not hidden by the CDN.
+ */
+internal fun staticReleasesUrl(nowMs: Long): String =
+    "${UpdateUrls.STATIC_RELEASES}?t=${nowMs / 60_000L}"
+
 internal fun versionFromReleaseLocation(location: String): SemVer? {
     val path = location.substringBefore('?').substringBefore('#').trimEnd('/')
     val tag = path.substringAfterLast("/releases/tag/", missingDelimiterValue = "")

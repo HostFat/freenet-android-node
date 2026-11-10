@@ -144,7 +144,7 @@ internal object UpdateCheckRepository {
     private data class WorkerReleases(val app: GithubRelease, val core: GithubRelease)
 
     private fun fetchStaticReleases(includePrereleases: Boolean): WorkerReleases? {
-        val connection = (URL(UpdateUrls.STATIC_RELEASES).openConnection()
+        val connection = (URL(staticReleasesUrl(System.currentTimeMillis())).openConnection()
             as HttpURLConnection).apply {
             connectTimeout = 8_000
             readTimeout = 8_000
