@@ -122,12 +122,14 @@ internal object UpdateCheckRepository {
             }.getOrNull(),
         )
         val includePrereleases = mutableIncludePrereleases.value
-        val coreRelease = if (includePrereleases) {
+        // Prefer the cached worker; fall back to GitHub when it is unavailable.
+        val worker = runCatching { fetchWorkerReleases(includePrereleases) }.getOrNull()
+        val coreRelease = worker?.core ?: if (includePrereleases) {
             fetchNewestRelease(CORE_RELEASES_API)
         } else {
             fetchLatestRelease(UpdateUrls.CORE_RELEASES_PAGE)
         }
-        val apkRelease = if (includePrereleases) {
+        val apkRelease = worker?.app ?: if (includePrereleases) {
             fetchNewestRelease(APK_RELEASES_API)
         } else {
             fetchLatestRelease(UpdateUrls.APK_RELEASES_PAGE)
@@ -140,6 +142,35 @@ internal object UpdateCheckRepository {
             githubApkReleaseUrl = apkRelease.htmlUrl ?: UpdateUrls.APK_RELEASES_PAGE,
             peerSeen = SemVer.parse(peerVersion),
         )
+    }
+
+    private data class WorkerReleases(val app: GithubRelease, val core: GithubRelease)
+
+    private fun fetchWorkerReleases(includePrereleases: Boolean): WorkerReleases? {
+        val channel = if (includePrereleases) "beta" else "stable"
+        val connection = (URL("${UpdateUrls.WORKER_RELEASES}?channel=$channel").openConnection()
+            as HttpURLConnection).apply {
+            connectTimeout = 8_000
+            readTimeout = 8_000
+            setRequestProperty("User-Agent", USER_AGENT)
+        }
+        try {
+            if (connection.responseCode !in 200..299) return null
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val root = org.json.JSONObject(body)
+            val app = root.optJSONObject("app") ?: return null
+            val core = root.optJSONObject("core") ?: return null
+            fun release(value: org.json.JSONObject): GithubRelease? {
+                val version = SemVer.parse(value.optString("version")) ?: return null
+                return GithubRelease(version, value.optString("url"))
+            }
+            return WorkerReleases(
+                app = release(app) ?: return null,
+                core = release(core) ?: return null,
+            )
+        } finally {
+            connection.disconnect()
+        }
     }
 
     private fun fetchLatestRelease(latestUrl: String): GithubRelease {

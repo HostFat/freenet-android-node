@@ -70,6 +70,8 @@ internal object UpdateUrls {
         "https://github.com/freenet/freenet-core/releases/latest"
     const val APK_RELEASES_PAGE =
         "https://github.com/HostFat/freenet-android-node/releases/latest"
+    const val WORKER_RELEASES =
+        "https://freenet-android-crash-inbox.hostfat.workers.dev/v1/releases"
 }
 
 internal fun versionFromReleaseLocation(location: String): SemVer? {
