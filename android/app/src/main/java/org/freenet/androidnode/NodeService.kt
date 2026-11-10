@@ -220,7 +220,7 @@ class NodeService : Service() {
             // wedged node cannot turn service destruction into an ANR.
             Thread({
                 val response = NativeBridge.stopNode().getOrElse {
-                    "JNI error while destroying NodeService: ${it.message ?: "unknown error"}"
+                    "Service stop error: ${it.message ?: "unknown error"}"
                 }
                 NodeRepository.publishLifecycleResponse(response)
                 val status = runCatching {
@@ -455,7 +455,7 @@ class NodeService : Service() {
                     "message=${result.exceptionOrNull()?.message ?: "none"}",
             )
             result.getOrElse {
-                "JNI error: ${it.message ?: "unknown error"}"
+                "Start error: ${it.message ?: "unknown error"}"
             }
         }
         NodeRepository.publishLifecycleResponse(response)
@@ -559,7 +559,7 @@ class NodeService : Service() {
             var lastDashboardPoll = 0L
             while (isActive) {
                 val response = NodeBackend.status().getOrElse {
-                    "JNI error: ${it.message ?: "unknown error"}"
+                    "Status error: ${it.message ?: "unknown error"}"
                 }
                 val state = NodeRepository.publishNativeStatus(
                     response = response,
