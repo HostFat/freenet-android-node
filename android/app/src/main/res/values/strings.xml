@@ -27,6 +27,8 @@
     <string name="freenet_sites">Freenet sites</string>
     <string name="add_site">Add site</string>
     <string name="add_site_confirm">Add</string>
+    <string name="edit_site">Edit</string>
+    <string name="edit_site_title">Edit site</string>
     <string name="add_this_site">Add this site</string>
     <string name="remove_site">Remove</string>
     <string name="site_name">Name</string>

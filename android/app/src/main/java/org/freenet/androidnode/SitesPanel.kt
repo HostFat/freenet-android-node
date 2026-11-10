@@ -17,7 +17,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
@@ -30,9 +30,11 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import java.io.ByteArrayInputStream
@@ -52,6 +54,7 @@ internal fun SitesPanel(
     var sites by remember { mutableStateOf(initialSites ?: FreenetSites.load(context)) }
     var openSite by remember { mutableStateOf<FreenetSite?>(null) }
     var showAdd by remember { mutableStateOf(false) }
+    var editIndex by remember { mutableStateOf<Int?>(null) }
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
 
@@ -89,8 +92,12 @@ internal fun SitesPanel(
                 .weight(1f),
             verticalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            items(sites) { site ->
-                Column {
+            itemsIndexed(sites) { index, site ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(4.dp),
+                ) {
                     OutlinedButton(
                         onClick = {
                             if (site.url.startsWith(LOOPBACK_PREFIX)) {
@@ -101,12 +108,22 @@ internal fun SitesPanel(
                                 )
                             }
                         },
-                        modifier = Modifier.fillMaxWidth(),
+                        modifier = Modifier.weight(1f),
                     ) {
-                        Column {
-                            Text(site.name)
-                            Text(site.url, style = MaterialTheme.typography.bodySmall)
-                        }
+                        Text(
+                            site.name,
+                            maxLines = 1,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
+                    TextButton(
+                        onClick = {
+                            editIndex = index
+                            newName = site.name
+                            newUrl = site.url
+                        },
+                    ) {
+                        Text(stringResource(R.string.edit_site))
                     }
                     if (!site.predefined) {
                         TextButton(
@@ -119,17 +136,33 @@ internal fun SitesPanel(
             }
         }
         Button(
-            onClick = { showAdd = true },
+            onClick = {
+                newName = ""
+                newUrl = ""
+                showAdd = true
+            },
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.add_site))
         }
     }
 
-    if (showAdd) {
+    val editingIndex = editIndex
+    if (showAdd || editingIndex != null) {
         AlertDialog(
-            onDismissRequest = { showAdd = false },
-            title = { Text(stringResource(R.string.add_site)) },
+            onDismissRequest = {
+                showAdd = false
+                editIndex = null
+                newName = ""
+                newUrl = ""
+            },
+            title = {
+                Text(
+                    stringResource(
+                        if (editingIndex != null) R.string.edit_site_title else R.string.add_site,
+                    ),
+                )
+            },
             text = {
                 Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                     OutlinedTextField(
@@ -146,18 +179,39 @@ internal fun SitesPanel(
             },
             confirmButton = {
                 TextButton(
+                    enabled = newUrl.isNotBlank(),
                     onClick = {
-                        sites = FreenetSites.add(context, newName, newUrl)
+                        sites = if (editingIndex != null) {
+                            FreenetSites.update(context, editingIndex, newName, newUrl)
+                        } else {
+                            FreenetSites.add(context, newName, newUrl)
+                        }
+                        showAdd = false
+                        editIndex = null
                         newName = ""
                         newUrl = ""
-                        showAdd = false
                     },
                 ) {
-                    Text(stringResource(R.string.add_site_confirm))
+                    Text(
+                        stringResource(
+                            if (editingIndex != null) {
+                                R.string.config_save
+                            } else {
+                                R.string.add_site_confirm
+                            },
+                        ),
+                    )
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showAdd = false }) {
+                TextButton(
+                    onClick = {
+                        showAdd = false
+                        editIndex = null
+                        newName = ""
+                        newUrl = ""
+                    },
+                ) {
                     Text(stringResource(R.string.config_close))
                 }
             },
