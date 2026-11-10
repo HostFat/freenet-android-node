@@ -119,8 +119,8 @@ internal object ServiceReport {
             null
         } else {
             files.joinToString("\n") { file ->
-                runCatching { file.readText() }.getOrDefault("")
-            }.trim().ifEmpty { null }
+                readLogTail(file, MAX_LOG_BYTES)
+            }.takeLast(MAX_LOG_BYTES).trim().ifEmpty { null }
         }
         return fromFiles
     }

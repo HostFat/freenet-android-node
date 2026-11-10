@@ -17,6 +17,8 @@ internal object PrebuiltNodeProcess {
     private const val STARTUP_GRACE_MS = 8_000L
     private const val STOP_TIMEOUT_SECONDS = 4L
     private const val RECENT_LINES = 200
+    private const val MAX_LOG_BYTES = 2L * 1024 * 1024
+    private const val MAX_TAIL_BYTES = 64 * 1024
     private const val GATEWAYS_INDEX = "https://freenet.org/keys/gateways.toml"
 
     private val lock = Any()
@@ -53,7 +55,12 @@ internal object PrebuiltNodeProcess {
         val configDir = File(root, "config").apply { mkdirs() }
         val dataDir = File(root, "data").apply { mkdirs() }
         val logDir = File(root, "logs").apply { mkdirs() }
-        synchronized(lock) { logFile = File(logDir, "node-process.log") }
+        val nodeLog = File(logDir, "node-process.log")
+        synchronized(lock) { logFile = nodeLog }
+        if (nodeLog.length() > MAX_LOG_BYTES * 2) {
+            // A previous build could leave a very large log.
+            nodeLog.delete()
+        }
         appendInfoLog(
             "dirs config=${configDir.isDirectory} data=${dataDir.isDirectory} " +
                 "logs=${logDir.isDirectory}",
@@ -209,7 +216,6 @@ internal object PrebuiltNodeProcess {
 
         appendInfoLog("starting process: ${arguments.joinToString(" ")}")
         val started = builder.start()
-        val nodeLog = File(logDir, "node-process.log")
         synchronized(lock) {
             process = started
             logFile = nodeLog
@@ -302,9 +308,10 @@ internal object PrebuiltNodeProcess {
         if (file == null || !file.isFile) {
             return "No process output yet."
         }
-        return runCatching {
-            file.readLines().takeLast(limit).joinToString("\n")
-        }.getOrElse { "Could not read ${file.absolutePath}: ${it.message}" }
+        return readLogTail(file, MAX_TAIL_BYTES)
+            .lines()
+            .takeLast(limit)
+            .joinToString("\n")
     }
 
     fun updateConnectivity(@Suppress("UNUSED_PARAMETER") json: String): Result<String> =
@@ -541,6 +548,7 @@ internal object PrebuiltNodeProcess {
         Thread({
             runCatching {
                 started.inputStream.bufferedReader().useLines { lines ->
+                    var written = 0
                     lines.forEach { rawLine ->
                         val line = stripAnsi(rawLine)
                         synchronized(lock) {
@@ -549,8 +557,18 @@ internal object PrebuiltNodeProcess {
                                 recentLines.removeFirst()
                             }
                         }
-                        runCatching { nodeLog.appendText("$line\n") }
-                        Log.i(TAG, line)
+                        runCatching {
+                            if (nodeLog.length() > MAX_LOG_BYTES) {
+                                val previous = File(nodeLog.parentFile, "node-process.log.1")
+                                previous.delete()
+                                nodeLog.renameTo(previous)
+                            }
+                            nodeLog.appendText("$line\n")
+                        }
+                        written += 1
+                        if (written % 500 == 0) {
+                            Log.i(TAG, line)
+                        }
                     }
                 }
             }
