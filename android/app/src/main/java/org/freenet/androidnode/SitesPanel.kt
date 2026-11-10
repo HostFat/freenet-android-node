@@ -188,15 +188,26 @@ internal fun SitesPanel(
                 }
             }
         }
-        Button(
-            onClick = {
-                newName = ""
-                newUrl = ""
-                showAdd = true
-            },
+        Row(
             modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(8.dp),
         ) {
-            Text(stringResource(R.string.add_site))
+            Button(
+                onClick = {
+                    newName = ""
+                    newUrl = ""
+                    showAdd = true
+                },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.add_site))
+            }
+            OutlinedButton(
+                onClick = { sites = FreenetSites.restoreDefaults(context) },
+                modifier = Modifier.weight(1f),
+            ) {
+                Text(stringResource(R.string.restore_defaults))
+            }
         }
     }
 

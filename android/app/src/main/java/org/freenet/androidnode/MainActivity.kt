@@ -475,18 +475,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     ) {
                         Text(stringResource(R.string.freenet_sites))
                     }
-                    if (nodeState.state.isRunning) {
-                        OutlinedButton(
-                            onClick = {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(DASHBOARD_URL)),
-                                )
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(stringResource(R.string.open_dashboard_browser))
-                        }
-                    }
                     HorizontalDivider()
                     NodeControlStrip(
                         state = nodeState,

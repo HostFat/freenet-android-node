@@ -26,6 +26,7 @@
     <string name="restore_backup">Restore last backup</string>
     <string name="freenet_sites">Freenet sites</string>
     <string name="close_dashboard">Close / Dashboard</string>
+    <string name="restore_defaults">Default</string>
     <string name="add_site">Add site</string>
     <string name="add_site_confirm">Add</string>
     <string name="edit_site">Edit</string>

@@ -118,6 +118,11 @@ internal object FreenetSites {
         return load(context)
     }
 
+    fun restoreDefaults(context: Context): List<FreenetSite> {
+        prefs(context).edit().remove(KEY_REMOVED).remove(KEY_OVERRIDES).apply()
+        return load(context)
+    }
+
     private fun customSites(context: Context): List<FreenetSite> =
         decode(prefs(context).getString(KEY_CUSTOM, null), predefined = false)
 
