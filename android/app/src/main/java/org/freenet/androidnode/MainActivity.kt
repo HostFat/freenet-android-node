@@ -462,18 +462,20 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }
-                    OutlinedButton(
-                        onClick = {
-                            scope.launch {
-                                drawerState.close()
-                                showSites = true
-                                showDiagnostics = false
-                                showConfigEditor = false
-                            }
-                        },
-                        modifier = Modifier.fillMaxWidth(),
-                    ) {
-                        Text(stringResource(R.string.freenet_sites))
+                    if (nodeIsConnected(nodeState.state, nodeState.peers)) {
+                        OutlinedButton(
+                            onClick = {
+                                scope.launch {
+                                    drawerState.close()
+                                    showSites = true
+                                    showDiagnostics = false
+                                    showConfigEditor = false
+                                }
+                            },
+                            modifier = Modifier.fillMaxWidth(),
+                        ) {
+                            Text(stringResource(R.string.freenet_sites))
+                        }
                     }
                     if (nodeState.state.isRunning) {
                         OutlinedButton(

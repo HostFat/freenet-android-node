@@ -81,6 +81,10 @@ internal fun connectionLimitsAreDirty(
 internal fun isGatewayOnlyHint(natHint: String?): Boolean =
     natHint?.contains("gateways", ignoreCase = true) == true
 
+/** Matches the "Connected" status label: network mode with at least one peer. */
+internal fun nodeIsConnected(state: NodePhase, peers: Int): Boolean =
+    state == NodePhase.RunningNetwork && peers > 0
+
 internal fun networkStatusLabel(
     state: NodePhase,
     mode: NodeMode,
@@ -96,7 +100,7 @@ internal fun networkStatusLabel(
             (state == NodePhase.RunningLocal || state == NodePhase.Starting) ->
             if (state == NodePhase.Starting) "Starting local" else "Local"
         state == NodePhase.Starting || state == NodePhase.Stopping -> "Connecting"
-        state == NodePhase.RunningNetwork && peers > 0 -> "Connected"
+        nodeIsConnected(state, peers) -> "Connected"
         state == NodePhase.RunningNetwork && isGatewayOnlyHint(natHint) -> "Gateway only"
         state == NodePhase.RunningNetwork -> "Connecting"
         else -> state.wire

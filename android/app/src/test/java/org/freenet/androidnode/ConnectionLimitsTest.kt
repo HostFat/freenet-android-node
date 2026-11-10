@@ -37,6 +37,15 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun freenetSitesMenuNeedsAConnectedNode() {
+        assertEquals(true, nodeIsConnected(NodePhase.RunningNetwork, 1))
+        assertEquals(false, nodeIsConnected(NodePhase.RunningNetwork, 0))
+        assertEquals(false, nodeIsConnected(NodePhase.RunningLocal, 1))
+        assertEquals(false, nodeIsConnected(NodePhase.Starting, 1))
+        assertEquals(false, nodeIsConnected(NodePhase.Stopped, 0))
+    }
+
+    @Test
     fun lastKnownStatusJsonSurvivesADeadNode() {
         val json = ServiceReport.lastKnownStatusJson(
             NodeUiState(state = NodePhase.Failed, detail = "native crash", lastNetworkError = "segfault"),
