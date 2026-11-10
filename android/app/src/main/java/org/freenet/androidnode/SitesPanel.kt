@@ -151,12 +151,10 @@ internal fun SitesPanel(
                         ) {
                             Text(stringResource(R.string.edit_site))
                         }
-                        if (!site.predefined) {
-                            TextButton(
-                                onClick = { sites = FreenetSites.remove(context, site) },
-                            ) {
-                                Text(stringResource(R.string.remove_site))
-                            }
+                        TextButton(
+                            onClick = { sites = FreenetSites.remove(context, site) },
+                        ) {
+                            Text(stringResource(R.string.remove_site))
                         }
                     }
                 }

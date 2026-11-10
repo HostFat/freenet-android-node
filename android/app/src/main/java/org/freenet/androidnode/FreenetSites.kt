@@ -14,16 +14,12 @@ internal object FreenetSites {
     private const val PREFS = "freenet_sites"
     private const val KEY_CUSTOM = "custom_sites"
     private const val KEY_OVERRIDES = "default_overrides"
+    private const val KEY_REMOVED = "removed_defaults"
 
     val defaults = listOf(
         FreenetSite(
             "River Chat",
             "http://127.0.0.1:7509/v1/contract/web/raAqMhMG7KUpXBU2SxgCQ3Vh4PYjttxdSWd9ftV7RLv/",
-            true,
-        ),
-        FreenetSite(
-            "FreePinion",
-            "http://127.0.0.1:7509/v1/contract/web/9ji1n5Pnuhje4k4GtsyW33tMp4CGGkhLAM6KCPCAQVrY/",
             true,
         ),
         FreenetSite(
@@ -47,13 +43,21 @@ internal object FreenetSites {
             "http://127.0.0.1:7509/v1/contract/web/122f6AR7PyF8d8mhczuNQM4xrLtBf5t8g2iB7PEVT7KC/",
             true,
         ),
+        FreenetSite(
+            "FreePinion",
+            "http://127.0.0.1:7509/v1/contract/web/9ji1n5Pnuhje4k4GtsyW33tMp4CGGkhLAM6KCPCAQVrY/",
+            true,
+        ),
     )
 
     fun load(context: Context): List<FreenetSite> {
         val overrides = overrides(context)
-        val edited = defaults.map { site ->
-            overrides[site.url]?.let { FreenetSite(it.first, it.second, true) } ?: site
-        }
+        val removed = removedDefaults(context)
+        val edited = defaults
+            .filterNot { it.url in removed }
+            .map { site ->
+                overrides[site.url]?.let { FreenetSite(it.first, it.second, true) } ?: site
+            }
         return edited + customSites(context).map { FreenetSite(it.name, it.url) }
     }
 
@@ -71,14 +75,19 @@ internal object FreenetSites {
         val clean = url.trim()
         if (clean.isBlank()) return load(context)
         val cleanName = name.trim().ifBlank { clean }
-        if (index in defaults.indices) {
+        val current = load(context)
+        val site = current.getOrNull(index) ?: return current
+        if (site.predefined) {
             val overrides = overrides(context).toMutableMap()
-            overrides[defaults[index].url] = cleanName to clean
+            val original = defaults.firstOrNull { default ->
+                (overrides[default.url]?.second ?: default.url) == site.url
+            }?.url ?: return current
+            overrides[original] = cleanName to clean
             saveOverrides(context, overrides)
         } else {
             val custom = customSites(context).toMutableList()
-            val customIndex = index - defaults.size
-            if (customIndex in custom.indices) {
+            val customIndex = custom.indexOfFirst { it.url == site.url }
+            if (customIndex >= 0) {
                 custom[customIndex] = FreenetSite(cleanName, clean)
                 saveCustom(context, custom)
             }
@@ -87,9 +96,25 @@ internal object FreenetSites {
     }
 
     fun remove(context: Context, site: FreenetSite): List<FreenetSite> {
-        if (site.predefined) return load(context)
-        val custom = customSites(context).filterNot { it.url == site.url }
-        saveCustom(context, custom)
+        if (site.predefined) {
+            val overrides = overrides(context)
+            val original = defaults.firstOrNull { default ->
+                (overrides[default.url]?.second ?: default.url) == site.url
+            }?.url
+            if (original != null) {
+                val removed = removedDefaults(context).toMutableSet()
+                removed.add(original)
+                saveRemovedDefaults(context, removed)
+                if (overrides.containsKey(original)) {
+                    val edited = overrides.toMutableMap()
+                    edited.remove(original)
+                    saveOverrides(context, edited)
+                }
+            }
+        } else {
+            val custom = customSites(context).filterNot { it.url == site.url }
+            saveCustom(context, custom)
+        }
         return load(context)
     }
 
@@ -110,6 +135,19 @@ internal object FreenetSites {
                 }
             }
         }.getOrDefault(emptyMap())
+    }
+
+    private fun removedDefaults(context: Context): Set<String> {
+        val raw = prefs(context).getString(KEY_REMOVED, null) ?: return emptySet()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildSet {
+                for (index in 0 until array.length()) {
+                    val url = array.optString(index)
+                    if (url.isNotBlank()) add(url)
+                }
+            }
+        }.getOrDefault(emptySet())
     }
 
     private fun decode(raw: String?, predefined: Boolean): List<FreenetSite> {
@@ -142,6 +180,14 @@ internal object FreenetSites {
             root.put(original, JSONObject().put("name", values.first).put("url", values.second))
         }
         prefs(context).edit().putString(KEY_OVERRIDES, root.toString()).apply()
+    }
+
+    private fun saveRemovedDefaults(context: Context, removed: Set<String>) {
+        val array = JSONArray()
+        for (url in removed) {
+            array.put(url)
+        }
+        prefs(context).edit().putString(KEY_REMOVED, array.toString()).apply()
     }
 
     private fun prefs(context: Context) =
