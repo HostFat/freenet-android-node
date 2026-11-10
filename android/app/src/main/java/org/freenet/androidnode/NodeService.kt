@@ -439,6 +439,15 @@ class NodeService : Service() {
             .apply()
         nodeNotificationManager.update(NodeRepository.state.value)
         val response = withContext(Dispatchers.IO) {
+            if (BuildConfig.PREBUILT_NODE && NodeBackup.needsBackup(this@NodeService)) {
+                // Stop a leftover child first, then archive the old state
+                // before the new core opens the database.
+                PrebuiltNodeProcess.killOrphan(this@NodeService)
+                val backup = NodeBackup.backup(this@NodeService)
+                NodeBackend.appendInfoLog(
+                    backup?.let { "backup written ${it.name}" } ?: "backup skipped",
+                )
+            }
             val configJson = androidNodeConfigJson(
                 this@NodeService,
                 connectivity.takeIf { networkMode },
