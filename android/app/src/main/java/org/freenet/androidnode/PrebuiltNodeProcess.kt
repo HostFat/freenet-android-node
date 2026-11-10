@@ -27,6 +27,7 @@ internal object PrebuiltNodeProcess {
     private var startedAtElapsed = 0L
     private var lastExitCode: Int? = null
     private var lastDetail = "Prebuilt Freenet process is not running"
+    private var pidFile: File? = null
     private val recentLines = ArrayDeque<String>()
     @Volatile
     private var stopRequested = false
@@ -34,6 +35,8 @@ internal object PrebuiltNodeProcess {
     fun start(context: Context, configJson: String, network: Boolean): Result<String> = runCatching {
         appendInfoLog("start requested network=$network")
         stop()
+        val pidFile = File(context.filesDir, "freenet/prebuilt/node.pid")
+        killOrphan(pidFile)
         stopRequested = false
         val config = JSONObject(configJson)
         val binary = File(context.applicationInfo.nativeLibraryDir, "libfreenet.so")
@@ -46,6 +49,7 @@ internal object PrebuiltNodeProcess {
         // Use a directory owned by this backend so a config left by the JNI
         // path cannot interfere, and create every path the node opens.
         val root = File(context.filesDir, "freenet/prebuilt").apply { mkdirs() }
+        synchronized(lock) { this.pidFile = pidFile }
         val configDir = File(root, "config").apply { mkdirs() }
         val dataDir = File(root, "data").apply { mkdirs() }
         val logDir = File(root, "logs").apply { mkdirs() }
@@ -163,7 +167,17 @@ internal object PrebuiltNodeProcess {
             arguments += "--skip-load-from-network"
         }
 
-        val builder = ProcessBuilder(arguments)
+        // The shell records the pid before exec, so a leftover process can be
+        // terminated on the next start even after the app was killed.
+        val command = mutableListOf(
+            "/system/bin/sh",
+            "-c",
+            "echo $$ > \"$1\"; shift; exec \"$@\"",
+            "sh",
+            pidFile.absolutePath,
+        )
+        command += arguments
+        val builder = ProcessBuilder(command)
             .directory(context.filesDir)
             .redirectErrorStream(true)
         builder.environment().apply {
@@ -200,6 +214,7 @@ internal object PrebuiltNodeProcess {
                 process = null
                 lastExitCode = null
                 lastDetail = "Prebuilt Freenet process is not running"
+                pidFile?.delete()
             }
             return@runCatching successEnvelope("Stopped", "Prebuilt Freenet process was already stopped")
         }
@@ -212,6 +227,7 @@ internal object PrebuiltNodeProcess {
             process = null
             lastExitCode = null
             lastDetail = "Prebuilt Freenet process stopped"
+            pidFile?.delete()
         }
         successEnvelope("Stopped", "Prebuilt Freenet process stopped")
     }
@@ -407,6 +423,26 @@ internal object PrebuiltNodeProcess {
         appendLine("db_dir = \"${dbDir.absolutePath}\"")
         appendLine("event_log = \"${eventLogDir.absolutePath}\"")
         appendLine("wasmtime_cache_dir = \"${wasmtimeDir.absolutePath}\"")
+    }
+
+    fun killOrphan(context: Context) {
+        killOrphan(File(context.filesDir, "freenet/prebuilt/node.pid"))
+    }
+
+    private fun killOrphan(pidFile: File) {
+        if (!pidFile.isFile) return
+        val pid = runCatching { pidFile.readText().trim().toInt() }.getOrNull()
+        pidFile.delete()
+        if (pid == null || pid <= 0) return
+        val entry = File("/proc/$pid")
+        if (!entry.exists()) return
+        appendInfoLog("terminating orphan node pid=$pid")
+        runCatching { android.os.Process.sendSignal(pid, 15) }
+        Thread.sleep(2_000)
+        if (entry.exists()) {
+            runCatching { android.os.Process.sendSignal(pid, 9) }
+            Thread.sleep(500)
+        }
     }
 
     private fun writeGatewayFile(configDir: File, gatewaysFile: File, index: String) {

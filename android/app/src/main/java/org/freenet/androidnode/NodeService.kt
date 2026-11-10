@@ -433,6 +433,10 @@ class NodeService : Service() {
         val startedAt = SystemClock.elapsedRealtime()
         startedAtElapsedRealtimeMs = startedAt
         NodeRepository.publishStarting(startedAt, runningMode)
+        getSharedPreferences("node_runtime", MODE_PRIVATE).edit()
+            .putBoolean("was_active", true)
+            .putString("mode", if (networkMode) "network" else "local")
+            .apply()
         nodeNotificationManager.update(NodeRepository.state.value)
         val response = withContext(Dispatchers.IO) {
             val configJson = androidNodeConfigJson(
@@ -505,6 +509,30 @@ class NodeService : Service() {
         crashRestartAttempt = 0
         appInitiatedStop = false
         beginStatusUpdates()
+        if (networkMode) {
+            // A start that stays at zero peers while gateways respond usually
+            // means a stale child process or a locked store. Retry once.
+            serviceScope.launch {
+                delay(90_000)
+                if (!userRequestedShutdown &&
+                    runningMode == NodeMode.Network &&
+                    NodeRepository.state.value.peers == 0 &&
+                    nativeIsActive()
+                ) {
+                    NodeRepository.publishStopping("No peers after startup; restarting")
+                    lifecycleMutex.withLock {
+                        if (!userRequestedShutdown) {
+                            shutDownNode(
+                                latestStartId,
+                                keepController = true,
+                                waitingDetail = "Restarting after an isolated start",
+                            )
+                            reconcilePolicy(latestStartId, explicitStart = true)
+                        }
+                    }
+                }
+            }
+        }
     }
 
     private suspend fun handleConnectivityChanged(snapshot: ConnectivitySnapshot) {
@@ -633,6 +661,9 @@ class NodeService : Service() {
         waitingDetail: String? = null,
     ) {
         appInitiatedStop = true
+        getSharedPreferences("node_runtime", MODE_PRIVATE).edit()
+            .putBoolean("was_active", false)
+            .apply()
         connectivityRestartJob?.cancel()
         statusJob?.cancelAndJoin()
         statusJob = null
