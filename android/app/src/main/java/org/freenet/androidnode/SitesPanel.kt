@@ -46,9 +46,10 @@ private val CONTRACT_ROOT = Regex(
 internal fun SitesPanel(
     modifier: Modifier = Modifier,
     onClose: () -> Unit,
+    initialSites: List<FreenetSite>? = null,
 ) {
     val context = LocalContext.current
-    var sites by remember { mutableStateOf(FreenetSites.load(context)) }
+    var sites by remember { mutableStateOf(initialSites ?: FreenetSites.load(context)) }
     var openSite by remember { mutableStateOf<FreenetSite?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var newName by remember { mutableStateOf("") }
@@ -174,6 +175,7 @@ private fun FreenetSiteView(
     val context = LocalContext.current
     var currentUrl by remember(site) { mutableStateOf(site.url) }
     var pageTitle by remember(site) { mutableStateOf(site.name) }
+    var pageLoaded by remember(site) { mutableStateOf(false) }
     val contractRoot = CONTRACT_ROOT.find(currentUrl)?.groupValues?.getOrNull(1)
 
     Column(
@@ -191,7 +193,7 @@ private fun FreenetSiteView(
                 Text(stringResource(R.string.config_close))
             }
         }
-        if (contractRoot != null) {
+        if (contractRoot != null && pageLoaded) {
             Button(
                 onClick = { onAdd(pageTitle, contractRoot) },
                 modifier = Modifier.fillMaxWidth(),
@@ -216,10 +218,12 @@ private fun FreenetSiteView(
                     webViewClient = object : WebViewClient() {
                         override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                             if (url != null) currentUrl = url
+                            pageLoaded = false
                         }
 
                         override fun onPageFinished(view: WebView?, url: String?) {
                             if (url != null) currentUrl = url
+                            pageLoaded = true
                             view?.evaluateJavascript("document.title") { raw ->
                                 val title = raw?.trim('"')
                                 if (!title.isNullOrBlank()) pageTitle = title
@@ -272,7 +276,7 @@ private fun FreenetSiteView(
                             request: WebResourceRequest,
                             error: WebResourceError,
                         ) {
-                            // Keep the previous URL; the page shows the error.
+                            if (request.isForMainFrame) pageLoaded = false
                         }
                     }
                     loadUrl(site.url)
