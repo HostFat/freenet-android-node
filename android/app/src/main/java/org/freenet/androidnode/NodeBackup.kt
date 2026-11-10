@@ -14,7 +14,8 @@ import java.util.zip.ZipOutputStream
  */
 internal object NodeBackup {
     private const val TAG = "NodeBackup"
-    private const val PREFS = "node_runtime"
+    internal const val PREFS = "node_runtime"
+    internal const val CORE_VERSION_KEY = "last_core_version"
     private const val KEY_LAST_VERSION = "last_backup_version"
 
     fun needsBackup(context: Context): Boolean =
@@ -53,6 +54,61 @@ internal object NodeBackup {
             Log.e(TAG, "backup failed", error)
             target.delete()
             null
+        }
+    }
+
+    fun latest(context: Context): File? =
+        File(context.filesDir, "freenet/prebuilt/backups")
+            .listFiles()
+            ?.filter { it.isFile && it.name.endsWith(".zip") }
+            ?.maxByOrNull { it.lastModified() }
+
+    fun restore(context: Context): Result<String> = runCatching {
+        val root = File(context.filesDir, "freenet/prebuilt")
+        val archive = latest(context) ?: error("No backup found")
+        val staging = File(root, ".restore-tmp").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        try {
+            java.util.zip.ZipInputStream(
+                java.io.BufferedInputStream(archive.inputStream()),
+            ).use { zip ->
+                var entry = zip.nextEntry
+                while (entry != null) {
+                    val target = File(staging, entry.name).canonicalFile
+                    require(
+                        target.path.startsWith(staging.canonicalPath + File.separator),
+                    ) { "Unsafe backup entry: ${entry.name}" }
+                    if (entry.isDirectory) {
+                        target.mkdirs()
+                    } else {
+                        target.parentFile?.mkdirs()
+                        target.outputStream().use { zip.copyTo(it) }
+                    }
+                    zip.closeEntry()
+                    entry = zip.nextEntry
+                }
+            }
+            fun replace(name: String, destination: File) {
+                val source = File(staging, name)
+                if (!source.exists()) return
+                destination.deleteRecursively()
+                destination.parentFile?.mkdirs()
+                check(source.renameTo(destination)) { "Could not restore $name" }
+            }
+            replace("config", File(root, "config"))
+            replace("db", File(root, "data/db"))
+            replace("delegates", File(root, "data/delegates"))
+            replace("secrets", File(root, "data/secrets"))
+            replace("secrets_local", File(root, "data/secrets_local"))
+            context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
+                .putInt(KEY_LAST_VERSION, BuildConfig.VERSION_CODE)
+                .putString(CORE_VERSION_KEY, BuildConfig.CORE_VERSION)
+                .apply()
+            "Backup restored. Start the node."
+        } finally {
+            staging.deleteRecursively()
         }
     }
 

@@ -82,6 +82,25 @@ internal object PrebuiltNodeProcess {
         val minConnections = config.optInt("minConnections", ConnectionLimits.DefaultMin)
         val maxConnections = config.optInt("maxConnections", ConnectionLimits.DefaultMax)
         val configFile = File(configDir, "config.toml")
+        val runtimePrefs = context.getSharedPreferences(
+            NodeBackup.PREFS,
+            Context.MODE_PRIVATE,
+        )
+        val previousCore = runtimePrefs.getString(NodeBackup.CORE_VERSION_KEY, "").orEmpty()
+        if (previousCore != BuildConfig.CORE_VERSION) {
+            // The new core may expect new required fields. Keep the archive
+            // made by NodeService and start from a fresh generated config.
+            appendInfoLog(
+                "core changed from '${previousCore}' to '${BuildConfig.CORE_VERSION}'; " +
+                    "regenerating config and gateways",
+            )
+            configFile.delete()
+            File(configDir, "gateways.toml").delete()
+            File(configDir, "keys").deleteRecursively()
+            runtimePrefs.edit()
+                .putString(NodeBackup.CORE_VERSION_KEY, BuildConfig.CORE_VERSION)
+                .apply()
+        }
         if (!configFile.isFile || !configFile.readText().contains("log_level")) {
             configFile.writeText(
                 completeConfig(

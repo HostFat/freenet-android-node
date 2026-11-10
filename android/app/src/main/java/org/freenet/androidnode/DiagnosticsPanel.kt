@@ -78,6 +78,8 @@ internal fun DiagnosticsPanel(
     canStartLocal: Boolean,
     autoRestartOnCrash: Boolean,
     onAutoRestartOnCrash: (Boolean) -> Unit,
+    restoreMessage: String?,
+    onRestoreBackup: () -> Unit,
 ) {
     val context = LocalContext.current
     var snapshot by remember { mutableStateOf("Collecting diagnostics…") }
@@ -420,6 +422,16 @@ internal fun DiagnosticsPanel(
             modifier = Modifier.fillMaxWidth(),
         ) {
             Text(stringResource(R.string.start_local_node))
+        }
+        OutlinedButton(
+            enabled = NodeBackend.isAvailable() && canStartLocal,
+            onClick = onRestoreBackup,
+            modifier = Modifier.fillMaxWidth(),
+        ) {
+            Text(stringResource(R.string.restore_backup))
+        }
+        restoreMessage?.let { message ->
+            Text(message, style = MaterialTheme.typography.bodySmall)
         }
         OutlinedButton(
             enabled = NodeBackend.isAvailable(),

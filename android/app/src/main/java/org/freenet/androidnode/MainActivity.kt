@@ -249,6 +249,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     var crashSentId by remember { mutableStateOf<String?>(null) }
     var crashError by remember { mutableStateOf<String?>(null) }
     var resetMessage by remember { mutableStateOf<String?>(null) }
+    var restoreMessage by remember { mutableStateOf<String?>(null) }
     var configFingerprint by remember { mutableStateOf(ConfigToml.fingerprint(context)) }
     var awaitingExternalConfigEdit by rememberSaveable { mutableStateOf(false) }
     fun adoptConfigFingerprint(userInitiatedEdit: Boolean) {
@@ -782,6 +783,17 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     canStartLocal = !nodeState.serviceActive,
                     autoRestartOnCrash = policyState.autoRestartOnCrash,
                     onAutoRestartOnCrash = nodeViewModel::setAutoRestartOnCrash,
+                    restoreMessage = restoreMessage,
+                    onRestoreBackup = {
+                        scope.launch {
+                            val result = withContext(Dispatchers.IO) {
+                                NodeBackup.restore(context)
+                            }
+                            restoreMessage = result.getOrElse {
+                                "Restore failed: ${it.message}"
+                            }
+                        }
+                    },
                 )
             } else {
                 DashboardPanel(
