@@ -96,7 +96,7 @@ internal fun SitesPanel(
                 style = MaterialTheme.typography.titleMedium,
             )
             OutlinedButton(onClick = onClose) {
-                Text(stringResource(R.string.config_close))
+                Text(stringResource(R.string.close_dashboard))
             }
         }
         LazyColumn(
