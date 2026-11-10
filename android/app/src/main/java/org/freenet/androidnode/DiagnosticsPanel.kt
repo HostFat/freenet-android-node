@@ -392,16 +392,11 @@ internal fun DiagnosticsPanel(
             onCheckedChange = onNotifyStopped,
         )
         HorizontalDivider()
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            Checkbox(
-                checked = includePrereleases,
-                onCheckedChange = onIncludePrereleases,
-            )
-            Text(
-                stringResource(R.string.include_prereleases),
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
+        SettingsCheckbox(
+            checked = includePrereleases,
+            label = stringResource(R.string.include_prereleases),
+            onCheckedChange = onIncludePrereleases,
+        )
         Text(
             stringResource(R.string.include_prereleases_hint),
             style = MaterialTheme.typography.bodySmall,
