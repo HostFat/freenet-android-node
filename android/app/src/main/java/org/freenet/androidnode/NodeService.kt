@@ -655,7 +655,7 @@ class NodeService : Service() {
         NodeRepository.publishStopping()
         val response = withContext(Dispatchers.IO) {
             NodeBackend.stop().getOrElse {
-                "JNI error: ${it.message ?: "unknown error"}"
+                "Start error: ${it.message ?: "unknown error"}"
             }
         }
         NodeRepository.publishLifecycleResponse(response)

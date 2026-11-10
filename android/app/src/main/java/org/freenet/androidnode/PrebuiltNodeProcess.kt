@@ -312,7 +312,10 @@ internal object PrebuiltNodeProcess {
         // fails before it can resolve a gateway hostname. Resolve here with the
         // Android DNS stack and persist the IP in the file.
         val index = resolveGatewayHosts(rawIndex)
-        if (index != gatewaysFile.readText()) {
+        // readText() throws ENOENT when the file does not exist yet, which is
+        // the normal first-run case.
+        val current = if (gatewaysFile.isFile) gatewaysFile.readText() else ""
+        if (index != current) {
             writeGatewayFile(configDir, gatewaysFile, index)
         }
         val keyPaths = Regex("""public[_-]key\s*=\s*"([^"]+)"""")
