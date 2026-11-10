@@ -38,6 +38,7 @@ import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -63,14 +64,35 @@ internal fun SitesPanel(
     modifier: Modifier = Modifier,
     onClose: () -> Unit,
     initialSites: List<FreenetSite>? = null,
+    nodeConnected: Boolean = true,
+    onStartNode: () -> Unit = {},
 ) {
     val context = LocalContext.current
     var sites by remember { mutableStateOf(initialSites ?: FreenetSites.load(context)) }
     var openSite by remember { mutableStateOf<FreenetSite?>(null) }
+    var pendingSite by remember { mutableStateOf<FreenetSite?>(null) }
+    var openWhenConnected by remember { mutableStateOf<FreenetSite?>(null) }
     var showAdd by remember { mutableStateOf(false) }
     var editIndex by remember { mutableStateOf<Int?>(null) }
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
+
+    val open: (FreenetSite) -> Unit = { site ->
+        if (site.url.startsWith(LOOPBACK_PREFIX)) {
+            openSite = site
+        } else {
+            context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(site.url)))
+        }
+    }
+
+    LaunchedEffect(nodeConnected) {
+        if (nodeConnected) {
+            openWhenConnected?.let { site ->
+                openWhenConnected = null
+                open(site)
+            }
+        }
+    }
 
     openSite?.let { site ->
         FreenetSiteView(
@@ -115,12 +137,10 @@ internal fun SitesPanel(
                 ) {
                     OutlinedButton(
                         onClick = {
-                            if (site.url.startsWith(LOOPBACK_PREFIX)) {
-                                openSite = site
+                            if (!site.url.startsWith(LOOPBACK_PREFIX) || nodeConnected) {
+                                open(site)
                             } else {
-                                context.startActivity(
-                                    Intent(Intent.ACTION_VIEW, Uri.parse(site.url)),
-                                )
+                                pendingSite = site
                             }
                         },
                         modifier = Modifier.weight(1f),
@@ -160,6 +180,30 @@ internal fun SitesPanel(
         ) {
             Text(stringResource(R.string.add_site))
         }
+    }
+
+    pendingSite?.let { site ->
+        AlertDialog(
+            onDismissRequest = { pendingSite = null },
+            title = { Text(stringResource(R.string.node_required_title)) },
+            text = { Text(stringResource(R.string.node_required_message, site.name)) },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        pendingSite = null
+                        openWhenConnected = site
+                        onStartNode()
+                    },
+                ) {
+                    Text(stringResource(R.string.yes))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { pendingSite = null }) {
+                    Text(stringResource(R.string.no))
+                }
+            },
+        )
     }
 
     val editingIndex = editIndex
@@ -266,6 +310,7 @@ private fun FreenetSiteView(
     var pageTitle by remember(site) { mutableStateOf(site.name) }
     var pageLoaded by remember(site) { mutableStateOf(false) }
     var loadError by remember(site) { mutableStateOf<String?>(null) }
+    var consoleError by remember(site) { mutableStateOf<String?>(null) }
     val contractRoot = CONTRACT_ROOT.find(currentUrl)?.groupValues?.getOrNull(1)
     val canAddRoot = contractRoot?.takeIf { root ->
         pageLoaded && savedUrls.none { it.trimEnd('/') == root.trimEnd('/') }
@@ -309,22 +354,37 @@ private fun FreenetSiteView(
                 style = MaterialTheme.typography.bodySmall,
             )
         }
+        consoleError?.let { message ->
+            Text(
+                stringResource(R.string.site_page_error, message, currentUrl),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
+        }
         AndroidView(
             modifier = Modifier
                 .fillMaxWidth()
                 .weight(1f),
             factory = { viewContext ->
                 WebView(viewContext).apply {
+                    if (BuildConfig.DEBUG) {
+                        WebView.setWebContentsDebuggingEnabled(true)
+                    }
                     settings.javaScriptEnabled = true
                     settings.domStorageEnabled = true
+                    settings.databaseEnabled = true
                     settings.allowFileAccess = false
                     settings.allowContentAccess = false
-                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
+                    settings.mixedContentMode = WebSettings.MIXED_CONTENT_ALWAYS_ALLOW
                     if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                         settings.safeBrowsingEnabled = true
                     }
                     webChromeClient = object : WebChromeClient() {
                         override fun onConsoleMessage(message: ConsoleMessage): Boolean {
+                            if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
+                                consoleError = "${message.message()} " +
+                                    "(${message.sourceId()}:${message.lineNumber()})"
+                            }
                             if (BuildConfig.DEBUG) {
                                 Log.d(
                                     SITE_TAG,
@@ -340,6 +400,7 @@ private fun FreenetSiteView(
                             if (url != null) currentUrl = url
                             pageLoaded = false
                             loadError = null
+                            consoleError = null
                         }
 
                         override fun onPageFinished(view: WebView?, url: String?) {
@@ -348,6 +409,15 @@ private fun FreenetSiteView(
                             view?.evaluateJavascript("document.title") { raw ->
                                 val title = raw?.trim('"')
                                 if (!title.isNullOrBlank()) pageTitle = title
+                            }
+                            view?.evaluateJavascript(
+                                "(function(){var f=document.getElementById('app');" +
+                                    "return f?(f.src||f.getAttribute('data-src')||''):'';})()",
+                            ) { raw ->
+                                val src = raw?.trim('"').orEmpty()
+                                if (src.isBlank() && consoleError == null) {
+                                    consoleError = "The gateway shell did not start the app"
+                                }
                             }
                         }
 

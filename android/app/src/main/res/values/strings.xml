@@ -34,6 +34,11 @@
     <string name="site_name">Name</string>
     <string name="site_url">URL</string>
     <string name="site_load_error">Could not load this site: %1$s\n%2$s</string>
+    <string name="site_page_error">Page error: %1$s\n%2$s</string>
+    <string name="node_required_title">Start the Freenet node?</string>
+    <string name="node_required_message">To open %1$s, the Freenet node must be running. Start it now?</string>
+    <string name="yes">Yes</string>
+    <string name="no">No</string>
     <string name="reset_node_title">Reset node data?</string>
     <string name="reset_node_message">Deletes the node database, contracts, logs, and cache. Identity keys and config.toml are kept, so this phone stays the same peer.\n\nAfter a crash, send a diagnostic report first if you still need the logs. Stop the node before resetting.</string>
     <string name="reset_node_confirm">Reset</string>

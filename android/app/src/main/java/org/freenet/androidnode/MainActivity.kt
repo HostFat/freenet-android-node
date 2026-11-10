@@ -462,20 +462,18 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             style = MaterialTheme.typography.bodyLarge,
                         )
                     }
-                    if (nodeIsConnected(nodeState.state, nodeState.peers)) {
-                        OutlinedButton(
-                            onClick = {
-                                scope.launch {
-                                    drawerState.close()
-                                    showSites = true
-                                    showDiagnostics = false
-                                    showConfigEditor = false
-                                }
-                            },
-                            modifier = Modifier.fillMaxWidth(),
-                        ) {
-                            Text(stringResource(R.string.freenet_sites))
-                        }
+                    OutlinedButton(
+                        onClick = {
+                            scope.launch {
+                                drawerState.close()
+                                showSites = true
+                                showDiagnostics = false
+                                showConfigEditor = false
+                            }
+                        },
+                        modifier = Modifier.fillMaxWidth(),
+                    ) {
+                        Text(stringResource(R.string.freenet_sites))
                     }
                     if (nodeState.state.isRunning) {
                         OutlinedButton(
@@ -751,6 +749,10 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                 SitesPanel(
                     modifier = Modifier.fillMaxSize(),
                     onClose = { showSites = false },
+                    nodeConnected = nodeIsConnected(nodeState.state, nodeState.peers),
+                    onStartNode = {
+                        withNotificationPermission(nodeViewModel::startNetworkNode)
+                    },
                 )
             } else if (showDiagnostics) {
                 DiagnosticsPanel(
