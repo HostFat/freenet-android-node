@@ -230,7 +230,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val crashReportPending by CrashReportOffer.pending.collectAsState()
     val policyState by nodeViewModel.policies.collectAsState()
     val updateState by UpdateCheckRepository.state.collectAsState()
-    val updateInterval by UpdateCheckRepository.interval.collectAsState()
     val includePrereleases by UpdateCheckRepository.includePrereleases.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
     var restrictionSnapshot by remember { mutableStateOf(readRestrictionSnapshot(context)) }
@@ -538,16 +537,6 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onOpenGuide = { showExternalGuideConfirm = true },
                     )
                     HorizontalDivider()
-                    Text(
-                        stringResource(R.string.auto_check_interval),
-                        style = MaterialTheme.typography.titleMedium,
-                    )
-                    CompactChoiceRow(
-                        options = UpdateCheckInterval.entries,
-                        selected = updateInterval,
-                        label = { "${it.hours}h" },
-                        onSelect = { UpdateCheckRepository.setInterval(context, it) },
-                    )
                     SettingsCheckbox(
                         checked = policyState.notifyUpdate,
                         label = stringResource(R.string.notify_update),

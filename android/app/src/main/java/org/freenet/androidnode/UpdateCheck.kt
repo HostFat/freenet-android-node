@@ -47,24 +47,6 @@ internal data class UpdateDecision(
     val apkVersion: SemVer? = null,
 )
 
-internal enum class UpdateCheckInterval(val hours: Int, val displayName: String) {
-    Hours2(2, "2 hours"),
-    Hours4(4, "4 hours"),
-    Hours6(6, "6 hours"),
-    Hours12(12, "12 hours"),
-    ;
-
-    val intervalMs: Long
-        get() = hours * 60L * 60L * 1000L
-
-    companion object {
-        val Default = Hours4
-
-        fun fromHours(hours: Int): UpdateCheckInterval =
-            entries.find { it.hours == hours } ?: Default
-    }
-}
-
 internal object UpdateUrls {
     const val CORE_RELEASES_PAGE =
         "https://github.com/freenet/freenet-core/releases/latest"
@@ -72,6 +54,8 @@ internal object UpdateUrls {
         "https://github.com/HostFat/freenet-android-node/releases/latest"
     const val WORKER_RELEASES =
         "https://freenet-android-crash-inbox.hostfat.workers.dev/v1/releases"
+    const val STATIC_RELEASES =
+        "https://raw.githubusercontent.com/HostFat/freenet-android-node/updates/releases.json"
 }
 
 internal fun versionFromReleaseLocation(location: String): SemVer? {

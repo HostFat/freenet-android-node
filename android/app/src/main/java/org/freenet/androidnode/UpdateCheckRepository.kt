@@ -32,15 +32,12 @@ internal data class UpdateUiState(
 internal object UpdateCheckRepository {
     private val mutex = Mutex()
     private val mutableState = MutableStateFlow(UpdateUiState())
-    private val mutableInterval = MutableStateFlow(UpdateCheckInterval.Default)
     private val mutableIncludePrereleases = MutableStateFlow(false)
     val state: StateFlow<UpdateUiState> = mutableState.asStateFlow()
-    val interval: StateFlow<UpdateCheckInterval> = mutableInterval.asStateFlow()
     val includePrereleases: StateFlow<Boolean> = mutableIncludePrereleases.asStateFlow()
 
     fun initialize(context: Context) {
         val prefs = prefs(context.applicationContext)
-        mutableInterval.value = loadInterval(context.applicationContext)
         mutableIncludePrereleases.value = prefs.getBoolean(KEY_INCLUDE_PRERELEASES, false)
     }
 
@@ -50,12 +47,6 @@ internal object UpdateCheckRepository {
             .putBoolean(KEY_INCLUDE_PRERELEASES, enabled)
             .apply()
         mutableIncludePrereleases.value = enabled
-    }
-
-    fun setInterval(context: Context, interval: UpdateCheckInterval) {
-        val appContext = context.applicationContext
-        prefs(appContext).edit().putInt(KEY_INTERVAL_HOURS, interval.hours).apply()
-        mutableInterval.value = interval
     }
 
     suspend fun checkAutomatic(context: Context, peerVersion: String? = null) {
@@ -73,7 +64,7 @@ internal object UpdateCheckRepository {
     private suspend fun check(context: Context, peerVersion: String?, force: Boolean) {
         mutex.withLock {
             val prefs = prefs(context)
-            val intervalMs = loadInterval(context).intervalMs
+            val intervalMs = AUTO_CHECK_MS + autoCheckJitterMs(context)
             val now = System.currentTimeMillis()
             if (!force) {
                 val last = prefs.getLong(KEY_LAST_CHECK_MS, 0L)
@@ -122,14 +113,20 @@ internal object UpdateCheckRepository {
             }.getOrNull(),
         )
         val includePrereleases = mutableIncludePrereleases.value
-        // Prefer the cached worker; fall back to GitHub when it is unavailable.
-        val worker = runCatching { fetchWorkerReleases(includePrereleases) }.getOrNull()
-        val coreRelease = worker?.core ?: if (includePrereleases) {
+        // Static feed first, then the cached worker, then GitHub.
+        val static = runCatching { fetchStaticReleases(includePrereleases) }.getOrNull()
+        val worker = if (static == null) {
+            runCatching { fetchWorkerReleases(includePrereleases) }.getOrNull()
+        } else {
+            null
+        }
+        val releases = static ?: worker
+        val coreRelease = releases?.core ?: if (includePrereleases) {
             fetchNewestRelease(CORE_RELEASES_API)
         } else {
             fetchLatestRelease(UpdateUrls.CORE_RELEASES_PAGE)
         }
-        val apkRelease = worker?.app ?: if (includePrereleases) {
+        val apkRelease = releases?.app ?: if (includePrereleases) {
             fetchNewestRelease(APK_RELEASES_API)
         } else {
             fetchLatestRelease(UpdateUrls.APK_RELEASES_PAGE)
@@ -145,6 +142,33 @@ internal object UpdateCheckRepository {
     }
 
     private data class WorkerReleases(val app: GithubRelease, val core: GithubRelease)
+
+    private fun fetchStaticReleases(includePrereleases: Boolean): WorkerReleases? {
+        val connection = (URL(UpdateUrls.STATIC_RELEASES).openConnection()
+            as HttpURLConnection).apply {
+            connectTimeout = 8_000
+            readTimeout = 8_000
+            setRequestProperty("User-Agent", USER_AGENT)
+        }
+        try {
+            if (connection.responseCode !in 200..299) return null
+            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val root = org.json.JSONObject(body)
+            val channel = if (includePrereleases) "beta" else "stable"
+            val app = root.optJSONObject("app")?.optJSONObject(channel) ?: return null
+            val core = root.optJSONObject("core")?.optJSONObject(channel) ?: return null
+            fun release(value: org.json.JSONObject): GithubRelease? {
+                val version = SemVer.parse(value.optString("version")) ?: return null
+                return GithubRelease(version, value.optString("url"))
+            }
+            return WorkerReleases(
+                app = release(app) ?: return null,
+                core = release(core) ?: return null,
+            )
+        } finally {
+            connection.disconnect()
+        }
+    }
 
     private fun fetchWorkerReleases(includePrereleases: Boolean): WorkerReleases? {
         val channel = if (includePrereleases) "beta" else "stable"
@@ -291,10 +315,11 @@ internal object UpdateCheckRepository {
         manager.createNotificationChannel(channel)
     }
 
-    private fun loadInterval(context: Context): UpdateCheckInterval =
-        UpdateCheckInterval.fromHours(
-            prefs(context).getInt(KEY_INTERVAL_HOURS, UpdateCheckInterval.Default.hours),
-        )
+    /** Spread checks over six hours so devices do not all poll together. */
+    private fun autoCheckJitterMs(context: Context): Long {
+        val seed = InstallId.get(context).ifBlank { System.currentTimeMillis().toString() }
+        return (seed.hashCode().toLong() and 0x7fffffff) % JITTER_MS
+    }
 
     private fun prefs(context: Context) =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -307,8 +332,9 @@ internal object UpdateCheckRepository {
     private const val PREFS = "update_check"
     private const val KEY_LAST_CHECK_MS = "last_check_ms"
     private const val KEY_NOTIFIED_APK = "notified_apk_version"
-    private const val KEY_INTERVAL_HOURS = "auto_interval_hours"
     private const val KEY_INCLUDE_PRERELEASES = "include_prereleases"
+    private const val AUTO_CHECK_MS = 24L * 60L * 60L * 1000L
+    private const val JITTER_MS = 6L * 60L * 60L * 1000L
     private const val CORE_RELEASES_API =
         "https://api.github.com/repos/freenet/freenet-core/releases?per_page=30"
     private const val APK_RELEASES_API =
