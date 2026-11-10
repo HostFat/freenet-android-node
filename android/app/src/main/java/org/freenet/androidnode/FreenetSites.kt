@@ -4,10 +4,15 @@ import android.content.Context
 import org.json.JSONArray
 import org.json.JSONObject
 
+internal enum class SiteViewer { INHERIT, APP, BROWSER }
+
+internal enum class OpenWith { APP, BROWSER, ASK }
+
 internal data class FreenetSite(
     val name: String,
     val url: String,
     val predefined: Boolean = false,
+    val viewer: SiteViewer = SiteViewer.INHERIT,
 )
 
 internal object FreenetSites {
@@ -15,6 +20,13 @@ internal object FreenetSites {
     private const val KEY_CUSTOM = "custom_sites"
     private const val KEY_OVERRIDES = "default_overrides"
     private const val KEY_REMOVED = "removed_defaults"
+    private const val KEY_OPEN_WITH = "open_with"
+
+    private data class SiteOverride(
+        val name: String,
+        val url: String,
+        val viewer: SiteViewer,
+    )
 
     val defaults = listOf(
         FreenetSite(
@@ -50,28 +62,57 @@ internal object FreenetSites {
         ),
     )
 
+    fun openWith(context: Context): OpenWith =
+        when (prefs(context).getString(KEY_OPEN_WITH, null)) {
+            "browser" -> OpenWith.BROWSER
+            "ask" -> OpenWith.ASK
+            else -> OpenWith.APP
+        }
+
+    fun setOpenWith(context: Context, value: OpenWith) {
+        val raw = when (value) {
+            OpenWith.APP -> "app"
+            OpenWith.BROWSER -> "browser"
+            OpenWith.ASK -> "ask"
+        }
+        prefs(context).edit().putString(KEY_OPEN_WITH, raw).apply()
+    }
+
     fun load(context: Context): List<FreenetSite> {
         val overrides = overrides(context)
         val removed = removedDefaults(context)
         val edited = defaults
             .filterNot { it.url in removed }
             .map { site ->
-                overrides[site.url]?.let { FreenetSite(it.first, it.second, true) } ?: site
+                overrides[site.url]?.let {
+                    FreenetSite(it.name, it.url, true, it.viewer)
+                } ?: site
             }
-        return edited + customSites(context).map { FreenetSite(it.name, it.url) }
+        return edited + customSites(context)
     }
 
-    fun add(context: Context, name: String, url: String): List<FreenetSite> {
+    fun add(
+        context: Context,
+        name: String,
+        url: String,
+        viewer: SiteViewer = SiteViewer.INHERIT,
+    ): List<FreenetSite> {
         val clean = url.trim()
         if (clean.isBlank()) return load(context)
         if (load(context).any { it.url == clean }) return load(context)
         val custom = customSites(context).toMutableList()
-        custom.add(FreenetSite(name.trim().ifBlank { clean }, clean))
+        custom.add(FreenetSite(name.trim().ifBlank { clean }, clean, false, viewer))
         saveCustom(context, custom)
         return load(context)
     }
 
-    fun update(context: Context, index: Int, name: String, url: String): List<FreenetSite> {
+    fun update(
+        context: Context,
+        index: Int,
+        name: String,
+        url: String,
+        viewer: SiteViewer,
+    ): List<FreenetSite> {
         val clean = url.trim()
         if (clean.isBlank()) return load(context)
         val cleanName = name.trim().ifBlank { clean }
@@ -79,16 +120,41 @@ internal object FreenetSites {
         val site = current.getOrNull(index) ?: return current
         if (site.predefined) {
             val overrides = overrides(context).toMutableMap()
-            val original = defaults.firstOrNull { default ->
-                (overrides[default.url]?.second ?: default.url) == site.url
-            }?.url ?: return current
-            overrides[original] = cleanName to clean
+            val original = defaultOriginal(overrides, site.url) ?: return current
+            overrides[original] = SiteOverride(cleanName, clean, viewer)
             saveOverrides(context, overrides)
         } else {
             val custom = customSites(context).toMutableList()
             val customIndex = custom.indexOfFirst { it.url == site.url }
             if (customIndex >= 0) {
-                custom[customIndex] = FreenetSite(cleanName, clean)
+                custom[customIndex] = FreenetSite(cleanName, clean, false, viewer)
+                saveCustom(context, custom)
+            }
+        }
+        return load(context)
+    }
+
+    fun setViewer(
+        context: Context,
+        site: FreenetSite,
+        viewer: SiteViewer,
+    ): List<FreenetSite> {
+        val current = load(context)
+        if (site.predefined) {
+            val overrides = overrides(context).toMutableMap()
+            val original = defaultOriginal(overrides, site.url) ?: return current
+            val existing = overrides[original]
+            overrides[original] = SiteOverride(
+                existing?.name ?: site.name,
+                existing?.url ?: site.url,
+                viewer,
+            )
+            saveOverrides(context, overrides)
+        } else {
+            val custom = customSites(context).toMutableList()
+            val index = custom.indexOfFirst { it.url == site.url }
+            if (index >= 0) {
+                custom[index] = custom[index].copy(viewer = viewer)
                 saveCustom(context, custom)
             }
         }
@@ -98,9 +164,7 @@ internal object FreenetSites {
     fun remove(context: Context, site: FreenetSite): List<FreenetSite> {
         if (site.predefined) {
             val overrides = overrides(context)
-            val original = defaults.firstOrNull { default ->
-                (overrides[default.url]?.second ?: default.url) == site.url
-            }?.url
+            val original = defaultOriginal(overrides, site.url)
             if (original != null) {
                 val removed = removedDefaults(context).toMutableSet()
                 removed.add(original)
@@ -123,10 +187,17 @@ internal object FreenetSites {
         return load(context)
     }
 
+    private fun defaultOriginal(
+        overrides: Map<String, SiteOverride>,
+        currentUrl: String,
+    ): String? = defaults.firstOrNull { default ->
+        (overrides[default.url]?.url ?: default.url) == currentUrl
+    }?.url
+
     private fun customSites(context: Context): List<FreenetSite> =
         decode(prefs(context).getString(KEY_CUSTOM, null), predefined = false)
 
-    private fun overrides(context: Context): Map<String, Pair<String, String>> {
+    private fun overrides(context: Context): Map<String, SiteOverride> {
         val raw = prefs(context).getString(KEY_OVERRIDES, null) ?: return emptyMap()
         return runCatching {
             val root = JSONObject(raw)
@@ -135,7 +206,14 @@ internal object FreenetSites {
                     val item = root.optJSONObject(key) ?: continue
                     val url = item.optString("url")
                     if (url.isNotBlank()) {
-                        put(key, item.optString("name", url) to url)
+                        put(
+                            key,
+                            SiteOverride(
+                                item.optString("name", url),
+                                url,
+                                viewerOf(item.optString("viewer")),
+                            ),
+                        )
                     }
                 }
             }
@@ -164,7 +242,14 @@ internal object FreenetSites {
                     val item = array.getJSONObject(index)
                     val url = item.optString("url")
                     if (url.isNotBlank()) {
-                        add(FreenetSite(item.optString("name", url), url, predefined))
+                        add(
+                            FreenetSite(
+                                item.optString("name", url),
+                                url,
+                                predefined,
+                                viewerOf(item.optString("viewer")),
+                            ),
+                        )
                     }
                 }
             }
@@ -174,15 +259,26 @@ internal object FreenetSites {
     private fun saveCustom(context: Context, sites: List<FreenetSite>) {
         val array = JSONArray()
         for (site in sites) {
-            array.put(JSONObject().put("name", site.name).put("url", site.url))
+            array.put(
+                JSONObject()
+                    .put("name", site.name)
+                    .put("url", site.url)
+                    .put("viewer", viewerName(site.viewer)),
+            )
         }
         prefs(context).edit().putString(KEY_CUSTOM, array.toString()).apply()
     }
 
-    private fun saveOverrides(context: Context, overrides: Map<String, Pair<String, String>>) {
+    private fun saveOverrides(context: Context, overrides: Map<String, SiteOverride>) {
         val root = JSONObject()
-        for ((original, values) in overrides) {
-            root.put(original, JSONObject().put("name", values.first).put("url", values.second))
+        for ((original, value) in overrides) {
+            root.put(
+                original,
+                JSONObject()
+                    .put("name", value.name)
+                    .put("url", value.url)
+                    .put("viewer", viewerName(value.viewer)),
+            )
         }
         prefs(context).edit().putString(KEY_OVERRIDES, root.toString()).apply()
     }
@@ -193,6 +289,18 @@ internal object FreenetSites {
             array.put(url)
         }
         prefs(context).edit().putString(KEY_REMOVED, array.toString()).apply()
+    }
+
+    private fun viewerOf(raw: String): SiteViewer = when (raw) {
+        "app" -> SiteViewer.APP
+        "browser" -> SiteViewer.BROWSER
+        else -> SiteViewer.INHERIT
+    }
+
+    private fun viewerName(viewer: SiteViewer): String = when (viewer) {
+        SiteViewer.APP -> "app"
+        SiteViewer.BROWSER -> "browser"
+        SiteViewer.INHERIT -> "inherit"
     }
 
     private fun prefs(context: Context) =

@@ -27,6 +27,14 @@
     <string name="freenet_sites">Freenet sites</string>
     <string name="close_dashboard">Close / Dashboard</string>
     <string name="restore_defaults">Default</string>
+    <string name="open_with">Open with</string>
+    <string name="open_in_app">App</string>
+    <string name="open_in_browser">Browser</string>
+    <string name="open_ask">Ask</string>
+    <string name="open_with_site">Open in</string>
+    <string name="site_viewer_default">Default</string>
+    <string name="remember_choice">Remember for this site</string>
+    <string name="open_site_message">Open %1$s in the app or in the phone browser?</string>
     <string name="add_site">Add site</string>
     <string name="add_site_confirm">Add</string>
     <string name="edit_site">Edit</string>

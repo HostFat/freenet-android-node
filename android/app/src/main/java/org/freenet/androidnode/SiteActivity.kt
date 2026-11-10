@@ -4,6 +4,7 @@ import android.annotation.SuppressLint
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
+import android.net.Uri
 import android.os.Bundle
 import android.os.Message
 import android.util.Log
@@ -50,6 +51,10 @@ class SiteActivity : ComponentActivity() {
         addButton = findViewById(R.id.site_add)
         titleView.text = pageTitle
         findViewById<Button>(R.id.site_close).setOnClickListener { finish() }
+        findViewById<Button>(R.id.site_browser).setOnClickListener {
+            val url = webView.url ?: currentUrl
+            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
+        }
         addButton.setOnClickListener {
             val root = contractRoot(currentUrl) ?: return@setOnClickListener
             FreenetSites.add(this, pageTitle.ifBlank { root }, root)

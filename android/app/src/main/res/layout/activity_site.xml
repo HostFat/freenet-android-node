@@ -36,6 +36,14 @@
             android:visibility="gone" />
 
         <Button
+            android:id="@+id/site_browser"
+            style="?android:attr/buttonStyleSmall"
+            android:layout_width="wrap_content"
+            android:layout_height="wrap_content"
+            android:text="@string/open_in_browser"
+            android:textSize="12sp" />
+
+        <Button
             android:id="@+id/site_close"
             style="?android:attr/buttonStyleSmall"
             android:layout_width="wrap_content"
