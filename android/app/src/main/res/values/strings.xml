@@ -36,7 +36,6 @@
     <string name="site_name">Name</string>
     <string name="site_url">URL</string>
     <string name="site_load_error">Could not load this site: %1$s\n%2$s</string>
-    <string name="site_page_error">Page error: %1$s\n%2$s</string>
     <string name="node_required_title">Start the Freenet node?</string>
     <string name="node_required_message">To open %1$s, the Freenet node must be running. Start it now?</string>
     <string name="yes">Yes</string>

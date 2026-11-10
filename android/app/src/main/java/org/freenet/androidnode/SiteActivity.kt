@@ -182,12 +182,6 @@ class SiteActivity : ComponentActivity() {
             override fun onConsoleMessage(message: ConsoleMessage): Boolean {
                 if (message.messageLevel() == ConsoleMessage.MessageLevel.ERROR) {
                     Log.e(TAG, message.message())
-                    statusView.text = getString(
-                        R.string.site_page_error,
-                        message.message(),
-                        currentUrl,
-                    )
-                    statusView.visibility = View.VISIBLE
                 }
                 return true
             }
