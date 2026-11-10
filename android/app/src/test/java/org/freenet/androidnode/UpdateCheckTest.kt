@@ -30,6 +30,14 @@ class UpdateCheckTest {
     }
 
     @Test
+    fun staticFeedUrlChangesEveryMinuteToBypassTheCdn() {
+        assertEquals(
+            "https://raw.githubusercontent.com/HostFat/freenet-android-node/updates/releases.json?t=1234",
+            staticReleasesUrl(1234L * 60_000L + 59_000L),
+        )
+    }
+
+    @Test
     fun debugVersionNameDoesNotPretendTheApkIsOld() {
         val decision = decideUpdate(
             installedCore = SemVer(0, 2, 134),

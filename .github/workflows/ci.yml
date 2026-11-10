@@ -597,6 +597,7 @@ jobs:
       contents: write
       issues: write
       packages: read
+      actions: write
     steps:
       - name: Free disk space on runner
         run: |
@@ -762,6 +763,13 @@ jobs:
             freenet-android-node/artifacts/apk/freenet-android-node-release.apk
             freenet-android-node/artifacts/SHA256SUMS.txt
 
+      - name: Refresh the releases feed
+        continue-on-error: true
+        if: github.event.inputs.publish_release != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run releases-feed.yml --ref main
+
       - name: Open an issue if the release build failed
         if: failure()
         continue-on-error: true
@@ -805,6 +813,7 @@ jobs:
     permissions:
       contents: write
       issues: write
+      actions: write
     steps:
       - name: Checkout freenet-android-node
         uses: actions/checkout@v4
@@ -883,6 +892,13 @@ jobs:
           files: |
             freenet-android-node/artifacts/apk/freenet-android-node-release.apk
             freenet-android-node/artifacts/SHA256SUMS.txt
+
+      - name: Refresh the releases feed
+        continue-on-error: true
+        if: github.event.inputs.publish_release != 'false'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: gh workflow run releases-feed.yml --ref main
 
       - name: Open an issue if the prebuilt release failed
         if: failure()
