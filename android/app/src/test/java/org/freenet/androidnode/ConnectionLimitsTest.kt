@@ -74,6 +74,15 @@ class ConnectionLimitsTest {
         assertEquals(false, shouldNoteUnexpectedStop(NodePhase.Stopped, appInitiatedStop = false, userRequestedShutdown = false))
         assertEquals(false, shouldNoteUnexpectedStop(NodePhase.Failed, appInitiatedStop = true, userRequestedShutdown = false))
         assertEquals(false, shouldNoteUnexpectedStop(NodePhase.Failed, appInitiatedStop = false, userRequestedShutdown = true))
+        assertEquals(false, shouldOfferCrashReport(false, false, false, expectedFailure = true))
+        assertEquals(
+            true,
+            isExpectedStartFailure(
+                "Port 7509 is already in use. Another Freenet node, possibly another app, is running.",
+            ),
+        )
+        assertEquals(true, isExpectedStartFailure("Error: Cannot initialize node without gateways"))
+        assertEquals(false, isExpectedStartFailure("Prebuilt Freenet process exited with code 1: panic"))
         val comment = presetCrashReportComment("0.2.137.1")
         assertEquals(true, comment.contains(SERVICE_REPORT_REPO))
         assertEquals(true, comment.contains("App version: 0.2.137.1"))

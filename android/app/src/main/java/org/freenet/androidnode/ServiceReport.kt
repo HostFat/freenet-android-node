@@ -9,8 +9,26 @@ import java.time.Instant
 internal const val SERVICE_REPORT_SERVER = "https://nova.locut.us/api/reports"
 internal const val SERVICE_REPORT_REPO = "https://github.com/HostFat/freenet-android-node"
 private const val MAX_LOG_BYTES = 400 * 1024
+private const val MAX_LOG_READ_BYTES = MAX_LOG_BYTES * 4
+private const val HEAD_LOG_BYTES = 64 * 1024
 private const val WS_API_PORT = 7509
 private const val RING_LOG_ENTRIES = 256
+
+internal fun isRateLimitLogLine(line: String): Boolean = line.contains("[RATE LIMIT")
+
+internal fun filterLogNoise(text: String): String {
+    var dropped = 0
+    val kept = text.lineSequence().filterNot { line ->
+        if (isRateLimitLogLine(line)) {
+            dropped += 1
+            false
+        } else {
+            true
+        }
+    }.toList()
+    if (dropped == 0) return text
+    return kept.joinToString("\n") + "\n[filtered $dropped rate-limit log lines]"
+}
 
 private val REDACTED_CONFIG_KEYS = setOf(
     "transport_keypair",
@@ -118,9 +136,11 @@ internal object ServiceReport {
         val fromFiles = if (files.isEmpty()) {
             null
         } else {
-            files.joinToString("\n") { file ->
-                readLogTail(file, MAX_LOG_BYTES)
-            }.takeLast(MAX_LOG_BYTES).trim().ifEmpty { null }
+            filterLogNoise(
+                files.joinToString("\n") { file ->
+                    filterLogNoise(readLogTail(file, MAX_LOG_READ_BYTES))
+                },
+            ).takeLast(MAX_LOG_BYTES).trim().ifEmpty { null }
         }
         return fromFiles
     }
@@ -128,21 +148,37 @@ internal object ServiceReport {
     private fun collectLogs(context: Context, extraLog: String? = null): JSONObject {
         val fromFiles = readFileLogs(context)
         val fromRing = formatServiceReportLogs()
-        val merged = listOfNotNull(extraLog, fromFiles, fromRing).joinToString(
+        val mergedRaw = listOfNotNull(extraLog, fromFiles, fromRing).joinToString(
             "\n--- android adapter ring ---\n",
         ).ifBlank { null }
+        val merged = mergedRaw?.let(::filterLogNoise)
         val main = when {
             merged != null && merged.length > MAX_LOG_BYTES -> merged.takeLast(MAX_LOG_BYTES)
             else -> merged
         }
+        val head = when {
+            merged != null && merged.length > MAX_LOG_BYTES -> merged.take(HEAD_LOG_BYTES)
+            else -> null
+        }
+        val originalBytes = merged?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L
         val bytes = main?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L
         return JSONObject()
             .put("main_log", main ?: JSONObject.NULL)
+            .put("main_log_head", head ?: JSONObject.NULL)
+            .put("main_log_truncated", head != null)
             .put("error_log", JSONObject.NULL)
             .put("main_log_size_bytes", bytes)
             .put("error_log_size_bytes", 0L)
-            .put("main_log_original_size_bytes", bytes)
+            .put("main_log_original_size_bytes", originalBytes)
             .put("error_log_original_size_bytes", 0L)
+            .put(
+                "node_exit_detail",
+                if (BuildConfig.PREBUILT_NODE) {
+                    PrebuiltNodeProcess.lastExitDetail() ?: JSONObject.NULL
+                } else {
+                    JSONObject.NULL
+                },
+            )
     }
 
     private fun collectNetworkStatus(lastState: NodeUiState): Pair<String?, String?> {
@@ -217,6 +253,6 @@ internal fun formatServiceReportLogs(): String? {
                 append(entry.optString("message"))
                 append('\n')
             }
-        }.trimEnd()
+        }.let(::filterLogNoise).trimEnd()
     }.getOrNull()
 }

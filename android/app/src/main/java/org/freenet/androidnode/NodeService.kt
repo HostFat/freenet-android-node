@@ -491,17 +491,22 @@ class NodeService : Service() {
                 return
             }
             if (startStatus.state !in ACTIVE_NATIVE_STATES) {
-                val policyBlocked = nativeErrorCode(response) == "NETWORK_POLICY_BLOCKED"
+                val errorCode = nativeErrorCode(response)
+                val policyBlocked = errorCode == "NETWORK_POLICY_BLOCKED"
+                val expectedFailure = errorCode == "PORT_IN_USE" ||
+                    isExpectedStartFailure(startStatus.detail)
                 if (shouldOfferCrashReport(
                         udpPortInUse = false,
                         policyBlocked = policyBlocked,
                         userRequestedShutdown = userRequestedShutdown,
+                        expectedFailure = expectedFailure,
                     )
                 ) {
                     CrashReportOffer.note(this, startStatus.detail, formatServiceReportLogs())
                 }
                 if (
                     !policyBlocked &&
+                    !expectedFailure &&
                     policy.autoRestartOnCrash &&
                     !userRequestedShutdown &&
                     crashRestartAttempt < MAX_CRASH_RESTARTS
@@ -759,10 +764,15 @@ class NodeService : Service() {
         val detail = status.detail.ifBlank {
             "Native node stopped unexpectedly"
         }
-        if (shouldNoteUnexpectedStop(status.state, appInitiatedStop, userRequestedShutdown)) {
+        val expectedFailure = isExpectedStartFailure(detail)
+        if (shouldNoteUnexpectedStop(status.state, appInitiatedStop, userRequestedShutdown) &&
+            !expectedFailure
+        ) {
             CrashReportOffer.note(this, detail, formatServiceReportLogs())
         }
-        if (policy.autoRestartOnCrash && crashRestartAttempt < MAX_CRASH_RESTARTS) {
+        if (policy.autoRestartOnCrash && !expectedFailure &&
+            crashRestartAttempt < MAX_CRASH_RESTARTS
+        ) {
             scheduleCrashRestart(runningMode == NodeMode.Network)
             return
         }

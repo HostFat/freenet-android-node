@@ -95,11 +95,20 @@ internal object CrashReportOffer {
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 }
 
+internal fun isExpectedStartFailure(detail: String): Boolean {
+    val text = detail.lowercase()
+    return "port 7509 is already in use" in text ||
+        "another freenet process" in text ||
+        "cannot initialize node without gateways" in text ||
+        ("gateways.toml" in text && "not ready" in text)
+}
+
 internal fun shouldOfferCrashReport(
     udpPortInUse: Boolean,
     policyBlocked: Boolean,
     userRequestedShutdown: Boolean,
-): Boolean = !udpPortInUse && !policyBlocked && !userRequestedShutdown
+    expectedFailure: Boolean = false,
+): Boolean = !udpPortInUse && !policyBlocked && !userRequestedShutdown && !expectedFailure
 
 internal fun shouldNoteUnexpectedStop(
     state: NodePhase,

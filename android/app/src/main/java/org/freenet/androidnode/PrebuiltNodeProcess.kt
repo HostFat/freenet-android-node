@@ -66,6 +66,12 @@ internal object PrebuiltNodeProcess {
                 "logs=${logDir.isDirectory}",
         )
         val websocketPort = config.optInt("websocketPort", 7509)
+        if (portIsListening(websocketPort)) {
+            val detail = "Port $websocketPort is already in use. Another Freenet node, " +
+                "possibly another app, is running. Close it and retry."
+            synchronized(lock) { lastDetail = detail }
+            return@runCatching errorEnvelope(detail, code = "PORT_IN_USE")
+        }
         val customPort = config.optString("udpPortMode") == "custom"
 
         // The node loads config.toml and does not create it. Write a complete
@@ -299,6 +305,14 @@ internal object PrebuiltNodeProcess {
 
     fun isRunning(): Boolean = synchronized(lock) { process?.isAlive == true }
 
+    fun lastExitDetail(): String? = synchronized(lock) {
+        lastDetail.takeIf {
+            it != "Prebuilt Freenet process is not running" &&
+                it != "Prebuilt Freenet process started" &&
+                it != "Prebuilt Freenet process stopped"
+        }
+    }
+
     fun recentLogs(limit: Int): String {
         val buffered = synchronized(lock) { recentLines.toList() }
         if (buffered.isNotEmpty()) {
@@ -308,7 +322,7 @@ internal object PrebuiltNodeProcess {
         if (file == null || !file.isFile) {
             return "No process output yet."
         }
-        return readLogTail(file, MAX_TAIL_BYTES)
+        return filterLogNoise(readLogTail(file, MAX_TAIL_BYTES * 4))
             .lines()
             .takeLast(limit)
             .joinToString("\n")
@@ -551,10 +565,12 @@ internal object PrebuiltNodeProcess {
                     var written = 0
                     lines.forEach { rawLine ->
                         val line = stripAnsi(rawLine)
-                        synchronized(lock) {
-                            recentLines.addLast(line)
-                            if (recentLines.size > RECENT_LINES) {
-                                recentLines.removeFirst()
+                        if (!isRateLimitLogLine(line)) {
+                            synchronized(lock) {
+                                recentLines.addLast(line)
+                                if (recentLines.size > RECENT_LINES) {
+                                    recentLines.removeFirst()
+                                }
                             }
                         }
                         runCatching {
@@ -631,14 +647,24 @@ internal object PrebuiltNodeProcess {
         return JSONObject().put("ok", true).put("data", data).toString()
     }
 
-    private fun errorEnvelope(message: String): String =
+    private fun portIsListening(port: Int): Boolean = runCatching {
+        java.net.Socket().use { socket ->
+            socket.connect(java.net.InetSocketAddress("127.0.0.1", port), 300)
+        }
+        true
+    }.getOrDefault(false)
+
+    private fun errorEnvelope(
+        message: String,
+        code: String = "PROCESS_NOT_RUNNING",
+    ): String =
         JSONObject()
             .put("ok", false)
             .put("data", JSONObject.NULL)
             .put(
                 "error",
                 JSONObject()
-                    .put("code", "PROCESS_NOT_RUNNING")
+                    .put("code", code)
                     .put("message", message),
             )
             .toString()
