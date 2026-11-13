@@ -18,7 +18,7 @@ internal fun isRateLimitLogLine(line: String): Boolean = line.contains("[RATE LI
 
 internal fun filterLogNoise(text: String): String {
     var dropped = 0
-    val kept = text.lineSequence().filterNot { line ->
+    val kept = text.lineSequence().filter { line ->
         if (isRateLimitLogLine(line)) {
             dropped += 1
             false
@@ -152,20 +152,21 @@ internal object ServiceReport {
             "\n--- android adapter ring ---\n",
         ).ifBlank { null }
         val merged = mergedRaw?.let(::filterLogNoise)
+        val truncated = mergedRaw != null && mergedRaw.length > MAX_LOG_BYTES
         val main = when {
             merged != null && merged.length > MAX_LOG_BYTES -> merged.takeLast(MAX_LOG_BYTES)
             else -> merged
         }
         val head = when {
-            merged != null && merged.length > MAX_LOG_BYTES -> merged.take(HEAD_LOG_BYTES)
+            truncated && mergedRaw != null -> filterLogNoise(mergedRaw.take(HEAD_LOG_BYTES))
             else -> null
         }
-        val originalBytes = merged?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L
+        val originalBytes = mergedRaw?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L
         val bytes = main?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L
         return JSONObject()
             .put("main_log", main ?: JSONObject.NULL)
             .put("main_log_head", head ?: JSONObject.NULL)
-            .put("main_log_truncated", head != null)
+            .put("main_log_truncated", truncated)
             .put("error_log", JSONObject.NULL)
             .put("main_log_size_bytes", bytes)
             .put("error_log_size_bytes", 0L)

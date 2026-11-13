@@ -47,8 +47,14 @@ internal object CrashInbox {
         jsonObject.put("network_status_error", org.json.JSONObject.NULL)
         // version_info describes the app that uploads; these capture the app
         // that actually crashed, which may be an older build.
-        jsonObject.put("crash_app_version", CrashReportOffer.appVersion(context))
-        jsonObject.put("crash_core_version", CrashReportOffer.coreVersion(context))
+        jsonObject.put(
+            "crash_app_version",
+            CrashReportOffer.appVersion(context).ifBlank { appVersionName(context) },
+        )
+        jsonObject.put(
+            "crash_core_version",
+            CrashReportOffer.coreVersion(context).ifBlank { BuildConfig.CORE_VERSION },
+        )
         jsonObject.put("crash_noted_at", notedAt)
         val response = HttpJson.postGzip(
             CRASH_INBOX_URL,

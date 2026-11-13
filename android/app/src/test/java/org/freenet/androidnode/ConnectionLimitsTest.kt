@@ -65,6 +65,19 @@ class ConnectionLimitsTest {
     }
 
     @Test
+    fun rateLimitNoiseIsRemovedWithoutDroppingRealLines() {
+        val text = "INFO start\n" +
+            "[RATE LIMIT per-callsite] summarize_contract_state: dropped 2\n" +
+            "ERROR node stopped\n" +
+            "[RATE LIMIT per-callsite] process_network_message: dropped 3"
+        val filtered = filterLogNoise(text)
+        assertEquals(true, filtered.contains("INFO start"))
+        assertEquals(true, filtered.contains("ERROR node stopped"))
+        assertEquals(false, filtered.contains("[RATE LIMIT per-callsite]"))
+        assertEquals(true, filtered.contains("[filtered 2 rate-limit log lines]"))
+    }
+
+    @Test
     fun crashReportIsOfferedOnlyForUnexpectedNativeFailures() {
         assertEquals(true, shouldOfferCrashReport(false, false, false))
         assertEquals(false, shouldOfferCrashReport(udpPortInUse = true, policyBlocked = false, userRequestedShutdown = false))

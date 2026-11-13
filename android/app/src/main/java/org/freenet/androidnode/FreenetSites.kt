@@ -41,6 +41,11 @@ internal object FreenetSites {
         ),
         FreenetSite("Telemetry", "https://telemetry.freenet.org/", true),
         FreenetSite(
+            "Freenet Contracts Radar",
+            "http://127.0.0.1:7509/v1/contract/web/5cdjJ85tJ7VGrLbHEvofxtyrAowsTyXuj4UZ7ZjQ2QnL/",
+            true,
+        ),
+        FreenetSite(
             "Delta",
             "http://127.0.0.1:7509/v1/contract/web/EqJ5YpEEV3XLqEvKWLQHFhGAac2qXzSUoE6k2zbdnXBr/",
             true,
