@@ -100,8 +100,9 @@ internal fun networkStatusLabel(
             (state == NodePhase.RunningLocal || state == NodePhase.Starting) ->
             if (state == NodePhase.Starting) "Starting local" else "Local"
         state == NodePhase.Starting || state == NodePhase.Stopping -> "Connecting"
-        nodeIsConnected(state, peers) -> "Connected"
+        // peerCount also counts gateway connections, so the dashboard hint wins.
         state == NodePhase.RunningNetwork && isGatewayOnlyHint(natHint) -> "Gateway only"
+        nodeIsConnected(state, peers) -> "Connected"
         state == NodePhase.RunningNetwork -> "Connecting"
         else -> state.wire
     }

@@ -8,7 +8,8 @@
     <string name="node_notification_running">Freenet node running</string>
     <string name="node_notification_waiting">Freenet node waiting</string>
     <string name="node_notification_paused">Freenet node paused</string>
-    <string name="node_notification_status">Mode: %1$s · Peers: %2$d · Uptime: %3$s</string>
+    <string name="node_notification_status">Mode: %1$s · Connections: %2$d · Uptime: %3$s</string>
+    <string name="node_notification_gateway_only">Mode: %1$s · Gateway only — waiting for peers · Uptime: %2$s</string>
     <string name="pause_node">Pause</string>
     <string name="resume_node">Resume</string>
     <string name="stop_node">Stop</string>
@@ -77,7 +78,7 @@
     <string name="event_notification_channel_name">Node events</string>
     <string name="event_notification_channel_description">Alerts when the node connects, stops, or cannot bind its UDP port</string>
     <string name="event_connected_title">Freenet node connected</string>
-    <string name="event_connected_text">Connected to %1$d peers</string>
+    <string name="event_connected_text">Connected to the Freenet network (%1$d connections)</string>
     <string name="event_stopped_title">Freenet node stopped</string>
     <string name="event_udp_busy_title">UDP port is already in use</string>
     <string name="last_up">Last up: %1$s</string>
@@ -193,7 +194,7 @@
     <string name="config_close">Close</string>
     <string name="config_no_editor">No text editor is installed that can open config.toml. Use Edit config.toml instead.</string>
     <string name="config_saved">config.toml saved</string>
-    <string name="peer_count_accuracy_hint">The dashboard peer count is more accurate; this number can lag.</string>
+    <string name="peer_count_accuracy_hint">The dashboard connection count is more accurate; this number can lag.</string>
     <string name="river_chat_invite_running">The node is running. You can now join the official Freenet chat in River.</string>
     <string name="river_chat_invite_get">Get an invite by tapping \"Join the Freenet chat room\" on: %1$s</string>
     <string name="dashboard_local_hint">The core dashboard becomes available at 127.0.0.1:7509 while the node runs.</string>

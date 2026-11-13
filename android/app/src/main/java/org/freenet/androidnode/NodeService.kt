@@ -633,7 +633,7 @@ class NodeService : Service() {
                     NodePolicyRepository.recordNetworkUp(this@NodeService)
                     crashRestartAttempt = 0
                     natTick += 1
-                    if (natTick == 1 || natTick % 32 == 0) {
+                    if (natTick == 1 || natTick % 8 == 0) {
                         NodeRepository.publishNatHint(DashboardHints.natHint())
                     }
                     if (state.peers > 0) {
@@ -644,7 +644,10 @@ class NodeService : Service() {
                         if (stamped) {
                             withContext(Dispatchers.Main.immediate) { armSchedule() }
                         }
-                        if (!notifiedConnectedThisRun) {
+                        if (!notifiedConnectedThisRun &&
+                            natTick > 1 &&
+                            !isGatewayOnlyHint(state.natHint)
+                        ) {
                             notifiedConnectedThisRun = true
                             if (NodePolicyRepository.state.value.notifyConnected) {
                                 nodeNotificationManager.notifyConnected(state.peers)

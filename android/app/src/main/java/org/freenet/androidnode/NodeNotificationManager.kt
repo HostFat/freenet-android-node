@@ -83,6 +83,12 @@ class NodeNotificationManager(private val context: Context) {
     private fun notificationText(state: NodeUiState): String =
         if (state.state == NodePhase.Waiting || state.state == NodePhase.Paused) {
             state.detail
+        } else if (isGatewayOnlyHint(state.natHint)) {
+            context.getString(
+                R.string.node_notification_gateway_only,
+                state.mode.wire,
+                formatUptime(state.uptimeMs),
+            )
         } else {
             context.getString(
                 R.string.node_notification_status,

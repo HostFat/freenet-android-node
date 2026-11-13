@@ -1161,7 +1161,7 @@ private fun NodeControlStrip(
         )
         Text(
             if (status == "Connected") {
-                "Node: Connected · ${state.peers} peers"
+                "Node: Connected · ${state.peers} connections"
             } else {
                 "Node: $status"
             },

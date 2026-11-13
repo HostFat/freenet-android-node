@@ -179,13 +179,23 @@ class ConnectionLimitsTest {
             ),
         )
         assertEquals(
-            "Connected",
+            "Gateway only",
             networkStatusLabel(
                 NodePhase.RunningNetwork,
                 NodeMode.Network,
                 2,
                 true,
                 "Only connected to gateways — no peer-to-peer connections yet",
+            ),
+        )
+        assertEquals(
+            "Connected",
+            networkStatusLabel(
+                NodePhase.RunningNetwork,
+                NodeMode.Network,
+                2,
+                true,
+                "Connected but NAT traversal is failing",
             ),
         )
     }
