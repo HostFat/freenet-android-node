@@ -9,7 +9,9 @@ import java.time.Instant
 internal const val SERVICE_REPORT_SERVER = "https://nova.locut.us/api/reports"
 internal const val SERVICE_REPORT_REPO = "https://github.com/HostFat/freenet-android-node"
 private const val MAX_LOG_BYTES = 400 * 1024
-private const val MAX_LOG_READ_BYTES = MAX_LOG_BYTES * 4
+private const val MAX_LOG_READ_BYTES = MAX_LOG_BYTES
+private const val MAX_TOTAL_LOG_READ_BYTES = MAX_LOG_BYTES * 4
+private const val MAX_LOG_FILES = 8
 private const val HEAD_LOG_BYTES = 64 * 1024
 private const val WS_API_PORT = 7509
 private const val RING_LOG_ENTRIES = 256
@@ -130,19 +132,27 @@ internal object ServiceReport {
     internal fun readFileLogs(context: Context): String? {
         val logDir = logDirectory(context)
         val files = logDir.listFiles()
-            ?.filter { it.isFile && it.name.endsWith(".log") }
-            ?.sortedBy { it.lastModified() }
+            ?.filter { it.isFile && it.name.endsWith(".log") && it.length() > 0L }
+            ?.sortedByDescending { it.lastModified() }
+            ?.take(MAX_LOG_FILES)
             .orEmpty()
-        val fromFiles = if (files.isEmpty()) {
-            null
-        } else {
-            filterLogNoise(
-                files.joinToString("\n") { file ->
-                    filterLogNoise(readLogTail(file, MAX_LOG_READ_BYTES))
-                },
-            ).takeLast(MAX_LOG_BYTES).trim().ifEmpty { null }
+        if (files.isEmpty()) return null
+        var remaining = MAX_TOTAL_LOG_READ_BYTES
+        val chunks = ArrayList<String>(files.size)
+        for (file in files) {
+            if (remaining <= 0) break
+            val budget = minOf(MAX_LOG_READ_BYTES, remaining)
+            val chunk = filterLogNoise(readLogTail(file, budget))
+            if (chunk.isNotBlank()) {
+                chunks.add(chunk)
+                remaining -= minOf(budget.toLong(), file.length()).toInt()
+            }
         }
-        return fromFiles
+        if (chunks.isEmpty()) return null
+        return filterLogNoise(chunks.asReversed().joinToString("\n"))
+            .takeLast(MAX_LOG_BYTES)
+            .trim()
+            .ifEmpty { null }
     }
 
     private fun collectLogs(context: Context, extraLog: String? = null): JSONObject {
