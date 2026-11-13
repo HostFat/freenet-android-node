@@ -18,6 +18,7 @@ import android.webkit.WebSettings
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import android.widget.Button
+import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
@@ -35,6 +36,8 @@ class SiteActivity : ComponentActivity() {
     private var currentUrl = ""
     private var pageTitle = ""
     private var pageLoaded = false
+    private var savedUrls: Set<String> = emptySet()
+    private var popup: WebView? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -49,12 +52,8 @@ class SiteActivity : ComponentActivity() {
         titleView = findViewById(R.id.site_title)
         statusView = findViewById(R.id.site_status)
         addButton = findViewById(R.id.site_add)
+        savedUrls = FreenetSites.load(this).map { it.url.trimEnd('/') }.toSet()
         titleView.text = pageTitle
-        findViewById<Button>(R.id.site_close).setOnClickListener { finish() }
-        findViewById<Button>(R.id.site_browser).setOnClickListener {
-            val url = webView.url ?: currentUrl
-            runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
-        }
         findViewById<Button>(R.id.site_refresh).setOnClickListener {
             if (webView.url == null) {
                 webView.loadUrl(currentUrl)
@@ -62,9 +61,28 @@ class SiteActivity : ComponentActivity() {
                 webView.reload()
             }
         }
+        findViewById<Button>(R.id.site_menu).setOnClickListener { button ->
+            val menu = PopupMenu(this, button)
+            menu.menu.add(0, MENU_BROWSER, 0, getString(R.string.open_in_browser))
+            menu.menu.add(0, MENU_CLOSE, 1, getString(R.string.config_close))
+            menu.setOnMenuItemClickListener { item ->
+                when (item.itemId) {
+                    MENU_BROWSER -> {
+                        val url = webView.url ?: currentUrl
+                        runCatching {
+                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        }
+                    }
+                    MENU_CLOSE -> finish()
+                }
+                true
+            }
+            menu.show()
+        }
         addButton.setOnClickListener {
             val root = contractRoot(currentUrl) ?: return@setOnClickListener
             FreenetSites.add(this, pageTitle.ifBlank { root }, root)
+            savedUrls = savedUrls + root.trimEnd('/')
             updateAddButton()
         }
 
@@ -86,7 +104,6 @@ class SiteActivity : ComponentActivity() {
         webView.settings.apply {
             javaScriptEnabled = true
             domStorageEnabled = true
-            databaseEnabled = true
             allowFileAccess = false
             allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
@@ -98,6 +115,7 @@ class SiteActivity : ComponentActivity() {
                 view: WebView,
                 request: WebResourceRequest,
             ): Boolean {
+                if (!request.isForMainFrame) return false
                 val uri = request.url
                 if (uri.scheme == "http" && uri.host == "127.0.0.1" && uri.port == 7509) {
                     return false
@@ -176,6 +194,7 @@ class SiteActivity : ComponentActivity() {
             ): Boolean {
                 val transport = resultMsg.obj as WebView.WebViewTransport
                 val popup = WebView(this@SiteActivity)
+                this@SiteActivity.popup = popup
                 popup.webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(
                         popupView: WebView,
@@ -183,6 +202,7 @@ class SiteActivity : ComponentActivity() {
                     ): Boolean {
                         view.loadUrl(request.url.toString())
                         popup.destroy()
+                        this@SiteActivity.popup = null
                         return true
                     }
                 }
@@ -202,9 +222,7 @@ class SiteActivity : ComponentActivity() {
 
     private fun updateAddButton() {
         val root = contractRoot(currentUrl)
-        val saved = root != null && FreenetSites.load(this).any {
-            it.url.trimEnd('/') == root.trimEnd('/')
-        }
+        val saved = root != null && root.trimEnd('/') in savedUrls
         addButton.visibility = if (root != null && pageLoaded && !saved) {
             View.VISIBLE
         } else {
@@ -215,10 +233,32 @@ class SiteActivity : ComponentActivity() {
     private fun contractRoot(url: String): String? =
         CONTRACT_ROOT.find(url)?.groupValues?.getOrNull(1)
 
+    override fun onPause() {
+        if (::webView.isInitialized) webView.onPause()
+        super.onPause()
+    }
+
+    override fun onResume() {
+        super.onResume()
+        if (::webView.isInitialized) webView.onResume()
+    }
+
+    override fun onDestroy() {
+        popup?.destroy()
+        popup = null
+        if (::webView.isInitialized) {
+            webView.loadUrl("about:blank")
+            webView.destroy()
+        }
+        super.onDestroy()
+    }
+
     companion object {
         private const val TAG = "FreenetSite"
         private const val EXTRA_URL = "url"
         private const val EXTRA_NAME = "name"
+        private const val MENU_BROWSER = 1
+        private const val MENU_CLOSE = 2
         private val CONTRACT_ROOT = Regex(
             """^(http://127\.0\.0\.1:7509/v1/contract/web/[^/]+/)""",
         )

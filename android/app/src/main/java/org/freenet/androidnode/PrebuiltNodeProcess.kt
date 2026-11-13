@@ -70,6 +70,7 @@ internal object PrebuiltNodeProcess {
             val detail = "Port $websocketPort is already in use. Another Freenet node, " +
                 "possibly another app, is running. Close it and retry."
             synchronized(lock) { lastDetail = detail }
+            ServiceEventLog.record("start blocked: port $websocketPort in use")
             return@runCatching errorEnvelope(detail, code = "PORT_IN_USE")
         }
         val customPort = config.optString("udpPortMode") == "custom"

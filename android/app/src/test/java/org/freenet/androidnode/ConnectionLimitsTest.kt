@@ -29,11 +29,55 @@ class ConnectionLimitsTest {
         assertEquals(false, canResetNode(serviceActive = false, nativeState = NodePhase.RunningLocal))
         val files = java.io.File("/data/user/0/app/files")
         val cache = java.io.File("/data/user/0/app/cache")
-        val paths = nodeRuntimeResetPaths(files, cache).map { it.path }
+        val paths = nodeRuntimeResetPaths(files, cache).map { it.path.replace('\\', '/') }
         assertEquals(true, paths.any { it.endsWith("freenet/logs") })
         assertEquals(true, paths.any { it.endsWith("freenet/database") })
         assertEquals(false, paths.any { it.contains("identity") })
         assertEquals(false, paths.any { it.contains("config") })
+    }
+
+    @Test
+    fun networkRestartDecisionRequiresAnActiveNode() {
+        val wifi = ConnectivitySnapshot(
+            available = true,
+            validated = true,
+            wifi = true,
+            metered = false,
+            vpn = false,
+            networkType = "Wi-Fi",
+            activeNetwork = "wifi",
+        )
+        val cellular = wifi.copy(
+            wifi = false,
+            metered = true,
+            networkType = "Cellular",
+            activeNetwork = "cell",
+        )
+        val meteredOnly = wifi.copy(metered = true)
+        assertEquals(true, shouldRestartForNetworkChange(wifi, cellular, nodeActive = true))
+        assertEquals(false, shouldRestartForNetworkChange(wifi, meteredOnly, nodeActive = true))
+        assertEquals(false, shouldRestartForNetworkChange(wifi, cellular, nodeActive = false))
+        assertEquals(false, shouldRestartForNetworkChange(null, wifi, nodeActive = true))
+    }
+
+    @Test
+    fun isolatedRestartAttemptsAreCapped() {
+        assertEquals(true, isolatedRestartAllowed(0, 3))
+        assertEquals(true, isolatedRestartAllowed(2, 3))
+        assertEquals(false, isolatedRestartAllowed(3, 3))
+    }
+
+    @Test
+    fun gatewayOnlyHintIsCaseInsensitive() {
+        assertEquals(
+            "Only connected to gateways — no peer-to-peer connections yet",
+            natHintFromHtml("<div>ONLY CONNECTED TO GATEWAYS</div>"),
+        )
+        assertEquals(
+            "Connected but NAT traversal is failing",
+            natHintFromHtml("<p>NAT traversal failing</p>"),
+        )
+        assertEquals(null, natHintFromHtml("<p>All good</p>"))
     }
 
     @Test

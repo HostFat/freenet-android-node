@@ -29,6 +29,7 @@
     <string name="close_dashboard">Close / Dashboard</string>
     <string name="restore_defaults">Default</string>
     <string name="refresh_site">Refresh</string>
+    <string name="more_actions">More actions</string>
     <string name="open_with">Open with</string>
     <string name="open_in_app">App</string>
     <string name="open_in_browser">Browser</string>

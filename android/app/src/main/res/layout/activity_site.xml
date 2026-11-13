@@ -47,19 +47,16 @@
             android:visibility="gone" />
 
         <Button
-            android:id="@+id/site_browser"
+            android:id="@+id/site_menu"
             style="?android:attr/buttonStyleSmall"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/open_in_browser"
-            android:textSize="12sp" />
-
-        <Button
-            android:id="@+id/site_close"
-            style="?android:attr/buttonStyleSmall"
-            android:layout_width="wrap_content"
-            android:layout_height="wrap_content"
-            android:text="@string/config_close" />
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="@string/more_actions"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:text="⋮"
+            android:textSize="20sp" />
     </LinearLayout>
 
     <TextView

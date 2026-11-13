@@ -157,9 +157,10 @@ internal object ServiceReport {
             merged != null && merged.length > MAX_LOG_BYTES -> merged.takeLast(MAX_LOG_BYTES)
             else -> merged
         }
-        val head = when {
-            truncated && mergedRaw != null -> filterLogNoise(mergedRaw.take(HEAD_LOG_BYTES))
-            else -> null
+        val head = if (truncated) {
+            filterLogNoise(mergedRaw.orEmpty().take(HEAD_LOG_BYTES))
+        } else {
+            null
         }
         val originalBytes = mergedRaw?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L
         val bytes = main?.toByteArray(Charsets.UTF_8)?.size?.toLong() ?: 0L
@@ -172,6 +173,7 @@ internal object ServiceReport {
             .put("error_log_size_bytes", 0L)
             .put("main_log_original_size_bytes", originalBytes)
             .put("error_log_original_size_bytes", 0L)
+            .put("app_events", ServiceEventLog.recent() ?: JSONObject.NULL)
             .put(
                 "node_exit_detail",
                 if (BuildConfig.PREBUILT_NODE) {

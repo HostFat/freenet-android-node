@@ -93,7 +93,9 @@ internal object FreenetSites {
                     FreenetSite(it.name, it.url, true, it.viewer)
                 } ?: site
             }
-        return edited + customSites(context)
+        val known = edited.map { it.url.trimEnd('/') }.toMutableSet()
+        val custom = customSites(context).filterNot { known.contains(it.url.trimEnd('/')) }
+        return edited + custom
     }
 
     fun add(
@@ -113,7 +115,7 @@ internal object FreenetSites {
 
     fun update(
         context: Context,
-        index: Int,
+        original: FreenetSite,
         name: String,
         url: String,
         viewer: SiteViewer,
@@ -122,7 +124,9 @@ internal object FreenetSites {
         if (clean.isBlank()) return load(context)
         val cleanName = name.trim().ifBlank { clean }
         val current = load(context)
-        val site = current.getOrNull(index) ?: return current
+        val site = current.firstOrNull {
+            it.url == original.url && it.predefined == original.predefined
+        } ?: return current
         if (site.predefined) {
             val overrides = overrides(context).toMutableMap()
             val original = defaultOriginal(overrides, site.url) ?: return current

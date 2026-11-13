@@ -85,6 +85,20 @@ internal fun isGatewayOnlyHint(natHint: String?): Boolean =
 internal fun nodeIsConnected(state: NodePhase, peers: Int): Boolean =
     state == NodePhase.RunningNetwork && peers > 0
 
+internal fun shouldRestartForNetworkChange(
+    previous: ConnectivitySnapshot?,
+    current: ConnectivitySnapshot,
+    nodeActive: Boolean,
+): Boolean {
+    if (previous == null || !nodeActive) return false
+    return previous.available != current.available ||
+        previous.networkType != current.networkType ||
+        previous.vpn != current.vpn
+}
+
+internal fun isolatedRestartAllowed(attempt: Int, maxAttempts: Int): Boolean =
+    attempt < maxAttempts
+
 internal fun networkStatusLabel(
     state: NodePhase,
     mode: NodeMode,

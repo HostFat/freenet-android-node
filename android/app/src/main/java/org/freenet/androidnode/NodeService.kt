@@ -35,6 +35,9 @@ class NodeService : Service() {
     private var lastConnectivity: ConnectivitySnapshot? = null
     private var connectivityRestartJob: Job? = null
     private var statusJob: Job? = null
+    private var watchdogJob: Job? = null
+    @Volatile
+    private var isolatedRestartAttempt = 0
     private var foregroundStarted = false
     private var shutdownCompleted = false
     @Volatile
@@ -532,17 +535,24 @@ class NodeService : Service() {
         appInitiatedStop = false
         beginStatusUpdates()
         if (networkMode) {
-            // A start that stays at zero peers while gateways respond usually
-            // means a stale child process or a locked store. Retry once.
-            serviceScope.launch {
+            // A start that stays isolated usually means a stale child process
+            // or a NAT mapping that did not survive an interface change.
+            watchdogJob?.cancel()
+            watchdogJob = serviceScope.launch {
                 delay(90_000)
                 val current = NodeRepository.state.value
                 val isolated = current.peers == 0 || isGatewayOnlyHint(current.natHint)
                 if (!userRequestedShutdown &&
                     runningMode == NodeMode.Network &&
                     isolated &&
-                    nativeIsActive()
+                    nativeIsActive() &&
+                    isolatedRestartAllowed(isolatedRestartAttempt, MAX_ISOLATED_RESTARTS)
                 ) {
+                    isolatedRestartAttempt += 1
+                    ServiceEventLog.record(
+                        "watchdog restart peers=${current.peers} isolated=$isolated " +
+                            "attempt=$isolatedRestartAttempt",
+                    )
                     NodeRepository.publishStopping(
                         if (current.peers == 0) {
                             "No peers after startup; restarting"
@@ -557,7 +567,7 @@ class NodeService : Service() {
                                 keepController = true,
                                 waitingDetail = "Restarting after an isolated start",
                             )
-                            reconcilePolicy(latestStartId, explicitStart = true)
+                            reconcilePolicy(latestStartId, explicitStart = false)
                         }
                     }
                 }
@@ -574,11 +584,13 @@ class NodeService : Service() {
             }
         }
         NodeRepository.publishConnectivity(snapshot, response)
-        val networkChanged = previous != null && (
-            previous.available != snapshot.available ||
-                previous.networkType != snapshot.networkType ||
-                previous.vpn != snapshot.vpn
-            )
+        val nodeActive = nativeIsActive()
+        val networkChanged = shouldRestartForNetworkChange(previous, snapshot, nodeActive)
+        ServiceEventLog.record(
+            "network ${previous?.networkType}/${previous?.validated}/${previous?.metered} -> " +
+                "${snapshot.networkType}/${snapshot.validated}/${snapshot.metered} " +
+                "active=$nodeActive restart=$networkChanged",
+        )
         if (BuildConfig.PREBUILT_NODE &&
             networkChanged &&
             runningMode == NodeMode.Network &&
@@ -594,8 +606,15 @@ class NodeService : Service() {
                 }
                 val latest = lastConnectivity
                 if (latest == null || !latest.available || !latest.validated) {
+                    ServiceEventLog.record("network not validated; restart skipped")
+                    if (runningMode == NodeMode.Network) {
+                        lifecycleMutex.withLock {
+                            reconcilePolicy(latestStartId, explicitStart = false)
+                        }
+                    }
                     return@launch
                 }
+                ServiceEventLog.record("restarting after a network change")
                 lifecycleMutex.withLock {
                     if (userRequestedShutdown) return@withLock
                     if (nativeIsActive()) {
@@ -605,10 +624,9 @@ class NodeService : Service() {
                             waitingDetail = "Restarting after a network change",
                         )
                     }
-                    reconcilePolicy(latestStartId, explicitStart = true)
+                    reconcilePolicy(latestStartId, explicitStart = false)
                 }
             }
-            return
         }
         if (runningMode == NodeMode.Network) {
             lifecycleMutex.withLock { reconcilePolicy(latestStartId, explicitStart = false) }
@@ -652,6 +670,9 @@ class NodeService : Service() {
                         NodeRepository.publishNatHint(DashboardHints.natHint())
                     }
                     if (state.peers > 0) {
+                        if (!isGatewayOnlyHint(state.natHint)) {
+                            isolatedRestartAttempt = 0
+                        }
                         val stamped = NodePolicyRepository.noteScheduleConnected(
                             this@NodeService,
                             System.currentTimeMillis(),
@@ -704,6 +725,8 @@ class NodeService : Service() {
             .putBoolean("was_active", false)
             .apply()
         connectivityRestartJob?.cancel()
+        watchdogJob?.cancel()
+        watchdogJob = null
         statusJob?.cancelAndJoin()
         statusJob = null
         if (!nativeIsActive()) {
@@ -775,6 +798,8 @@ class NodeService : Service() {
     private suspend fun handleUnexpectedNativeStop() {
         statusJob?.cancel()
         statusJob = null
+        watchdogJob?.cancel()
+        watchdogJob = null
         if (userRequestedShutdown || appInitiatedStop) return
         val status = NodeRepository.state.value
         if (status.state != NodePhase.Stopped && status.state != NodePhase.Failed) return
@@ -892,6 +917,7 @@ class NodeService : Service() {
         private const val CONNECTIVITY_SETTLE_MS = 8_000L
         private const val SHUTDOWN_TIMEOUT_MS = 30_000L
         private const val MAX_CRASH_RESTARTS = 5
+        private const val MAX_ISOLATED_RESTARTS = 3
         private val CRASH_RESTART_BACKOFF_MS = longArrayOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L)
         private const val TAG = "FreenetNodeService"
         private val ACTIVE_NATIVE_STATES = setOf(

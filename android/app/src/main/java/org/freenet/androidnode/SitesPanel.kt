@@ -19,6 +19,8 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.Checkbox
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
@@ -38,7 +40,7 @@ import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -62,8 +64,9 @@ internal fun SitesPanel(
     var openWhenConnected by remember { mutableStateOf<FreenetSite?>(null) }
     var askSite by remember { mutableStateOf<FreenetSite?>(null) }
     var openWith by remember { mutableStateOf(FreenetSites.openWith(context)) }
+    var showOpenWithMenu by remember { mutableStateOf(false) }
     var showAdd by remember { mutableStateOf(false) }
-    var editIndex by remember { mutableStateOf<Int?>(null) }
+    var editSite by remember { mutableStateOf<FreenetSite?>(null) }
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
     var newViewer by remember { mutableStateOf(SiteViewer.INHERIT) }
@@ -131,39 +134,44 @@ internal fun SitesPanel(
                 Text(stringResource(R.string.close_dashboard))
             }
         }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            verticalAlignment = Alignment.CenterVertically,
-            horizontalArrangement = Arrangement.spacedBy(6.dp),
-        ) {
-            Text(
-                stringResource(R.string.open_with),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            FilterChip(
-                selected = openWith == OpenWith.APP,
-                onClick = {
-                    openWith = OpenWith.APP
-                    FreenetSites.setOpenWith(context, OpenWith.APP)
-                },
-                label = { Text(stringResource(R.string.open_in_app)) },
-            )
-            FilterChip(
-                selected = openWith == OpenWith.BROWSER,
-                onClick = {
-                    openWith = OpenWith.BROWSER
-                    FreenetSites.setOpenWith(context, OpenWith.BROWSER)
-                },
-                label = { Text(stringResource(R.string.open_in_browser)) },
-            )
-            FilterChip(
-                selected = openWith == OpenWith.ASK,
-                onClick = {
-                    openWith = OpenWith.ASK
-                    FreenetSites.setOpenWith(context, OpenWith.ASK)
-                },
-                label = { Text(stringResource(R.string.open_ask)) },
-            )
+        Box(modifier = Modifier.fillMaxWidth()) {
+            OutlinedButton(onClick = { showOpenWithMenu = true }) {
+                val label = when (openWith) {
+                    OpenWith.APP -> R.string.open_in_app
+                    OpenWith.BROWSER -> R.string.open_in_browser
+                    OpenWith.ASK -> R.string.open_ask
+                }
+                Text(stringResource(R.string.open_with) + ": " + stringResource(label))
+            }
+            DropdownMenu(
+                expanded = showOpenWithMenu,
+                onDismissRequest = { showOpenWithMenu = false },
+            ) {
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.open_in_app)) },
+                    onClick = {
+                        openWith = OpenWith.APP
+                        FreenetSites.setOpenWith(context, OpenWith.APP)
+                        showOpenWithMenu = false
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.open_in_browser)) },
+                    onClick = {
+                        openWith = OpenWith.BROWSER
+                        FreenetSites.setOpenWith(context, OpenWith.BROWSER)
+                        showOpenWithMenu = false
+                    },
+                )
+                DropdownMenuItem(
+                    text = { Text(stringResource(R.string.open_ask)) },
+                    onClick = {
+                        openWith = OpenWith.ASK
+                        FreenetSites.setOpenWith(context, OpenWith.ASK)
+                        showOpenWithMenu = false
+                    },
+                )
+            }
         }
         Box(
             modifier = Modifier
@@ -202,7 +210,7 @@ internal fun SitesPanel(
                         }
                         TextButton(
                             onClick = {
-                                editIndex = index
+                                editSite = site
                                 newName = site.name
                                 newUrl = site.url
                                 newViewer = site.viewer
@@ -341,12 +349,12 @@ internal fun SitesPanel(
         )
     }
 
-    val editingIndex = editIndex
-    if (showAdd || editingIndex != null) {
+    val editingSite = editSite
+    if (showAdd || editingSite != null) {
         AlertDialog(
             onDismissRequest = {
                 showAdd = false
-                editIndex = null
+                editSite = null
                 newName = ""
                 newUrl = ""
                 newViewer = SiteViewer.INHERIT
@@ -354,7 +362,7 @@ internal fun SitesPanel(
             title = {
                 Text(
                     stringResource(
-                        if (editingIndex != null) R.string.edit_site_title else R.string.add_site,
+                        if (editingSite != null) R.string.edit_site_title else R.string.add_site,
                     ),
                 )
             },
@@ -397,10 +405,10 @@ internal fun SitesPanel(
                 TextButton(
                     enabled = newUrl.isNotBlank(),
                     onClick = {
-                        sites = if (editingIndex != null) {
+                        sites = if (editingSite != null) {
                             FreenetSites.update(
                                 context,
-                                editingIndex,
+                                editingSite,
                                 newName,
                                 newUrl,
                                 newViewer,
@@ -409,7 +417,7 @@ internal fun SitesPanel(
                             FreenetSites.add(context, newName, newUrl, newViewer)
                         }
                         showAdd = false
-                        editIndex = null
+                        editSite = null
                         newName = ""
                         newUrl = ""
                         newViewer = SiteViewer.INHERIT
@@ -417,7 +425,7 @@ internal fun SitesPanel(
                 ) {
                     Text(
                         stringResource(
-                            if (editingIndex != null) {
+                            if (editingSite != null) {
                                 R.string.config_save
                             } else {
                                 R.string.add_site_confirm
@@ -430,7 +438,7 @@ internal fun SitesPanel(
                 TextButton(
                     onClick = {
                         showAdd = false
-                        editIndex = null
+                        editSite = null
                         newName = ""
                         newUrl = ""
                         newViewer = SiteViewer.INHERIT

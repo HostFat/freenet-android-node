@@ -13,16 +13,21 @@ internal object DashboardHints {
             try {
                 if (connection.responseCode !in 200..299) return null
                 val html = connection.inputStream.bufferedReader().use { it.readText() }
-                when {
-                    html.contains("Only connected to gateways") ->
-                        "Only connected to gateways — no peer-to-peer connections yet"
-                    html.contains("NAT traversal is failing") ->
-                        "Connected but NAT traversal is failing"
-                    else -> null
-                }
+                natHintFromHtml(html)
             } finally {
                 connection.disconnect()
             }
         }.getOrNull()
+    }
+}
+
+internal fun natHintFromHtml(html: String): String? {
+    val text = html.lowercase()
+    return when {
+        "only connected to gateways" in text || "gateway only" in text ->
+            "Only connected to gateways — no peer-to-peer connections yet"
+        "nat traversal is failing" in text || "nat traversal failing" in text ->
+            "Connected but NAT traversal is failing"
+        else -> null
     }
 }
