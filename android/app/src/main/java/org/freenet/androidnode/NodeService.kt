@@ -31,6 +31,7 @@ class NodeService : Service() {
     private lateinit var nodeNotificationManager: NodeNotificationManager
     private lateinit var connectivityMonitor: AndroidConnectivityMonitor
     private lateinit var batteryManager: BatteryManager
+    @Volatile
     private var lastConnectivity: ConnectivitySnapshot? = null
     private var connectivityRestartJob: Job? = null
     private var statusJob: Job? = null
@@ -535,12 +536,20 @@ class NodeService : Service() {
             // means a stale child process or a locked store. Retry once.
             serviceScope.launch {
                 delay(90_000)
+                val current = NodeRepository.state.value
+                val isolated = current.peers == 0 || isGatewayOnlyHint(current.natHint)
                 if (!userRequestedShutdown &&
                     runningMode == NodeMode.Network &&
-                    NodeRepository.state.value.peers == 0 &&
+                    isolated &&
                     nativeIsActive()
                 ) {
-                    NodeRepository.publishStopping("No peers after startup; restarting")
+                    NodeRepository.publishStopping(
+                        if (current.peers == 0) {
+                            "No peers after startup; restarting"
+                        } else {
+                            "Only gateways after startup; restarting"
+                        },
+                    )
                     lifecycleMutex.withLock {
                         if (!userRequestedShutdown) {
                             shutDownNode(
@@ -568,7 +577,6 @@ class NodeService : Service() {
         val networkChanged = previous != null && (
             previous.available != snapshot.available ||
                 previous.networkType != snapshot.networkType ||
-                previous.metered != snapshot.metered ||
                 previous.vpn != snapshot.vpn
             )
         if (BuildConfig.PREBUILT_NODE &&
@@ -580,7 +588,14 @@ class NodeService : Service() {
             // network to settle, then restart it on the current interface.
             connectivityRestartJob?.cancel()
             connectivityRestartJob = serviceScope.launch {
-                delay(3_000)
+                delay(CONNECTIVITY_SETTLE_MS)
+                if (lastConnectivity?.validated != true) {
+                    delay(CONNECTIVITY_SETTLE_MS)
+                }
+                val latest = lastConnectivity
+                if (latest == null || !latest.available || !latest.validated) {
+                    return@launch
+                }
                 lifecycleMutex.withLock {
                     if (userRequestedShutdown) return@withLock
                     if (nativeIsActive()) {
@@ -874,6 +889,7 @@ class NodeService : Service() {
         const val ACTION_RESTART_NETWORK = "org.freenet.androidnode.action.RESTART_NETWORK"
 
         private const val STATUS_POLL_INTERVAL_MS = 250L
+        private const val CONNECTIVITY_SETTLE_MS = 8_000L
         private const val SHUTDOWN_TIMEOUT_MS = 30_000L
         private const val MAX_CRASH_RESTARTS = 5
         private val CRASH_RESTART_BACKOFF_MS = longArrayOf(2_000L, 5_000L, 15_000L, 30_000L, 60_000L)
