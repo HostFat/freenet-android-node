@@ -55,6 +55,13 @@ class SiteActivity : ComponentActivity() {
             val url = webView.url ?: currentUrl
             runCatching { startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url))) }
         }
+        findViewById<Button>(R.id.site_refresh).setOnClickListener {
+            if (webView.url == null) {
+                webView.loadUrl(currentUrl)
+            } else {
+                webView.reload()
+            }
+        }
         addButton.setOnClickListener {
             val root = contractRoot(currentUrl) ?: return@setOnClickListener
             FreenetSites.add(this, pageTitle.ifBlank { root }, root)

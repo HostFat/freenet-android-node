@@ -24,6 +24,17 @@
             android:textStyle="bold" />
 
         <Button
+            android:id="@+id/site_refresh"
+            android:layout_width="40dp"
+            android:layout_height="40dp"
+            android:contentDescription="@string/refresh_site"
+            android:minWidth="0dp"
+            android:minHeight="0dp"
+            android:padding="0dp"
+            android:text="↻"
+            android:textSize="20sp" />
+
+        <Button
             android:id="@+id/site_add"
             android:layout_width="40dp"
             android:layout_height="40dp"
