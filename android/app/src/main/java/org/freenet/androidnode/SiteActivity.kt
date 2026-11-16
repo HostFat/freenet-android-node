@@ -1,6 +1,7 @@
 package org.freenet.androidnode
 
 import android.annotation.SuppressLint
+import android.app.AlertDialog
 import android.content.Context
 import android.content.Intent
 import android.graphics.Bitmap
@@ -32,10 +33,12 @@ class SiteActivity : ComponentActivity() {
     private lateinit var webView: WebView
     private lateinit var titleView: TextView
     private lateinit var statusView: TextView
-    private lateinit var addButton: Button
+    private lateinit var backButton: Button
+    private lateinit var forwardButton: Button
     private var currentUrl = ""
     private var pageTitle = ""
     private var pageLoaded = false
+    private var canAddSite = false
     private var savedUrls: Set<String> = emptySet()
     private var popup: WebView? = null
 
@@ -51,9 +54,17 @@ class SiteActivity : ComponentActivity() {
 
         titleView = findViewById(R.id.site_title)
         statusView = findViewById(R.id.site_status)
-        addButton = findViewById(R.id.site_add)
+        backButton = findViewById(R.id.site_back)
+        forwardButton = findViewById(R.id.site_forward)
         savedUrls = FreenetSites.load(this).map { it.url.trimEnd('/') }.toSet()
         titleView.text = pageTitle
+        titleView.setOnClickListener { showFullTitle() }
+        backButton.setOnClickListener {
+            if (webView.canGoBack()) webView.goBack()
+        }
+        forwardButton.setOnClickListener {
+            if (webView.canGoForward()) webView.goForward()
+        }
         findViewById<Button>(R.id.site_refresh).setOnClickListener {
             if (webView.url == null) {
                 webView.loadUrl(currentUrl)
@@ -63,10 +74,14 @@ class SiteActivity : ComponentActivity() {
         }
         findViewById<Button>(R.id.site_menu).setOnClickListener { button ->
             val menu = PopupMenu(this, button)
-            menu.menu.add(0, MENU_BROWSER, 0, getString(R.string.open_in_browser))
-            menu.menu.add(0, MENU_CLOSE, 1, getString(R.string.config_close))
+            if (canAddSite) {
+                menu.menu.add(0, MENU_ADD, 0, getString(R.string.add_this_site))
+            }
+            menu.menu.add(0, MENU_BROWSER, 1, getString(R.string.open_in_browser))
+            menu.menu.add(0, MENU_CLOSE, 2, getString(R.string.config_close))
             menu.setOnMenuItemClickListener { item ->
                 when (item.itemId) {
+                    MENU_ADD -> addCurrentSite()
                     MENU_BROWSER -> {
                         val url = webView.url ?: currentUrl
                         runCatching {
@@ -79,15 +94,10 @@ class SiteActivity : ComponentActivity() {
             }
             menu.show()
         }
-        addButton.setOnClickListener {
-            val root = contractRoot(currentUrl) ?: return@setOnClickListener
-            FreenetSites.add(this, pageTitle.ifBlank { root }, root)
-            savedUrls = savedUrls + root.trimEnd('/')
-            updateAddButton()
-        }
 
         webView = findViewById(R.id.site_webview)
         configureWebView()
+        updateHistoryButtons()
         onBackPressedDispatcher.addCallback(this) {
             if (webView.canGoBack()) {
                 webView.goBack()
@@ -151,7 +161,11 @@ class SiteActivity : ComponentActivity() {
                 if (url != null) currentUrl = url
                 pageLoaded = false
                 statusView.visibility = View.GONE
-                updateAddButton()
+                updateSiteActions()
+            }
+
+            override fun doUpdateVisitedHistory(view: WebView, url: String?, isReload: Boolean) {
+                updateHistoryButtons()
             }
 
             override fun onPageFinished(view: WebView, url: String?) {
@@ -163,9 +177,9 @@ class SiteActivity : ComponentActivity() {
                         pageTitle = title
                         titleView.text = title
                     }
-                    updateAddButton()
+                    updateSiteActions()
                 }
-                updateAddButton()
+                updateSiteActions()
             }
 
             override fun onReceivedError(
@@ -181,7 +195,7 @@ class SiteActivity : ComponentActivity() {
                         currentUrl,
                     )
                     statusView.visibility = View.VISIBLE
-                    updateAddButton()
+                    updateSiteActions()
                 }
             }
         }
@@ -220,14 +234,34 @@ class SiteActivity : ComponentActivity() {
         }
     }
 
-    private fun updateAddButton() {
+    private fun updateSiteActions() {
+        updateHistoryButtons()
         val root = contractRoot(currentUrl)
-        val saved = root != null && root.trimEnd('/') in savedUrls
-        addButton.visibility = if (root != null && pageLoaded && !saved) {
-            View.VISIBLE
-        } else {
-            View.GONE
-        }
+        canAddSite = root != null && pageLoaded && root.trimEnd('/') !in savedUrls
+    }
+
+    private fun updateHistoryButtons() {
+        if (!::webView.isInitialized) return
+        backButton.isEnabled = webView.canGoBack()
+        forwardButton.isEnabled = webView.canGoForward()
+        backButton.alpha = if (backButton.isEnabled) 1f else 0.35f
+        forwardButton.alpha = if (forwardButton.isEnabled) 1f else 0.35f
+    }
+
+    private fun addCurrentSite() {
+        val root = contractRoot(currentUrl) ?: return
+        FreenetSites.add(this, pageTitle.ifBlank { root }, root)
+        savedUrls = savedUrls + root.trimEnd('/')
+        updateSiteActions()
+    }
+
+    private fun showFullTitle() {
+        val title = pageTitle.ifBlank { titleView.text?.toString().orEmpty() }
+        if (title.isBlank()) return
+        AlertDialog.Builder(this)
+            .setMessage(title)
+            .setPositiveButton(android.R.string.ok, null)
+            .show()
     }
 
     private fun contractRoot(url: String): String? =
@@ -257,6 +291,7 @@ class SiteActivity : ComponentActivity() {
         private const val TAG = "FreenetSite"
         private const val EXTRA_URL = "url"
         private const val EXTRA_NAME = "name"
+        private const val MENU_ADD = 0
         private const val MENU_BROWSER = 1
         private const val MENU_CLOSE = 2
         private val CONTRACT_ROOT = Regex(

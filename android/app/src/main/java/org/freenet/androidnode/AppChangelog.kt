@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "This update: the app no longer saves a config.toml that only sets the peer connection limits. That file made the node fail at startup because Freenet requires a mode field. An incomplete file already on the phone is replaced the next time the network node starts."
+        "Site viewer: back and forward buttons, a two-line page title, and Add this site moved into the overflow menu. Tap a truncated title to read the full text."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
