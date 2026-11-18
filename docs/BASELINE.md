@@ -1,13 +1,13 @@
 # Toolchain Baseline
 
-Baseline captured: 2026-11-16
+Baseline captured: 2026-11-18
 
 ## Freenet
 
 - Repository: `https://github.com/freenet/freenet-core.git`
-- Release tag: `v0.2.159`
-- Commit: `6d48d5ee95ecf425c9c2551b8c286fcdf220856b`
-- Core crate version: `0.2.159`
+- Release tag: `v0.2.160`
+- Commit: `a63921d9b9dfa6d3bf88819f6b008a2294abf4bd`
+- Core crate version: `0.2.160`
 - Source modifications: none
 - Submodules: none registered at the captured commit
 
