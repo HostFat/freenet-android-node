@@ -6,6 +6,16 @@ import org.junit.Test
 
 class ConnectionLimitsTest {
     @Test
+    fun networkPortIsChosenByTheNodeInRandomMode() {
+        val base = "mode = \"network\"\nnetwork-port = 31337\nlog_level = \"info\"\n"
+        val random = ConfigToml.applyNetworkPort(base, UdpPortMode.Random, 31337)
+        assertEquals(false, random.contains("network-port"))
+        val custom = ConfigToml.applyNetworkPort(base, UdpPortMode.Custom, 55012)
+        assertEquals(true, custom.contains("network-port = 55012"))
+        assertEquals(base, ConfigToml.applyNetworkPort(base, UdpPortMode.Saved, 31337))
+    }
+
+    @Test
     fun panelVersionLineShowsAppAndNode() {
         assertEquals("App 0.2.134.10 · Node 0.2.134", panelVersionLine("0.2.134.10", "0.2.134"))
         assertEquals("App 0.2.135.2" to "Node 0.2.135", panelVersionLabels("0.2.135.2", "0.2.135"))

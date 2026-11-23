@@ -188,7 +188,7 @@ data class NodePolicyState(
     val suspendedByUser: Boolean = false,
     val minConnections: Int = ConnectionLimits.DefaultMin,
     val maxConnections: Int = ConnectionLimits.DefaultMax,
-    val udpPortMode: UdpPortMode = UdpPortMode.Saved,
+    val udpPortMode: UdpPortMode = UdpPortMode.Random,
     val udpPort: Int = UdpPorts.Default,
     val startOnBoot: Boolean = false,
     val autoRestartOnCrash: Boolean = false,
@@ -270,7 +270,7 @@ object NodePolicyRepository {
             maxConnections = maxConnections,
             udpPortMode = preferences.getString(UDP_PORT_MODE_KEY, null)
                 ?.let { stored -> enumValues<UdpPortMode>().find { it.name == stored } }
-                ?: UdpPortMode.Saved,
+                ?: UdpPortMode.Random,
             udpPort = UdpPorts.coerce(
                 preferences.getInt(UDP_PORT_KEY, UdpPorts.Default),
             ),

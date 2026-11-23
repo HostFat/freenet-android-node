@@ -20,6 +20,7 @@ internal object PrebuiltNodeProcess {
     private const val MAX_LOG_BYTES = 2L * 1024 * 1024
     private const val MAX_TAIL_BYTES = 64 * 1024
     private const val GATEWAYS_INDEX = "https://freenet.org/keys/gateways.toml"
+    private val GATEWAY_KEY = Regex("""public[_-]key\s*=\s*"[^"]+"""")
 
     private val lock = Any()
     private var process: Process? = null
@@ -73,7 +74,10 @@ internal object PrebuiltNodeProcess {
             ServiceEventLog.record("start blocked: port $websocketPort in use")
             return@runCatching errorEnvelope(detail, code = "PORT_IN_USE")
         }
-        val customPort = config.optString("udpPortMode") == "custom"
+        val udpPortMode = UdpPortMode.entries
+            .find { it.name.equals(config.optString("udpPortMode"), ignoreCase = true) }
+            ?: UdpPortMode.Random
+        val customPort = udpPortMode == UdpPortMode.Custom
 
         // The node loads config.toml and does not create it. Write a complete
         // file once; a partial file fails the required-field parser.
@@ -130,9 +134,9 @@ internal object PrebuiltNodeProcess {
                     wasmtimeDir = wasmtimeDir,
                     websocketPort = websocketPort,
                     networkPort = if (customPort) {
-                        config.optInt("udpPort", UdpPorts.Default)
+                        UdpPorts.coerce(config.optInt("udpPort", UdpPorts.Default))
                     } else {
-                        UdpPorts.Default
+                        null
                     },
                     minConnections = minConnections,
                     maxConnections = maxConnections,
@@ -145,6 +149,7 @@ internal object PrebuiltNodeProcess {
                 "connection limits set min=$minConnections max=$maxConnections",
             )
         }
+        applyNetworkPortMode(configFile, udpPortMode, config.optInt("udpPort", UdpPorts.Default))
 
         // The musl binary cannot use Android's DNS resolver, so it fails to
         // fetch the gateway index. Download it with the app's TLS stack and
@@ -357,14 +362,20 @@ internal object PrebuiltNodeProcess {
                 "exists=${configDir.exists()} isDirectory=${configDir.isDirectory} " +
                 "canWrite=${configDir.canWrite()}",
         )
-        val rawIndex = if (gatewaysFile.isFile && gatewaysFile.length() > 0L) {
+        val savedIndex = if (gatewaysFile.isFile && gatewaysFile.length() > 0L) {
             gatewaysFile.readText()
         } else {
-            appendInfoLog("fetching $GATEWAYS_INDEX")
-            val body = httpGet(GATEWAYS_INDEX, 5_000)
-            require(body.isNotBlank()) { "empty gateway index" }
-            body
+            ""
         }
+        appendInfoLog("fetching $GATEWAYS_INDEX")
+        val fetchedIndex = runCatching { httpGet(GATEWAYS_INDEX, 5_000) }
+            .onFailure { appendInfoLog("gateway index download failed: ${it.message}") }
+            .getOrDefault("")
+        // Keep the saved list only when this start could not fetch a usable
+        // index, so a moved or retired gateway is not used forever.
+        val rawIndex = listOf(fetchedIndex, savedIndex)
+            .firstOrNull { it.isNotBlank() && GATEWAY_KEY.containsMatchIn(it) }
+        require(rawIndex != null) { "gateway index is unavailable and no saved copy exists" }
         // The node's resolver reads /etc/resolv.conf, absent on Android, and
         // fails before it can resolve a gateway hostname. Resolve here with the
         // Android DNS stack and persist the IP in the file.
@@ -438,13 +449,15 @@ internal object PrebuiltNodeProcess {
         eventLogDir: File,
         wasmtimeDir: File,
         websocketPort: Int,
-        networkPort: Int,
+        networkPort: Int?,
         minConnections: Int,
         maxConnections: Int,
     ): String = buildString {
         appendLine("mode = \"${if (network) "network" else "local"}\"")
         appendLine("network-address = \"${if (network) "0.0.0.0" else "127.0.0.1"}\"")
-        appendLine("network-port = $networkPort")
+        if (networkPort != null) {
+            appendLine("network-port = $networkPort")
+        }
         appendLine("min-number-of-connections = $minConnections")
         appendLine("max-number-of-connections = $maxConnections")
         appendLine("skip_load_from_network = true")
@@ -514,6 +527,17 @@ internal object PrebuiltNodeProcess {
                 match.value
             }
         }
+
+    /** Random mode lets the node pick a free port; Custom pins the chosen one. */
+    private fun applyNetworkPortMode(configFile: File, mode: UdpPortMode, port: Int) {
+        if (!configFile.isFile) return
+        val current = configFile.readText()
+        val updated = ConfigToml.applyNetworkPort(current, mode, port)
+        if (updated != current) {
+            configFile.writeText(updated)
+            appendInfoLog("network port mode ${mode.name.lowercase()} applied to config.toml")
+        }
+    }
 
     /**
      * The interface owns the connection limits, so rewrite only those two keys

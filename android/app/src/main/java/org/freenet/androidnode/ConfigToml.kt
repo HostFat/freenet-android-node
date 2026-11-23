@@ -114,14 +114,17 @@ internal object ConfigToml {
         return regex.replace(text, "")
     }
 
+    fun applyNetworkPort(text: String, mode: UdpPortMode, port: Int): String =
+        when (mode) {
+            UdpPortMode.Custom -> upsertInt(text, NETWORK_PORT_KEY, UdpPorts.coerce(port))
+            UdpPortMode.Random -> removeKey(text, NETWORK_PORT_KEY)
+            UdpPortMode.Saved -> text
+        }
+
     fun syncUdpPortToFile(context: Context, mode: UdpPortMode, port: Int) {
         val current = read(context)
         if (!isComplete(current)) return
-        val updated = when (mode) {
-            UdpPortMode.Custom -> upsertInt(current, NETWORK_PORT_KEY, UdpPorts.coerce(port))
-            UdpPortMode.Random -> removeKey(current, NETWORK_PORT_KEY)
-            UdpPortMode.Saved -> current
-        }
+        val updated = applyNetworkPort(current, mode, port)
         if (updated != current) {
             write(context, updated)
         }

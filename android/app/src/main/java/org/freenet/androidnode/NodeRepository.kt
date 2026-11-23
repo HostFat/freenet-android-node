@@ -480,7 +480,7 @@ internal fun androidNodeConfigJson(
     networkDataPolicy: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
     minConnections: Int = ConnectionLimits.DefaultMin,
     maxConnections: Int = ConnectionLimits.DefaultMax,
-    udpPortMode: UdpPortMode = UdpPortMode.Saved,
+    udpPortMode: UdpPortMode = UdpPortMode.Random,
     udpPort: Int = UdpPorts.Default,
 ): String {
     val persistentRoot = File(context.filesDir, "freenet")

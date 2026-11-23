@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "Site viewer: back and forward buttons, a two-line page title, and Add this site moved into the overflow menu. Tap a truncated title to read the full text."
+        "Node: the gateway list is refreshed on every start, falling back to the saved copy when the download fails, and the UDP port now defaults to a free port chosen by the node."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {
