@@ -12,6 +12,11 @@ expect battery drain, rough edges, and the occasional bug.
 
 ## Get the app
 
+[<img alt="Get it on Obtainium" src="https://raw.githubusercontent.com/ImranR98/Obtainium/main/assets/graphics/badge_obtainium.png" height="72">](https://apps.obtainium.imranr.dev/redirect?r=obtainium://app/%7B%22id%22%3A%22org.freenet.androidnode%22%2C%22url%22%3A%22https%3A%2F%2Fgithub.com%2FHostFat%2Ffreenet-android-node%22%2C%22author%22%3A%22HostFat%22%2C%22name%22%3A%22Freenet%20Android%20Node%22%7D)
+
+[Obtainium](https://github.com/ImranR98/Obtainium) installs the signed release
+straight from GitHub Releases and keeps it updated.
+
 ### Sideload the signed release (quickest)
 
 1. On your phone, open the [latest release](https://github.com/HostFat/freenet-android-node/releases/latest)
