@@ -30,8 +30,8 @@ this mounted path, while its lockfile records the selected crate version.
 | Gradle | 9.4.1 |
 | AGP built-in Kotlin | 2.3.10 |
 | Compose BOM | 2026.06.00 |
-| Rust | 1.94.0 |
-| Cargo | 1.94.0 |
+| Rust | 1.95.0 |
+| Cargo | 1.95.0 |
 | cargo-ndk | 4.1.2 |
 | Android Rust targets | `aarch64-linux-android`, `x86_64-linux-android` |
 | Freenet contract target | `wasm32-unknown-unknown` |
