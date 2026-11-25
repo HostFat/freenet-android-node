@@ -496,7 +496,7 @@ private fun JSONObject.optionalString(name: String): String? =
 internal fun androidNodeConfigJson(
     context: Context,
     connectivity: ConnectivitySnapshot? = null,
-    networkDataPolicy: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
+    networkDataPolicy: NetworkDataPolicy = NetworkDataPolicy.AnyValidated,
     minConnections: Int = ConnectionLimits.DefaultMin,
     maxConnections: Int = ConnectionLimits.DefaultMax,
     udpPortMode: UdpPortMode = UdpPortMode.Random,

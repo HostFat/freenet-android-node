@@ -96,14 +96,15 @@ device restarts.
 
 **Network data** — which connections the node is allowed to use once it's
 trying to join the network:
-- **Unmetered only** (default) — Wi-Fi, Ethernet, or any connection Android
+- **Unmetered only** — Wi-Fi, Ethernet, or any connection Android
   reports as unmetered; blocks cellular and metered Wi-Fi.
-- **Any validated network** — anything Android reports as having validated
-  internet access, including metered connections.
+- **Any validated network** (default) — anything Android reports as having
+  validated internet access, including metered connections.
 
 If your active connection stops meeting the selected policy while the node is
-running (for example, leaving Wi-Fi for metered cellular), the node shuts
-down gracefully rather than keep running out of policy.
+running (for example, leaving Wi-Fi for metered cellular while **Unmetered
+only** is selected), the node shuts down gracefully rather than keep running
+out of policy.
 
 **For nerds** — a live JSON snapshot of node status, metrics, and recent
 logs, with a **Copy JSON** button for bug reports. Never includes identity

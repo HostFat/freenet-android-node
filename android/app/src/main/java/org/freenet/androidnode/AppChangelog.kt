@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "Major reliability, security, and performance update: fixed external config editor and prebuilt diagnostics/reports/updates, removed local mode, hardened WebView and backups (with optional passphrase encryption for identity backups), fixed post-update auto-restart, and reduced background battery usage."
+        "Network data now defaults to Any validated network, so the node can also run on cellular and metered Wi-Fi without extra setup. You can switch back to Unmetered in the menu at any time."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

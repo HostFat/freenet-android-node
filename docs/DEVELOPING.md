@@ -142,13 +142,14 @@ databases are never included.
 
 ## Connect to the Freenet network
 
-Press **Start network node** to join the network. The default is deliberately
-fail-closed: Android's active default network must provide validated Internet
-access and report `NET_CAPABILITY_NOT_METERED`. Transport type is not used as a
-cost proxy, so unmetered Wi-Fi, Ethernet, cellular, or VPN networks are eligible
-and metered networks of any type are blocked. The user may instead select **Any
-validated network**. If the selected policy becomes ineligible while the node
-is running, the service performs a graceful shutdown.
+Press **Start network node** to join the network. By default (**Any validated
+network**), Android's active default network must provide validated Internet
+access, including metered connections. The user may switch to **Unmetered
+only**, which additionally requires `NET_CAPABILITY_NOT_METERED` (transport
+type is not used as a cost proxy, so unmetered Wi-Fi, Ethernet, cellular, or
+VPN networks remain eligible while metered networks of any type are blocked).
+If the selected policy becomes ineligible while the node is running, the
+service performs a graceful shutdown.
 
 The app registers a `ConnectivityManager.NetworkCallback` and forwards default
 network availability, validation, Wi-Fi, metered, VPN, and active-network

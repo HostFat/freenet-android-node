@@ -176,6 +176,7 @@ class ConnectionLimitsTest {
     @Test
     fun defaultsAreTenAndTen() {
         val state = NodePolicyState()
+        assertEquals(NetworkDataPolicy.AnyValidated, state.networkData)
         assertEquals(10, state.minConnections)
         assertEquals(10, state.maxConnections)
         assertEquals(false, state.autoRestartOnCrash)
@@ -185,6 +186,33 @@ class ConnectionLimitsTest {
         assertEquals(true, state.notifyUpdate)
         assertEquals(10, ConnectionLimits.DefaultMin)
         assertEquals(10, ConnectionLimits.DefaultMax)
+    }
+
+    @Test
+    fun defaultNetworkPolicyAllowsAnyValidatedNetworkAndStillRespectsUnmeteredOnly() {
+        val meteredCellular = ConnectivitySnapshot(
+            available = true,
+            validated = true,
+            wifi = false,
+            metered = true,
+            vpn = false,
+            networkType = "Cellular",
+            activeNetwork = "net-1",
+        )
+        val unvalidated = meteredCellular.copy(validated = false)
+
+        val defaultState = NodePolicyState()
+        assertEquals(true, defaultState.networkEligible(meteredCellular))
+        assertEquals(true, meteredCellular.networkModeAllowed)
+        assertEquals("Network mode is allowed", meteredCellular.policyBlockReason())
+        assertEquals(false, defaultState.networkEligible(unvalidated))
+
+        val unmeteredState = NodePolicyState(networkData = NetworkDataPolicy.UnmeteredOnly)
+        assertEquals(false, unmeteredState.networkEligible(meteredCellular))
+        assertEquals(
+            "The node is waiting because this network is metered. Network data is set to Unmetered only.",
+            meteredCellular.policyBlockReason(NetworkDataPolicy.UnmeteredOnly),
+        )
     }
 
     @Test

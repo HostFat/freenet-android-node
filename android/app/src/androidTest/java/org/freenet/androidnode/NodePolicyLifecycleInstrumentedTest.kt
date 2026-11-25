@@ -48,7 +48,7 @@ class NodePolicyLifecycleInstrumentedTest {
         } finally {
             NodeRepository.stop(context)
             awaitUiState(NodePhase.Stopped, SHUTDOWN_TIMEOUT_MS)
-            NodeRepository.setNetworkDataPolicy(context, NetworkDataPolicy.UnmeteredOnly)
+            NodeRepository.setNetworkDataPolicy(context, NetworkDataPolicy.AnyValidated)
         }
 
         assertEquals(NodePowerPolicy.Manual, NodePolicyRepository.state.value.power)

@@ -184,7 +184,7 @@ internal fun udpPortSettingsAreDirty(
 
 data class NodePolicyState(
     val power: NodePowerPolicy = NodePowerPolicy.Manual,
-    val networkData: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
+    val networkData: NetworkDataPolicy = NetworkDataPolicy.AnyValidated,
     val suspendedByUser: Boolean = false,
     val minConnections: Int = ConnectionLimits.DefaultMin,
     val maxConnections: Int = ConnectionLimits.DefaultMax,
@@ -271,7 +271,7 @@ object NodePolicyRepository {
                 ?: NodePowerPolicy.Manual,
             networkData = preferences.getString(NETWORK_DATA_KEY, null)
                 ?.let { stored -> enumValues<NetworkDataPolicy>().find { it.name == stored } }
-                ?: NetworkDataPolicy.UnmeteredOnly,
+                ?: NetworkDataPolicy.AnyValidated,
             suspendedByUser = preferences.getBoolean(SUSPENDED_KEY, false),
             minConnections = minConnections,
             maxConnections = maxConnections,

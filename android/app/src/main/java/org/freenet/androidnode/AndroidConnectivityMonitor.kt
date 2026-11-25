@@ -18,13 +18,13 @@ internal data class ConnectivitySnapshot(
     val activeNetwork: String?,
 ) {
     val networkModeAllowed: Boolean
-        get() = isAllowed(NetworkDataPolicy.UnmeteredOnly)
+        get() = isAllowed(NetworkDataPolicy.AnyValidated)
 
     fun isAllowed(policy: NetworkDataPolicy): Boolean =
         available && validated && (policy == NetworkDataPolicy.AnyValidated || !metered)
 
     fun policyBlockReason(
-        policy: NetworkDataPolicy = NetworkDataPolicy.UnmeteredOnly,
+        policy: NetworkDataPolicy = NetworkDataPolicy.AnyValidated,
     ): String = when {
         !available -> "The node is waiting because there is no network."
         !validated -> "The node is waiting because this network has no confirmed internet."

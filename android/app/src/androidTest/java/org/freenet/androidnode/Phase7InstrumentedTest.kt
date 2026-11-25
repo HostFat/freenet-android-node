@@ -29,7 +29,9 @@ class Phase7InstrumentedTest {
         )
 
         val response = JSONObject(
-            NativeBridge.startNetworkNode(androidNodeConfigJson(context, cellular)).getOrThrow(),
+            NativeBridge.startNetworkNode(
+                androidNodeConfigJson(context, cellular, NetworkDataPolicy.UnmeteredOnly),
+            ).getOrThrow(),
         )
         assertFalse(response.getBoolean("ok"))
         assertEquals("NETWORK_POLICY_BLOCKED", response.getJSONObject("error").getString("code"))
