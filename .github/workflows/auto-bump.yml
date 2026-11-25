@@ -196,8 +196,9 @@ jobs:
           compile against the new core without a stale Cargo.lock.
           EOF
           )"
-          # Never stage workflow files. GITHUB_TOKEN cannot push them, and CI
-          # already receives freenet_core_version as a workflow_dispatch input.
+          # Never stage workflow files. GITHUB_TOKEN cannot push them.
+          # Dispatch passes freenet_core_version explicitly. Push CI reads
+          # the core tag from native/Cargo.lock, so the workflow default can lag.
           git add \
             README.md \
             docs/BASELINE.md \

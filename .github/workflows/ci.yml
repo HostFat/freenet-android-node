@@ -8,9 +8,9 @@ on:
   workflow_dispatch:
     inputs:
       freenet_core_version:
-        description: "freenet-core ref to build against (e.g. v0.2.165)"
+        description: "freenet-core ref to build against (e.g. v0.2.166)"
         required: true
-        default: "v0.2.165"
+        default: "v0.2.166"
       release_version:
         description: "App release version, no leading v (e.g. 0.2.0-beta.2)"
         required: true
@@ -47,7 +47,6 @@ concurrency:
   cancel-in-progress: ${{ github.ref != 'refs/heads/main' }}
 
 env:
-  FREENET_CORE_VERSION: "v0.2.165"
   DOCKER_IMAGE: freenet-android-node-dev
 
 jobs:
@@ -156,7 +155,33 @@ jobs:
 
       - name: Resolve freenet-core version
         id: resolve-version
-        run: echo "value=${{ github.event.inputs.freenet_core_version || env.FREENET_CORE_VERSION }}" >> "$GITHUB_OUTPUT"
+        run: |
+          set -euo pipefail
+          # A manual or automatic dispatch names the core ref. Push and pull
+          # request events have no input: follow native/Cargo.lock. Auto-bump
+          # cannot edit this workflow, so a hardcoded tag drifts behind the
+          # lockfile and `cargo --locked` fails.
+          input="${{ github.event.inputs.freenet_core_version }}"
+          if [[ -n "${input}" ]]; then
+            echo "value=${input}" >> "$GITHUB_OUTPUT"
+            echo "Using workflow input ${input}"
+            exit 0
+          fi
+          version="$(python3 - <<'PY'
+          import re
+          from pathlib import Path
+          text = Path("freenet-android-node/native/Cargo.lock").read_text(encoding="utf-8")
+          match = re.search(
+              r'(?m)^name = "freenet"\nversion = "(\d+\.\d+\.\d+)"\n',
+              text,
+          )
+          if not match:
+              raise SystemExit("freenet package version not found in Cargo.lock")
+          print(match.group(1))
+          PY
+          )"
+          echo "value=v${version}" >> "$GITHUB_OUTPUT"
+          echo "Using Cargo.lock freenet v${version}"
 
       - name: Compute dependency and Dockerfile hashes
         id: hash
