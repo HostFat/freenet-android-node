@@ -15,8 +15,8 @@ class Phase4InstrumentedTest {
     fun wasmContractRoundTripPersistsAcrossNodeRestart() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         try {
-            NodeRepository.startLocal(context)
-            awaitNodeState(NodePhase.RunningLocal)
+            NodeRepository.startNetwork(context)
+            awaitNodeState(NodePhase.RunningNetwork)
 
             assertEnvelopeOk(NativeBridge.runContractProof().getOrThrow())
             val execution = awaitContractProof(persistenceRequired = false)
@@ -26,8 +26,8 @@ class Phase4InstrumentedTest {
 
             NodeRepository.stop(context)
             awaitNodeState(NodePhase.Stopped)
-            NodeRepository.startLocal(context)
-            awaitNodeState(NodePhase.RunningLocal)
+            NodeRepository.startNetwork(context)
+            awaitNodeState(NodePhase.RunningNetwork)
 
             assertEnvelopeOk(NativeBridge.verifyContractPersistence().getOrThrow())
             val persisted = awaitContractProof(persistenceRequired = true)

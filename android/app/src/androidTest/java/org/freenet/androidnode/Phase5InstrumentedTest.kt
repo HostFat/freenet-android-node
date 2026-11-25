@@ -25,14 +25,14 @@ class Phase5InstrumentedTest {
 
         stopAnyExistingNode(context)
         try {
-            NodeRepository.startLocal(context)
-            awaitNodeState(NodePhase.RunningLocal)
+            NodeRepository.startNetwork(context)
+            awaitNodeState(NodePhase.RunningNetwork)
             val firstNotification = awaitNotification(context, present = true)
             assertTrue(
                 firstNotification!!.notification.flags and Notification.FLAG_ONGOING_EVENT != 0,
             )
             assertEquals(
-                setOf("Pause", "Stop"),
+                setOf("Stop"),
                 firstNotification.notification.actions.map { it.title.toString() }.toSet(),
             )
 
@@ -43,20 +43,20 @@ class Phase5InstrumentedTest {
             awaitCondition(NODE_TIMEOUT_MS, "task removal callback") {
                 NodeRepository.state.value.taskRemovedWhileRunning
             }
-            assertEquals(NodePhase.RunningLocal, currentNodeState())
+            assertEquals(NodePhase.RunningNetwork, currentNodeState())
 
             instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_SLEEP").close()
             SystemClock.sleep(SCREEN_OFF_PROBE_MS)
-            assertEquals(NodePhase.RunningLocal, currentNodeState())
+            assertEquals(NodePhase.RunningNetwork, currentNodeState())
             instrumentation.uiAutomation.executeShellCommand("input keyevent KEYCODE_WAKEUP").close()
 
-            notificationAction(firstNotification, "Pause").actionIntent.send()
+            notificationAction(firstNotification, "Stop").actionIntent.send()
             awaitNodeState(NodePhase.Stopped)
-            awaitRepositoryState(NodePhase.Paused)
+            awaitRepositoryState(NodePhase.Stopped)
             awaitNotification(context, present = false)
 
-            NodeRepository.startLocal(context)
-            awaitNodeState(NodePhase.RunningLocal)
+            NodeRepository.startNetwork(context)
+            awaitNodeState(NodePhase.RunningNetwork)
             val secondNotification = awaitNotification(context, present = true)!!
             notificationAction(secondNotification, "Stop").actionIntent.send()
             awaitNodeState(NodePhase.Stopped)
@@ -68,7 +68,7 @@ class Phase5InstrumentedTest {
             assertFalse(NodeRepository.state.value.serviceActive)
             Log.i(
                 EVIDENCE_TAG,
-                "PHASE5_RESULT foreground=true screenOff=true pause=true stop=true " +
+                "PHASE5_RESULT foreground=true screenOff=true stop=true " +
                     "startNotSticky=true state=${NodeRepository.state.value.state}",
             )
         } finally {

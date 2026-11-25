@@ -13,7 +13,7 @@ import org.junit.runner.RunWith
 @RunWith(AndroidJUnit4::class)
 class NodePolicyLifecycleInstrumentedTest {
     @Test
-    fun chargingPauseResumeAlwaysAndStopFollowPersistedPolicies() {
+    fun chargingStartStopAlwaysAndNetworkPolicyFollowPersistedPolicies() {
         val context = InstrumentationRegistry.getInstrumentation().targetContext
         val connectivity = AndroidConnectivityMonitor(context) {}.currentSnapshot()
         val battery = context.getSystemService(BatteryManager::class.java)
@@ -29,9 +29,9 @@ class NodePolicyLifecycleInstrumentedTest {
             awaitUiState(NodePhase.RunningNetwork, START_TIMEOUT_MS)
             assertEquals(NodePowerPolicy.Charging, NodePolicyRepository.state.value.power)
 
-            NodeRepository.pause(context)
-            awaitUiState(NodePhase.Paused, SHUTDOWN_TIMEOUT_MS)
-            assertTrue(NodePolicyRepository.state.value.suspendedByUser)
+            NodeRepository.stop(context)
+            awaitUiState(NodePhase.Stopped, SHUTDOWN_TIMEOUT_MS)
+            assertFalse(NodePolicyRepository.state.value.suspendedByUser)
             assertEquals(NodePhase.Stopped, nativeState())
 
             NodeRepository.startNetwork(context)

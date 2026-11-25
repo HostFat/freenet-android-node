@@ -22,8 +22,8 @@ class Phase6InstrumentedTest {
         awaitNodeState(NodePhase.Stopped)
 
         try {
-            NodeRepository.startLocal(context)
-            val firstRun = awaitNodeState(NodePhase.RunningLocal)
+            NodeRepository.startNetwork(context)
+            val firstRun = awaitNodeState(NodePhase.RunningNetwork)
             val firstFingerprint = firstRun.getString("identityFingerprint")
             assertEquals(32, firstFingerprint.length)
 
@@ -41,8 +41,8 @@ class Phase6InstrumentedTest {
 
             NodeRepository.stop(context)
             awaitNodeState(NodePhase.Stopped)
-            NodeRepository.startLocal(context)
-            val secondRun = awaitNodeState(NodePhase.RunningLocal)
+            NodeRepository.startNetwork(context)
+            val secondRun = awaitNodeState(NodePhase.RunningNetwork)
             assertEquals(firstFingerprint, secondRun.getString("identityFingerprint"))
 
             assertEnvelopeOk(NativeBridge.verifyContractPersistence().getOrThrow())
