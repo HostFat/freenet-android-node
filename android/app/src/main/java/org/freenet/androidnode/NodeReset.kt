@@ -31,12 +31,16 @@ internal fun canResetNode(serviceActive: Boolean, nativeState: NodePhase?): Bool
 internal object NodeReset {
     fun resetRuntimeData(context: Context): String {
         val app = context.applicationContext
-        val nativeState = NativeBridge.nodeStatus().getOrNull()?.let { raw ->
+        val nativeState = NodeBackend.status().getOrNull()?.let { raw ->
             runCatching { parseNodeStatus(raw).state }.getOrNull()
         }
-        if (!canResetNode(NodeRepository.state.value.serviceActive, nativeState)) {
+        if (
+            !canResetNode(NodeRepository.state.value.serviceActive, nativeState) ||
+            NodeBackend.isActive()
+        ) {
             return "Stop the node before resetting it."
         }
+        NodeBackend.killOrphan(app)
         for (path in nodeRuntimeResetPaths(app.filesDir, app.cacheDir)) {
             if (path.exists()) {
                 path.deleteRecursively()

@@ -44,18 +44,30 @@ private val REDACTED_CONFIG_KEYS = setOf(
     "log_dir",
     "wasmtime_cache_dir",
     "cipher",
+    "secret_key",
+    "private_key",
+    "auth_token",
+    "token",
 )
+
+private val ANDROID_PRIVATE_PATH = Regex("""/data/(?:user/\d+|data)/[^\s"']+""")
 
 /** Keeps the shape of config.toml but replaces local paths and identities. */
 internal fun redactConfigToml(text: String): String =
     text.lines().joinToString("\n") { line ->
-        val key = line.substringBefore('=').trim()
-        if (key.isNotEmpty() && key in REDACTED_CONFIG_KEYS) {
-            "$key = \"<redacted>\""
-        } else {
-            line
+        val rawKey = line.substringBefore('=').trim()
+        val normalizedKey = rawKey.replace('-', '_').lowercase()
+        when {
+            rawKey.isNotEmpty() && line.contains('=') && normalizedKey in REDACTED_CONFIG_KEYS ->
+                "$rawKey = \"<redacted>\""
+            ANDROID_PRIVATE_PATH.containsMatchIn(line) ->
+                ANDROID_PRIVATE_PATH.replace(line, "<redacted>")
+            else -> line
         }
     }
+
+internal fun redactLogText(text: String): String =
+    ANDROID_PRIVATE_PATH.replace(text, "<redacted>")
 
 internal fun presetServiceReportComment(appVersion: String): String =
     "This report was sent from the unofficial Android APK\n" +
@@ -82,13 +94,7 @@ internal object ServiceReport {
         val config = ConfigToml.read(context)
         val lastState = NodeRepository.state.value
         val (networkStatus, networkError) = collectNetworkStatus(lastState)
-        val coreVersion = if (BuildConfig.PREBUILT_NODE) {
-            BuildConfig.CORE_VERSION
-        } else {
-            coreVersionFromBuildInfo(
-                NativeBridge.freenetBuildInfo().getOrNull().orEmpty(),
-            ) ?: "unknown"
-        }
+        val coreVersion = NodeBackend.coreVersion() ?: "unknown"
         val message = userMessage.trim().ifEmpty { null }
         return JSONObject()
             .put("client_timestamp", Instant.now().toString())
@@ -161,14 +167,16 @@ internal object ServiceReport {
         val mergedRaw = listOfNotNull(extraLog, fromFiles, fromRing).joinToString(
             "\n--- android adapter ring ---\n",
         ).ifBlank { null }
-        val merged = mergedRaw?.let(::filterLogNoise)
-        val truncated = mergedRaw != null && mergedRaw.length > MAX_LOG_BYTES
-        val main = when {
-            merged != null && merged.length > MAX_LOG_BYTES -> merged.takeLast(MAX_LOG_BYTES)
-            else -> merged
+        val merged = mergedRaw?.let(::filterLogNoise)?.let(::redactLogText)
+        val mergedUtf8Bytes = merged?.toByteArray(Charsets.UTF_8)?.size ?: 0
+        val truncated = mergedUtf8Bytes > MAX_LOG_BYTES
+        val main = if (truncated && merged != null) {
+            truncateTailUtf8(merged, MAX_LOG_BYTES)
+        } else {
+            merged
         }
-        val head = if (truncated) {
-            filterLogNoise(mergedRaw.orEmpty().take(HEAD_LOG_BYTES))
+        val head = if (truncated && merged != null) {
+            truncateHeadUtf8(merged, HEAD_LOG_BYTES)
         } else {
             null
         }
@@ -187,20 +195,40 @@ internal object ServiceReport {
             .put(
                 "node_exit_detail",
                 if (BuildConfig.PREBUILT_NODE) {
-                    PrebuiltNodeProcess.lastExitDetail() ?: JSONObject.NULL
+                    PrebuiltNodeProcess.lastExitDetail()?.let(::redactLogText) ?: JSONObject.NULL
                 } else {
                     JSONObject.NULL
                 },
             )
     }
 
+    private fun truncateTailUtf8(text: String, maxBytes: Int): String {
+        val raw = text.toByteArray(Charsets.UTF_8)
+        if (raw.size <= maxBytes) return text
+        var offset = raw.size - maxBytes
+        while (offset < raw.size && (raw[offset].toInt() and 0xC0) == 0x80) {
+            offset += 1
+        }
+        return String(raw, offset, raw.size - offset, Charsets.UTF_8)
+    }
+
+    private fun truncateHeadUtf8(text: String, maxBytes: Int): String {
+        val raw = text.toByteArray(Charsets.UTF_8)
+        if (raw.size <= maxBytes) return text
+        var end = maxBytes
+        while (end > 0 && (raw[end].toInt() and 0xC0) == 0x80) {
+            end -= 1
+        }
+        return String(raw, 0, end, Charsets.UTF_8)
+    }
+
     private fun collectNetworkStatus(lastState: NodeUiState): Pair<String?, String?> {
         val fallback = lastKnownStatusJson(lastState)
-        if (!NativeBridge.isLoaded) {
-            return fallback to "Native library is not loaded"
+        if (!NodeBackend.isAvailable()) {
+            return fallback to "Node backend is not available"
         }
         val diagnostics = runCatching {
-            NativeBridge.queryNodeDiagnostics(WS_API_PORT).getOrThrow()
+            NodeBackend.queryNodeDiagnostics(WS_API_PORT).getOrThrow()
         }
         diagnostics.getOrNull()?.let { raw ->
             val envelope = runCatching { JSONObject(raw) }.getOrNull()
@@ -213,7 +241,7 @@ internal object ServiceReport {
                 ?: envelope?.optString("error")?.ifBlank { null }
             return fallback to (error ?: "Node diagnostics unavailable")
         }
-        val status = runCatching { NativeBridge.nodeStatus().getOrThrow() }.getOrNull()
+        val status = runCatching { NodeBackend.status().getOrThrow() }.getOrNull()
         if (status != null) {
             val envelope = runCatching { JSONObject(status) }.getOrNull()
             if (envelope?.optBoolean("ok") == true) {
@@ -253,19 +281,8 @@ internal object ServiceReport {
     }
 }
 
-internal fun formatServiceReportLogs(): String? {
-    val raw = NativeBridge.recentLogs(RING_LOG_ENTRIES).getOrNull() ?: return null
-    return runCatching {
-        val entries = JSONObject(raw).getJSONObject("data").getJSONArray("entries")
-        if (entries.length() == 0) return@runCatching null
-        buildString {
-            for (index in 0 until entries.length()) {
-                val entry = entries.getJSONObject(index)
-                append(entry.optString("level"))
-                append("  ")
-                append(entry.optString("message"))
-                append('\n')
-            }
-        }.let(::filterLogNoise).trimEnd()
-    }.getOrNull()
-}
+internal fun formatServiceReportLogs(): String? =
+    NodeBackend.recentLogs(RING_LOG_ENTRIES)
+        ?.let(::filterLogNoise)
+        ?.let(::redactLogText)
+        ?.ifBlank { null }

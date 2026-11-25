@@ -2,9 +2,11 @@ package org.freenet.androidnode
 
 import android.content.Context
 import android.util.Log
+import java.io.BufferedInputStream
 import java.io.BufferedOutputStream
 import java.io.File
 import java.util.zip.ZipEntry
+import java.util.zip.ZipInputStream
 import java.util.zip.ZipOutputStream
 
 /**
@@ -17,6 +19,8 @@ internal object NodeBackup {
     internal const val PREFS = "node_runtime"
     internal const val CORE_VERSION_KEY = "last_core_version"
     private const val KEY_LAST_VERSION = "last_backup_version"
+    private const val MAX_RESTORE_BYTES = 512L * 1024 * 1024
+    private const val MAX_RESTORE_ENTRIES = 20_000
 
     fun needsBackup(context: Context): Boolean =
         context.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
@@ -25,26 +29,27 @@ internal object NodeBackup {
     fun backup(context: Context): File? {
         val root = File(context.filesDir, "freenet/prebuilt")
         val backupDir = File(root, "backups").apply { mkdirs() }
-        // Retention one: keep only the archive for this update.
-        backupDir.listFiles()?.forEach { it.deleteRecursively() }
         val sources = listOf(
             File(root, "config"),
             File(root, "data/db"),
             File(root, "data/delegates"),
             File(root, "data/secrets"),
-            File(root, "data/secrets_local"),
         ).filter { it.exists() }
         if (sources.isEmpty()) return null
-        val target = File(
-            backupDir,
-            "node-${BuildConfig.VERSION_CODE}-${System.currentTimeMillis()}.zip",
-        )
+        val stamp = "${BuildConfig.VERSION_CODE}-${System.currentTimeMillis()}"
+        val temp = File(backupDir, "node-$stamp.zip.tmp")
+        val target = File(backupDir, "node-$stamp.zip")
         return runCatching {
-            ZipOutputStream(BufferedOutputStream(target.outputStream())).use { zip ->
+            ZipOutputStream(BufferedOutputStream(temp.outputStream())).use { zip ->
                 for (source in sources) {
                     add(zip, source, source.name)
                 }
             }
+            check(temp.renameTo(target)) { "Could not finalize backup archive" }
+            // Retention one: remove older archives only after the new archive is safe on disk.
+            backupDir.listFiles()
+                ?.filter { it.absolutePath != target.absolutePath }
+                ?.forEach { it.deleteRecursively() }
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putInt(KEY_LAST_VERSION, BuildConfig.VERSION_CODE)
                 .apply()
@@ -52,6 +57,7 @@ internal object NodeBackup {
             target
         }.getOrElse { error ->
             Log.e(TAG, "backup failed", error)
+            temp.delete()
             target.delete()
             null
         }
@@ -64,51 +70,94 @@ internal object NodeBackup {
             ?.maxByOrNull { it.lastModified() }
 
     fun restore(context: Context): Result<String> = runCatching {
+        if (NodeRepository.state.value.serviceActive || NodeBackend.isActive()) {
+            error("Stop the node before restoring a backup.")
+        }
         val root = File(context.filesDir, "freenet/prebuilt")
         val archive = latest(context) ?: error("No backup found")
         val staging = File(root, ".restore-tmp").apply {
             deleteRecursively()
             mkdirs()
         }
+        val previous = File(root, ".restore-prev").apply {
+            deleteRecursively()
+            mkdirs()
+        }
+        val swapped = mutableListOf<Pair<File, File>>()
         try {
-            java.util.zip.ZipInputStream(
-                java.io.BufferedInputStream(archive.inputStream()),
-            ).use { zip ->
-                var entry = zip.nextEntry
-                while (entry != null) {
-                    val target = File(staging, entry.name).canonicalFile
-                    require(
-                        target.path.startsWith(staging.canonicalPath + File.separator),
-                    ) { "Unsafe backup entry: ${entry.name}" }
-                    if (entry.isDirectory) {
-                        target.mkdirs()
-                    } else {
-                        target.parentFile?.mkdirs()
-                        target.outputStream().use { zip.copyTo(it) }
+            extractArchiveSafely(archive, staging)
+            val mapping = listOf(
+                "config" to File(root, "config"),
+                "db" to File(root, "data/db"),
+                "delegates" to File(root, "data/delegates"),
+                "secrets" to File(root, "data/secrets"),
+            )
+            for ((name, destination) in mapping) {
+                val source = File(staging, name)
+                if (!source.exists()) continue
+                destination.parentFile?.mkdirs()
+                val backupSlot = File(previous, name)
+                if (destination.exists()) {
+                    check(destination.renameTo(backupSlot)) {
+                        "Could not stage current $name for rollback"
                     }
-                    zip.closeEntry()
-                    entry = zip.nextEntry
+                    swapped.add(backupSlot to destination)
+                }
+                if (!source.renameTo(destination)) {
+                    error("Could not restore $name")
                 }
             }
-            fun replace(name: String, destination: File) {
-                val source = File(staging, name)
-                if (!source.exists()) return
-                destination.deleteRecursively()
-                destination.parentFile?.mkdirs()
-                check(source.renameTo(destination)) { "Could not restore $name" }
-            }
-            replace("config", File(root, "config"))
-            replace("db", File(root, "data/db"))
-            replace("delegates", File(root, "data/delegates"))
-            replace("secrets", File(root, "data/secrets"))
-            replace("secrets_local", File(root, "data/secrets_local"))
             context.getSharedPreferences(PREFS, Context.MODE_PRIVATE).edit()
                 .putInt(KEY_LAST_VERSION, BuildConfig.VERSION_CODE)
                 .putString(CORE_VERSION_KEY, BuildConfig.CORE_VERSION)
                 .apply()
             "Backup restored. Start the node."
+        } catch (error: Throwable) {
+            // Roll back any directories swapped before the failure.
+            for ((backupSlot, destination) in swapped.asReversed()) {
+                destination.deleteRecursively()
+                backupSlot.renameTo(destination)
+            }
+            throw error
         } finally {
             staging.deleteRecursively()
+            previous.deleteRecursively()
+        }
+    }
+
+    internal fun extractArchiveSafely(archive: File, staging: File) {
+        val canonicalRoot = staging.canonicalPath + File.separator
+        var totalBytes = 0L
+        var entryCount = 0
+        val buffer = ByteArray(16 * 1024)
+        ZipInputStream(BufferedInputStream(archive.inputStream())).use { zip ->
+            var entry = zip.nextEntry
+            while (entry != null) {
+                entryCount += 1
+                require(entryCount <= MAX_RESTORE_ENTRIES) { "Backup archive has too many entries" }
+                val target = File(staging, entry.name).canonicalFile
+                require(target.path.startsWith(canonicalRoot)) {
+                    "Unsafe backup entry: ${entry.name}"
+                }
+                if (entry.isDirectory) {
+                    target.mkdirs()
+                } else {
+                    target.parentFile?.mkdirs()
+                    target.outputStream().use { out ->
+                        while (true) {
+                            val read = zip.read(buffer)
+                            if (read < 0) break
+                            totalBytes += read
+                            require(totalBytes <= MAX_RESTORE_BYTES) {
+                                "Backup archive exceeds maximum safe size"
+                            }
+                            out.write(buffer, 0, read)
+                        }
+                    }
+                }
+                zip.closeEntry()
+                entry = zip.nextEntry
+            }
         }
     }
 

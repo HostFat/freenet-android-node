@@ -1,5 +1,6 @@
 //! Live node diagnostics for the same payload as `freenet service report`.
 
+use std::sync::OnceLock;
 use std::time::Duration;
 
 use freenet_stdlib::client_api::{
@@ -9,11 +10,24 @@ use tokio_tungstenite::connect_async;
 
 const WS_TIMEOUT: Duration = Duration::from_secs(15);
 
+static DIAGNOSTICS_RT: OnceLock<Result<tokio::runtime::Runtime, String>> = OnceLock::new();
+
+fn diagnostics_runtime() -> Result<&'static tokio::runtime::Runtime, String> {
+    DIAGNOSTICS_RT
+        .get_or_init(|| {
+            tokio::runtime::Builder::new_multi_thread()
+                .worker_threads(1)
+                .thread_name("freenet-diagnostics")
+                .enable_all()
+                .build()
+                .map_err(|error| format!("failed to create tokio runtime: {error}"))
+        })
+        .as_ref()
+        .map_err(Clone::clone)
+}
+
 pub(crate) fn query_node_diagnostics(port: u16) -> Result<String, String> {
-    let rt = tokio::runtime::Builder::new_current_thread()
-        .enable_all()
-        .build()
-        .map_err(|error| format!("failed to create tokio runtime: {error}"))?;
+    let rt = diagnostics_runtime()?;
     rt.block_on(async {
         match tokio::time::timeout(WS_TIMEOUT, query_once("127.0.0.1", port)).await {
             Ok(result) => result,

@@ -7,11 +7,11 @@ import android.util.Log
 
 class NodePolicyReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent) {
-        val scheduleTick = intent.action == ACTION_SCHEDULE_TICK
-        if (!scheduleTick &&
-            intent.action != Intent.ACTION_BOOT_COMPLETED &&
-            intent.action != Intent.ACTION_MY_PACKAGE_REPLACED
-        ) {
+        val action = intent.action ?: return
+        val scheduleTick = action == ACTION_SCHEDULE_TICK
+        val packageReplaced = action == Intent.ACTION_MY_PACKAGE_REPLACED
+        val bootCompleted = action == Intent.ACTION_BOOT_COMPLETED
+        if (!scheduleTick && !bootCompleted && !packageReplaced) {
             return
         }
         if (!AlphaDisclaimerAcceptance.isAccepted(context)) {
@@ -22,10 +22,25 @@ class NodePolicyReceiver : BroadcastReceiver() {
         val policy = NodePolicyRepository.state.value
         if (policy.suspendedByUser) return
         if (scheduleTick && policy.power != NodePowerPolicy.Schedule) return
-        if (!scheduleTick && !policy.automatic && !policy.startOnBoot) return
+
+        val wasActiveBeforeUpdate = packageReplaced &&
+            context.getSharedPreferences(NodeBackup.PREFS, Context.MODE_PRIVATE)
+                .getBoolean("was_active", false)
+
+        if (!scheduleTick && !policy.automatic && !policy.startOnBoot && !wasActiveBeforeUpdate) {
+            return
+        }
+
+        // If an automatic policy owns the schedule/power state, reconcile it
+        // instead of forcing an explicit start that would reset Schedule windows.
+        val serviceIntent = if (wasActiveBeforeUpdate && !policy.automatic) {
+            NodeService.startNetworkIntent(context)
+        } else {
+            NodeService.reconcilePolicyIntent(context)
+        }
 
         runCatching {
-            context.startForegroundService(NodeService.reconcilePolicyIntent(context))
+            context.startForegroundService(serviceIntent)
         }.onFailure { error ->
             Log.w(
                 TAG,

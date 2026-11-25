@@ -8,8 +8,8 @@
     <string name="node_notification_running">Freenet node running</string>
     <string name="node_notification_waiting">Freenet node waiting</string>
     <string name="node_notification_paused">Freenet node paused</string>
-    <string name="node_notification_status">Mode: %1$s · Connections: %2$d · Uptime: %3$s</string>
-    <string name="node_notification_gateway_only">Mode: %1$s · Gateway only — waiting for peers · Uptime: %2$s</string>
+    <string name="node_notification_status">Connections: %1$d</string>
+    <string name="node_notification_gateway_only">Gateway only — waiting for peers</string>
     <string name="pause_node">Pause</string>
     <string name="resume_node">Resume</string>
     <string name="stop_node">Stop</string>
@@ -201,4 +201,16 @@
     <string name="river_chat_invite_running">The node is running. You can now join the official Freenet chat in River.</string>
     <string name="river_chat_invite_get">Get an invite by tapping \"Join the Freenet chat room\" on: %1$s</string>
     <string name="dashboard_local_hint">The core dashboard becomes available at 127.0.0.1:7509 while the node runs.</string>
+    <string name="node_status_connected">Node: Connected · %1$d connections</string>
+    <string name="node_status_label">Node: %1$s</string>
+    <string name="udp_port_display">UDP port: %1$d</string>
+    <string name="site_open_failed">Could not open URL: %1$s</string>
+    <string name="identity_passphrase_export_title">Protect identity backup</string>
+    <string name="identity_passphrase_export_hint">Optional passphrase to encrypt the backup with AES-256-GCM. Leave blank to export an unencrypted ZIP file.</string>
+    <string name="identity_passphrase_import_title">Encrypted identity backup</string>
+    <string name="identity_passphrase_import_hint">Enter the passphrase used when this backup was created.</string>
+    <string name="identity_passphrase_label">Passphrase (optional)</string>
+    <string name="identity_passphrase_required_label">Passphrase</string>
+    <string name="identity_export_continue">Save backup</string>
+    <string name="identity_import_continue">Restore</string>
 </resources>

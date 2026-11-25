@@ -57,8 +57,9 @@ internal object ConfigToml {
     /** Null when the text is a complete, syntactically valid Freenet config. */
     fun validationError(text: String): String? {
         if (!isComplete(text)) return "missing mode"
-        if (!NativeBridge.isLoaded) return fallbackValidationError(text)
-        val raw = NativeBridge.validateConfig(text).getOrElse { error ->
+        val nativeResult = NodeBackend.validateConfig(text)
+            ?: return fallbackValidationError(text)
+        val raw = nativeResult.getOrElse { error ->
             return error.message ?: "invalid TOML"
         }
         val envelope = runCatching { org.json.JSONObject(raw) }.getOrNull()
@@ -70,26 +71,99 @@ internal object ConfigToml {
     }
 
     /**
-     * Local unit tests and the first frame before JNI is ready use this check.
-     * It only catches unbalanced containers, so the compiler never ships a
-     * second TOML parser.
+     * Lightweight TOML structural validator used when JNI is absent (prebuilt
+     * builds and local unit tests). Properly skips `#` comments, basic strings
+     * with backslash escapes, literal strings, and multiline strings.
      */
-    private fun fallbackValidationError(text: String): String? {
+    internal fun fallbackValidationError(text: String): String? {
         var square = 0
         var curly = 0
-        var quoted = false
-        for (character in text) {
+        var i = 0
+        val n = text.length
+        while (i < n) {
+            val c = text[i]
             when {
-                character == '"' -> quoted = !quoted
-                quoted -> Unit
-                character == '[' -> square += 1
-                character == ']' -> square -= 1
-                character == '{' -> curly += 1
-                character == '}' -> curly -= 1
+                c == '#' -> {
+                    while (i < n && text[i] != '\n') i += 1
+                    continue
+                }
+                c == '"' && i + 2 < n && text[i + 1] == '"' && text[i + 2] == '"' -> {
+                    i += 3
+                    var closed = false
+                    while (i < n) {
+                        if (text[i] == '\\') {
+                            i += 2
+                            continue
+                        }
+                        if (text[i] == '"' && i + 2 < n && text[i + 1] == '"' && text[i + 2] == '"') {
+                            i += 3
+                            closed = true
+                            break
+                        }
+                        i += 1
+                    }
+                    if (!closed) return "unterminated multiline string"
+                    continue
+                }
+                c == '\'' && i + 2 < n && text[i + 1] == '\'' && text[i + 2] == '\'' -> {
+                    i += 3
+                    var closed = false
+                    while (i < n) {
+                        if (text[i] == '\'' && i + 2 < n && text[i + 1] == '\'' && text[i + 2] == '\'') {
+                            i += 3
+                            closed = true
+                            break
+                        }
+                        i += 1
+                    }
+                    if (!closed) return "unterminated multiline literal string"
+                    continue
+                }
+                c == '"' -> {
+                    i += 1
+                    var closed = false
+                    while (i < n) {
+                        val ch = text[i]
+                        if (ch == '\n' || ch == '\r') break
+                        if (ch == '\\') {
+                            i += 2
+                            continue
+                        }
+                        if (ch == '"') {
+                            i += 1
+                            closed = true
+                            break
+                        }
+                        i += 1
+                    }
+                    if (!closed) return "unterminated string"
+                    continue
+                }
+                c == '\'' -> {
+                    i += 1
+                    var closed = false
+                    while (i < n) {
+                        val ch = text[i]
+                        if (ch == '\n' || ch == '\r') break
+                        if (ch == '\'') {
+                            i += 1
+                            closed = true
+                            break
+                        }
+                        i += 1
+                    }
+                    if (!closed) return "unterminated literal string"
+                    continue
+                }
+                c == '[' -> square += 1
+                c == ']' -> square -= 1
+                c == '{' -> curly += 1
+                c == '}' -> curly -= 1
             }
-            if (square < 0 || curly < 0) return "invalid TOML"
+            if (square < 0 || curly < 0) return "unbalanced brackets"
+            i += 1
         }
-        return if (square == 0 && curly == 0 && !quoted) null else "invalid TOML"
+        return if (square == 0 && curly == 0) null else "unbalanced brackets"
     }
 
     fun upsertInt(text: String, key: String, value: Int): String {

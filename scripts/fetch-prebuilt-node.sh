@@ -4,10 +4,11 @@
 # native library directory, so the binaries are packaged as libfreenet.so.
 set -euo pipefail
 
-version="${FREENET_PREBUILT_VERSION:-0.2.155}"
+repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
+default_version="$(sed -n 's/^- Release tag: `v\([0-9.]*\)`$/\1/p' "${repo_root}/docs/BASELINE.md" | head -n 1)"
+version="${FREENET_PREBUILT_VERSION:-${default_version:-0.2.165}}"
 version="${version#v}"
 base="https://github.com/freenet/freenet-core/releases/download/v${version}"
-repo_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 destination="${repo_root}/android/app/src/main/jniLibs"
 tmp="$(mktemp -d)"
 trap 'rm -rf "${tmp}"' EXIT

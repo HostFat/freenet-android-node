@@ -1,9 +1,6 @@
 package org.freenet.androidnode
 
 import android.Manifest
-import android.content.ClipData
-import android.content.ClipboardManager
-import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -13,26 +10,22 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
-import androidx.compose.animation.core.Animatable
-import androidx.compose.animation.core.tween
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.foundation.BorderStroke
+import androidx.compose.animation.core.Animatable
+import androidx.compose.animation.core.tween
 import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.gestures.awaitEachGesture
 import androidx.compose.foundation.gestures.awaitFirstDown
-import androidx.compose.foundation.layout.systemGestures
-import androidx.compose.foundation.systemGestureExclusion
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
-import androidx.compose.foundation.layout.BoxWithConstraints
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.WindowInsetsSides
-import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -41,21 +34,14 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.only
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.systemGestures
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.windowInsetsPadding
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.selection.toggleable
-import androidx.compose.foundation.text.KeyboardActions
-import androidx.compose.foundation.text.KeyboardOptions
-import androidx.compose.foundation.text.selection.SelectionContainer
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.systemGestureExclusion
 import androidx.compose.foundation.verticalScroll
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
-import androidx.compose.material3.ButtonDefaults
-import androidx.compose.material3.Checkbox
-import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.DrawerValue
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.LinearProgressIndicator
@@ -63,13 +49,9 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalDrawerSheet
 import androidx.compose.material3.ModalNavigationDrawer
 import androidx.compose.material3.OutlinedButton
-import androidx.compose.material3.OutlinedTextField
-import androidx.compose.material3.SegmentedButton
-import androidx.compose.material3.SegmentedButtonDefaults
-import androidx.compose.material3.SingleChoiceSegmentedButtonRow
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
+import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.material3.rememberDrawerState
 import androidx.compose.runtime.Composable
@@ -88,45 +70,27 @@ import androidx.compose.ui.geometry.Rect
 import androidx.compose.ui.input.pointer.PointerEventPass
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.positionInRoot
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.foundation.isSystemInDarkTheme
-import androidx.compose.ui.focus.onFocusChanged
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
-import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.platform.LocalLayoutDirection
-import androidx.lifecycle.compose.LocalLifecycleOwner
-import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.semantics.Role
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.LinkAnnotation
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextLinkStyles
 import androidx.compose.ui.text.buildAnnotatedString
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.input.ImeAction
-import androidx.compose.ui.text.input.KeyboardType
-import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextDecoration
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.text.withLink
 import androidx.compose.ui.unit.dp
-import androidx.compose.ui.viewinterop.AndroidView
-import androidx.compose.ui.window.Dialog
-import androidx.compose.ui.window.DialogProperties
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
+import androidx.lifecycle.compose.LocalLifecycleOwner
 import kotlin.math.abs
-import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
-import kotlinx.coroutines.withContext
-import org.json.JSONObject
 
 // Android honors at most 200dp of a left-edge exclusion, and only the bottom
 // part of anything taller, so the band stays this tall and centered on the tab.
@@ -170,60 +134,6 @@ class MainActivity : ComponentActivity() {
 }
 
 @Composable
-private fun AlphaDisclaimerDialog(onAccept: () -> Unit) {
-    var riskAccepted by remember { mutableStateOf(false) }
-
-    AlertDialog(
-        onDismissRequest = {},
-        properties = DialogProperties(
-            dismissOnBackPress = false,
-            dismissOnClickOutside = false,
-        ),
-        title = { Text(stringResource(R.string.alpha_title)) },
-        text = {
-            Column(
-                modifier = Modifier.verticalScroll(rememberScrollState()),
-                verticalArrangement = Arrangement.spacedBy(12.dp),
-            ) {
-                Text(stringResource(R.string.alpha_unofficial), fontWeight = FontWeight.Bold)
-                Text(stringResource(R.string.alpha_not_optimized))
-                Text(stringResource(R.string.alpha_risks))
-                Text(stringResource(R.string.alpha_risks_list))
-                Text(stringResource(R.string.alpha_early))
-                Row(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .toggleable(
-                            value = riskAccepted,
-                            role = Role.Checkbox,
-                            onValueChange = { riskAccepted = it },
-                        )
-                        .padding(vertical = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                ) {
-                    Checkbox(
-                        checked = riskAccepted,
-                        onCheckedChange = null,
-                    )
-                    Text(
-                        stringResource(R.string.alpha_accept_risks),
-                        modifier = Modifier.padding(start = 8.dp),
-                    )
-                }
-            }
-        },
-        confirmButton = {
-            Button(
-                onClick = onAccept,
-                enabled = riskAccepted,
-            ) {
-                Text(stringResource(R.string.alpha_accept))
-            }
-        },
-    )
-}
-
-@Composable
 private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val context = LocalContext.current
     val nodeState by nodeViewModel.state.collectAsState()
@@ -231,7 +141,12 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     val policyState by nodeViewModel.policies.collectAsState()
     val updateState by UpdateCheckRepository.state.collectAsState()
     val includePrereleases by UpdateCheckRepository.includePrereleases.collectAsState()
+    val updateInstallState by nodeViewModel.updateInstall.collectAsState()
+    val crashUploadState by nodeViewModel.crashUpload.collectAsState()
+    val resetMessage by nodeViewModel.resetMessage.collectAsState()
+    val restoreMessage by nodeViewModel.restoreMessage.collectAsState()
     val lifecycleOwner = LocalLifecycleOwner.current
+
     var restrictionSnapshot by remember { mutableStateOf(readRestrictionSnapshot(context)) }
     val drawerState = rememberDrawerState(DrawerValue.Closed)
     val scope = rememberCoroutineScope()
@@ -246,13 +161,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     var pendingReset by rememberSaveable { mutableStateOf(false) }
     var showCrashDialog by rememberSaveable { mutableStateOf(false) }
     var crashComment by rememberSaveable { mutableStateOf("") }
-    var crashSending by remember { mutableStateOf(false) }
-    var crashSentId by remember { mutableStateOf<String?>(null) }
-    var crashError by remember { mutableStateOf<String?>(null) }
-    var resetMessage by remember { mutableStateOf<String?>(null) }
-    var restoreMessage by remember { mutableStateOf<String?>(null) }
     var configFingerprint by remember { mutableStateOf(ConfigToml.fingerprint(context)) }
     var awaitingExternalConfigEdit by rememberSaveable { mutableStateOf(false) }
+
+    val showingSubPanel = showDiagnostics || showConfigEditor || showSites
+
     fun adoptConfigFingerprint(userInitiatedEdit: Boolean) {
         val now = ConfigToml.fingerprint(context)
         val changed = now != configFingerprint
@@ -268,12 +181,14 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
             pendingRestart = PendingRestart.ConfigFile
         }
     }
+
     val externalConfigLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.StartActivityForResult(),
     ) {
         adoptConfigFingerprint(userInitiatedEdit = true)
         awaitingExternalConfigEdit = false
     }
+
     val notificationPermissionLauncher = rememberLauncherForActivityResult(
         ActivityResultContracts.RequestPermission(),
     ) { granted ->
@@ -360,10 +275,11 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
         UpdateCheckRepository.checkAutomatic(context, nodeState.highestSeenPeerVersion)
     }
 
-    BackHandler(enabled = drawerState.isOpen || showDiagnostics || showConfigEditor) {
+    BackHandler(enabled = drawerState.isOpen || showingSubPanel) {
         when {
             drawerState.isOpen -> closeDrawer()
             showConfigEditor -> showConfigEditor = false
+            showSites -> showSites = false
             else -> showDiagnostics = false
         }
     }
@@ -393,8 +309,8 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
             menuPeek.snapTo(0f)
         }
     }
-    LaunchedEffect(menuSeen.value, showDiagnostics, showConfigEditor, changelogLine) {
-        if (menuSeen.value || showDiagnostics || showConfigEditor || changelogLine != null) {
+    LaunchedEffect(menuSeen.value, showingSubPanel, changelogLine) {
+        if (menuSeen.value || showingSubPanel || changelogLine != null) {
             return@LaunchedEffect
         }
         delay(600)
@@ -406,7 +322,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
 
     ModalNavigationDrawer(
         drawerState = drawerState,
-        gesturesEnabled = drawerState.isOpen && !showDiagnostics && !showConfigEditor,
+        gesturesEnabled = drawerState.isOpen && !showingSubPanel,
         drawerContent = {
             ModalDrawerSheet(modifier = Modifier.fillMaxHeight()) {
                 Column(
@@ -429,8 +345,12 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             modifier = Modifier.height(32.dp),
                         )
                         Column {
-                            Text("Freenet Android Node", style = MaterialTheme.typography.titleLarge)
-                            Text(stringResource(R.string.unofficial_not_affiliated),
+                            Text(
+                                stringResource(R.string.app_name),
+                                style = MaterialTheme.typography.titleLarge,
+                            )
+                            Text(
+                                stringResource(R.string.unofficial_not_affiliated),
                                 style = MaterialTheme.typography.labelMedium,
                                 fontWeight = FontWeight.Bold,
                             )
@@ -483,23 +403,18 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         onStartNetwork = {
                             withNotificationPermission(nodeViewModel::startNetworkNode)
                         },
-                        onStop = {
-                            nodeViewModel.stopNode()
-                        },
+                        onStop = nodeViewModel::stopNode,
                         onRestart = {
                             withNotificationPermission(nodeViewModel::restartNetworkNode)
                         },
                         crashReportPending = crashReportPending,
                         onDismissCrashLog = {
                             CrashReportOffer.clear(context)
-                            crashSentId = null
-                            crashError = null
+                            nodeViewModel.clearCrashUploadState()
                         },
                         onSendCrashLog = {
                             crashComment = presetCrashReportComment(appVersionName(context))
-                            crashSentId = null
-                            crashError = null
-                            crashSending = false
+                            nodeViewModel.clearCrashUploadState()
                             showCrashDialog = true
                         },
                         onCopyFingerprint = { fingerprint ->
@@ -572,52 +487,23 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         )
                     }
                     val apkVersion = updateState.apkVersion
-                    var updateInstalling by remember { mutableStateOf(false) }
-                    var updateProgress by remember { mutableStateOf<UpdateInstaller.Progress?>(null) }
-                    var updateInstallError by remember { mutableStateOf<String?>(null) }
-                    var updateInstallStarted by remember { mutableStateOf(false) }
                     if (apkVersion != null) {
                         Button(
-                            enabled = !updateInstalling,
-                            onClick = {
-                                updateInstalling = true
-                                updateInstallError = null
-                                updateInstallStarted = false
-                                updateProgress = null
-                                scope.launch {
-                                    runCatching {
-                                        val file = withContext(Dispatchers.IO) {
-                                            UpdateInstaller.download(context, apkVersion) { progress ->
-                                                updateProgress = progress
-                                            }
-                                        }
-                                        val signatureOk = withContext(Dispatchers.IO) {
-                                            UpdateInstaller.verifySignature(context, file)
-                                        }
-                                        if (!signatureOk) {
-                                            error("Downloaded APK is signed with a different key")
-                                        }
-                                        UpdateInstaller.install(context, file)
-                                        updateInstallStarted = true
-                                    }.onFailure { error ->
-                                        updateInstallError = error.message ?: "Update failed"
-                                    }
-                                    updateInstalling = false
-                                }
-                            },
+                            enabled = !updateInstallState.installing,
+                            onClick = { nodeViewModel.downloadAndInstallUpdate(apkVersion) },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(
-                                if (updateInstalling) {
+                                if (updateInstallState.installing) {
                                     stringResource(R.string.update_downloading)
                                 } else {
                                     stringResource(R.string.update_download_install)
                                 },
                             )
                         }
-                        if (updateInstalling) {
+                        if (updateInstallState.installing) {
                             LinearProgressIndicator(modifier = Modifier.fillMaxWidth())
-                            val progress = updateProgress
+                            val progress = updateInstallState.progress
                             if (progress != null && progress.total > 0) {
                                 val percent = (progress.downloaded * 100 / progress.total)
                                     .coerceIn(0, 100)
@@ -627,13 +513,13 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                                 )
                             }
                         }
-                        if (updateInstallStarted) {
+                        if (updateInstallState.installStarted) {
                             Text(
                                 stringResource(R.string.update_install_started),
                                 style = MaterialTheme.typography.bodySmall,
                             )
                         }
-                        updateInstallError?.let { error ->
+                        updateInstallState.error?.let { error ->
                             Text(
                                 stringResource(R.string.update_download_failed, error),
                                 color = MaterialTheme.colorScheme.error,
@@ -641,15 +527,15 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             )
                         }
                     }
-                    if (updateState.releaseUrl != null) {
+                    val releaseUrl = updateState.releaseUrl?.takeIf { it.isNotBlank() }
+                    if (releaseUrl != null) {
                         Button(
                             onClick = {
-                                context.startActivity(
-                                    Intent(
-                                        Intent.ACTION_VIEW,
-                                        Uri.parse(updateState.releaseUrl),
-                                    ),
-                                )
+                                runCatching {
+                                    context.startActivity(
+                                        Intent(Intent.ACTION_VIEW, Uri.parse(releaseUrl)),
+                                    )
+                                }
                             },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
@@ -681,13 +567,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             context.packageManager.getPackageInfo(context.packageName, 0).versionName
                         }.getOrNull()
                     }
-                    val nodeVersion = remember {
-                        if (BuildConfig.PREBUILT_NODE) {
-                            BuildConfig.CORE_VERSION
-                        } else {
-                            coreVersionFromBuildInfo(NativeBridge.freenetBuildInfo().getOrNull())
-                        }
-                    }
+                    val nodeVersion = remember { NodeBackend.coreVersion() }
                     val (appLabel, nodeLabel) = panelVersionLabels(appVersion, nodeVersion)
                     val versionLink = SpanStyle(
                         color = MaterialTheme.colorScheme.primary,
@@ -762,7 +642,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                             showConfigEditor = true
                         } else {
                             configFingerprint = ConfigToml.fingerprint(context)
-                            val intent = ConfigToml.editorIntent(context)
+                            val intent = runCatching { ConfigToml.editorIntent(context) }.getOrNull()
                             if (intent == null) {
                                 showNoEditor = true
                             } else {
@@ -789,24 +669,12 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     onSaveUdpPortSettings = ::saveUdpPortSettings,
                     onUseSavedUdp = { applyUdpFallback(UdpPortMode.Saved) },
                     onUseRandomUdp = { applyUdpFallback(UdpPortMode.Random) },
-                    onStartLocal = {
-                        withNotificationPermission(nodeViewModel::startLocalNode)
-                    },
                     onReset = { pendingReset = true },
-                    canStartLocal = !nodeState.serviceActive,
+                    canRestoreBackup = !nodeState.serviceActive,
                     autoRestartOnCrash = policyState.autoRestartOnCrash,
                     onAutoRestartOnCrash = nodeViewModel::setAutoRestartOnCrash,
                     restoreMessage = restoreMessage,
-                    onRestoreBackup = {
-                        scope.launch {
-                            val result = withContext(Dispatchers.IO) {
-                                NodeBackup.restore(context)
-                            }
-                            restoreMessage = result.getOrElse {
-                                "Restore failed: ${it.message}"
-                            }
-                        }
-                    },
+                    onRestoreBackup = nodeViewModel::restoreBackup,
                 )
             } else {
                 DashboardPanel(
@@ -814,12 +682,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                     modifier = Modifier.fillMaxSize(),
                 )
             }
-            if (
-                menuPeek.value > 0.5f &&
-                drawerState.isClosed &&
-                !showDiagnostics &&
-                !showConfigEditor
-            ) {
+            if (menuPeek.value > 0.5f && drawerState.isClosed && !showingSubPanel) {
                 Box(
                     modifier = Modifier
                         .align(Alignment.CenterStart)
@@ -828,7 +691,7 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
                         .background(MaterialTheme.colorScheme.surfaceContainerLow),
                 )
             }
-            if (drawerState.isClosed && !showDiagnostics && !showConfigEditor) {
+            if (drawerState.isClosed && !showingSubPanel) {
                 val density = LocalDensity.current
                 val gestureInset = with(density) {
                     WindowInsets.systemGestures
@@ -914,875 +777,59 @@ private fun NodeScreen(nodeViewModel: NodeViewModel) {
     }
 
     changelogLine?.let { line ->
-        AlertDialog(
-            onDismissRequest = {},
-            properties = DialogProperties(
-                dismissOnBackPress = false,
-                dismissOnClickOutside = false,
-            ),
-            title = { Text(stringResource(R.string.changelog_title)) },
-            text = { Text(line) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        AppChangelog.markSeen(context)
-                        changelogLine = null
-                    },
-                ) {
-                    Text(stringResource(R.string.dismiss_changelog))
-                }
+        ChangelogDialog(
+            line = line,
+            onDismiss = {
+                AppChangelog.markSeen(context)
+                changelogLine = null
             },
         )
     }
 
     pendingRestart?.let { restart ->
-        AlertDialog(
-            onDismissRequest = { pendingRestart = null },
-            title = { Text(stringResource(R.string.restart_node_title)) },
-            text = {
-                Text(
-                    when (restart) {
-                        is PendingRestart.Connections -> stringResource(
-                            R.string.restart_node_message,
-                            restart.min,
-                            restart.max,
-                        )
-                        PendingRestart.ConfigFile -> stringResource(R.string.restart_config_message)
-                        PendingRestart.UdpPort -> stringResource(R.string.restart_udp_port_message)
-                        PendingRestart.Identity -> stringResource(R.string.restart_identity_message)
-                    },
-                )
+        RestartPromptDialog(
+            restart = restart,
+            onConfirm = {
+                pendingRestart = null
+                withNotificationPermission(nodeViewModel::restartNetworkNode)
+                closeDrawer()
             },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        pendingRestart = null
-                        withNotificationPermission(nodeViewModel::restartNetworkNode)
-                        closeDrawer()
-                    },
-                ) {
-                    Text(stringResource(R.string.restart_node_confirm))
-                }
-            },
-            dismissButton = {
-                TextButton(onClick = { pendingRestart = null }) {
-                    Text(stringResource(R.string.restart_node_deny))
-                }
-            },
+            onDismiss = { pendingRestart = null },
         )
     }
 
     if (showCrashDialog) {
-        Dialog(
-            onDismissRequest = { if (!crashSending) showCrashDialog = false },
-            properties = DialogProperties(usePlatformDefaultWidth = false),
-        ) {
-            Surface(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(16.dp),
-                shape = MaterialTheme.shapes.extraLarge,
-            ) {
-                Column(
-                    modifier = Modifier
-                        .verticalScroll(rememberScrollState())
-                        .padding(24.dp),
-                    verticalArrangement = Arrangement.spacedBy(12.dp),
-                ) {
-                    Text(
-                        stringResource(R.string.send_crash_log_title),
-                        style = MaterialTheme.typography.titleLarge,
-                    )
-                    Text(
-                        stringResource(R.string.send_crash_log_warning),
-                        style = MaterialTheme.typography.bodySmall,
-                    )
-                    val sentId = crashSentId
-                    if (sentId != null) {
-                        Text(stringResource(R.string.send_crash_log_sent, sentId))
-                    } else {
-                        OutlinedTextField(
-                            value = crashComment,
-                            onValueChange = { crashComment = it },
-                            enabled = !crashSending,
-                            label = { Text(stringResource(R.string.crash_comment_label)) },
-                            minLines = 6,
-                            modifier = Modifier.fillMaxWidth(),
-                        )
-                        crashError?.let { error ->
-                            Text(
-                                stringResource(R.string.send_crash_log_failed, error),
-                                color = MaterialTheme.colorScheme.error,
-                                style = MaterialTheme.typography.bodySmall,
-                            )
-                        }
-                    }
-                    Row(
-                        modifier = Modifier.fillMaxWidth(),
-                        horizontalArrangement = Arrangement.spacedBy(8.dp, Alignment.End),
-                    ) {
-                        TextButton(
-                            enabled = !crashSending,
-                            onClick = { showCrashDialog = false },
-                        ) {
-                            Text(stringResource(R.string.config_close))
-                        }
-                        if (crashSentId == null) {
-                            Button(
-                                enabled = !crashSending,
-                                onClick = {
-                                    crashSending = true
-                                    crashError = null
-                                    val comment = crashComment
-                                    scope.launch {
-                                        val result = withContext(Dispatchers.IO) {
-                                            CrashInbox.upload(context, comment)
-                                        }
-                                        crashSending = false
-                                        result.fold(
-                                            onSuccess = { id ->
-                                                crashSentId = id
-                                                CrashReportOffer.clear(context)
-                                            },
-                                            onFailure = { error ->
-                                                crashError = error.message ?: error.toString()
-                                            },
-                                        )
-                                    }
-                                },
-                            ) {
-                                Text(stringResource(R.string.send_crash_log_send))
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        CrashReportDialog(
+            comment = crashComment,
+            onCommentChange = { crashComment = it },
+            uploadState = crashUploadState,
+            onSend = { nodeViewModel.uploadCrashReport(crashComment) },
+            onDismiss = { showCrashDialog = false },
+        )
     }
 
     if (pendingReset) {
-        AlertDialog(
-            onDismissRequest = { pendingReset = false },
-            title = { Text(stringResource(R.string.reset_node_title)) },
-            text = { Text(stringResource(R.string.reset_node_message)) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        pendingReset = false
-                        resetMessage = nodeViewModel.resetNode()
-                    },
-                    colors = ButtonDefaults.buttonColors(
-                        containerColor = MaterialTheme.colorScheme.error,
-                    ),
-                ) {
-                    Text(stringResource(R.string.reset_node_confirm))
-                }
+        ResetConfirmDialog(
+            onConfirm = {
+                pendingReset = false
+                nodeViewModel.resetNode()
             },
-            dismissButton = {
-                TextButton(onClick = { pendingReset = false }) {
-                    Text(stringResource(R.string.restart_node_deny))
-                }
-            },
+            onDismiss = { pendingReset = false },
         )
     }
 
     if (showNoEditor) {
-        AlertDialog(
-            onDismissRequest = { showNoEditor = false },
-            title = { Text(stringResource(R.string.open_config_external)) },
-            text = { Text(stringResource(R.string.config_no_editor)) },
-            confirmButton = {
-                TextButton(onClick = { showNoEditor = false }) {
-                    Text(stringResource(R.string.config_close))
-                }
-            },
-        )
+        NoEditorDialog(onDismiss = { showNoEditor = false })
     }
 
     if (showExternalGuideConfirm) {
-        AlertDialog(
-            onDismissRequest = { showExternalGuideConfirm = false },
-            title = { Text(stringResource(R.string.external_guide_title)) },
-            text = { Text(stringResource(R.string.external_guide_body)) },
-            confirmButton = {
-                Button(
-                    onClick = {
-                        showExternalGuideConfirm = false
-                        openDontKillMyAppGuide(context, restrictionSnapshot.vendor)
-                        closeDrawer()
-                    },
-                ) {
-                    Text(stringResource(R.string.external_guide_continue))
-                }
+        ExternalGuideDialog(
+            onConfirm = {
+                showExternalGuideConfirm = false
+                openDontKillMyAppGuide(context, restrictionSnapshot.vendor)
+                closeDrawer()
             },
-            dismissButton = {
-                TextButton(onClick = { showExternalGuideConfirm = false }) {
-                    Text(stringResource(R.string.external_guide_cancel))
-                }
-            },
+            onDismiss = { showExternalGuideConfirm = false },
         )
     }
 }
-
-private sealed class PendingRestart {
-    data class Connections(val min: Int, val max: Int) : PendingRestart()
-    data object ConfigFile : PendingRestart()
-    data object UdpPort : PendingRestart()
-    data object Identity : PendingRestart()
-}
-
-@Composable
-private fun NodeControlStrip(
-    state: NodeUiState,
-    lastUpEpochMs: Long,
-    resetMessage: String? = null,
-    onStartNetwork: () -> Unit,
-    onStop: () -> Unit,
-    onRestart: () -> Unit,
-    crashReportPending: Boolean = false,
-    onSendCrashLog: () -> Unit = {},
-    onDismissCrashLog: () -> Unit = {},
-    onCopyFingerprint: (String) -> Unit,
-    onUseSavedUdp: () -> Unit,
-    onUseRandomUdp: () -> Unit,
-) {
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .padding(12.dp),
-        verticalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        val status = networkStatusLabel(
-            state.state,
-            state.mode,
-            state.peers,
-            state.serviceActive,
-            state.natHint,
-        )
-        Text(
-            if (status == "Connected") {
-                "Node: Connected · ${state.peers} connections"
-            } else {
-                "Node: $status"
-            },
-        )
-        if (status == "Connected") {
-            Text(
-                stringResource(R.string.peer_count_accuracy_hint),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        Text(
-            stringResource(R.string.last_up, formatLastUp(System.currentTimeMillis(), lastUpEpochMs)),
-            color = MaterialTheme.colorScheme.onSurfaceVariant,
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (state.serviceActive && (state.bytesSent > 0 || state.bytesReceived > 0)) {
-            Text(
-                stringResource(
-                    R.string.traffic_line,
-                    formatTrafficBytes(state.bytesSent),
-                    formatTrafficBytes(state.bytesReceived),
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        state.identityFingerprint?.takeIf { it.isNotBlank() }?.let { fingerprint ->
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                verticalAlignment = Alignment.CenterVertically,
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                Text(
-                    fingerprint,
-                    modifier = Modifier.weight(1f),
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                    fontFamily = FontFamily.Monospace,
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                TextButton(onClick = { onCopyFingerprint(fingerprint) }) {
-                    Text(stringResource(R.string.copy_fingerprint))
-                }
-            }
-        }
-        if (state.mode == NodeMode.Network && state.udpPort != null && state.udpPort > 0) {
-            Text(
-                "UDP port: ${state.udpPort}",
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        state.natHint?.let { hint ->
-            Text(
-                hint,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        if (state.udpPortInUse) {
-            Text(
-                stringResource(R.string.udp_port_in_use),
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Row(
-                modifier = Modifier.fillMaxWidth(),
-                horizontalArrangement = Arrangement.spacedBy(8.dp),
-            ) {
-                OutlinedButton(
-                    onClick = onUseSavedUdp,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.udp_use_saved))
-                }
-                OutlinedButton(
-                    onClick = onUseRandomUdp,
-                    modifier = Modifier.weight(1f),
-                ) {
-                    Text(stringResource(R.string.udp_use_random))
-                }
-            }
-        } else if (
-            state.lastNetworkError != null &&
-            menuBlockReason(state.state, state.detail, state.lastNetworkError, state.udpPortInUse) == null
-        ) {
-            Text(
-                text = state.lastNetworkError,
-                color = MaterialTheme.colorScheme.error,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        if (crashReportPending) {
-            Button(
-                onClick = onSendCrashLog,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.send_crash_log))
-            }
-            TextButton(
-                onClick = onDismissCrashLog,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.dismiss_crash_log))
-            }
-        }
-        Row(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(8.dp),
-        ) {
-            if (state.serviceActive) {
-                Button(
-                    enabled = NodeBackend.isAvailable() && state.state != NodePhase.Stopping,
-                    onClick = onStop,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(
-                        if (state.state == NodePhase.Stopping) {
-                            stringResource(R.string.stopping_node)
-                        } else {
-                            stringResource(R.string.stop_node)
-                        },
-                    )
-                }
-            } else {
-                Button(
-                    enabled = NodeBackend.isAvailable(),
-                    onClick = onStartNetwork,
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.start_network_node))
-                }
-            }
-        }
-        if (state.state.isRunning) {
-            OutlinedButton(
-                enabled = NodeBackend.isAvailable(),
-                onClick = onRestart,
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Text(stringResource(R.string.restart_node))
-            }
-        }
-        resetMessage?.let { message ->
-            Text(
-                message,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-        if (showRiverChatInvite(state.state, state.mode)) {
-            Text(
-                text = stringResource(R.string.river_chat_invite_running),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                text = linkedUrlText(
-                    stringResource(R.string.river_chat_invite_get, RIVER_CHAT_INVITE_URL),
-                    RIVER_CHAT_INVITE_URL,
-                    MaterialTheme.colorScheme.primary,
-                ),
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                style = MaterialTheme.typography.bodySmall,
-            )
-        }
-    }
-}
-
-private fun linkedUrlText(full: String, url: String, linkColor: Color): AnnotatedString =
-    buildAnnotatedString {
-        val start = full.indexOf(url)
-        if (start < 0) {
-            append(full)
-            return@buildAnnotatedString
-        }
-        append(full.substring(0, start))
-        withLink(
-            LinkAnnotation.Url(
-                url,
-                TextLinkStyles(
-                    style = SpanStyle(
-                        color = linkColor,
-                        textDecoration = TextDecoration.Underline,
-                    ),
-                ),
-            ),
-        ) {
-            append(url)
-        }
-        append(full.substring(start + url.length))
-    }
-
-@Composable
-private fun IntStepper(
-    label: String,
-    value: Int,
-    min: Int,
-    max: Int,
-    valueLabel: String,
-    onChange: (Int) -> Unit,
-) {
-    Text(label, style = MaterialTheme.typography.titleSmall)
-    Row(
-        modifier = Modifier.fillMaxWidth(),
-        verticalAlignment = Alignment.CenterVertically,
-        horizontalArrangement = Arrangement.spacedBy(8.dp),
-    ) {
-        OutlinedButton(
-            onClick = { onChange(value - 1) },
-            enabled = value > min,
-        ) {
-            Text("−")
-        }
-        Text(
-            valueLabel,
-            modifier = Modifier.weight(1f),
-            textAlign = TextAlign.Center,
-            style = MaterialTheme.typography.bodyLarge,
-        )
-        OutlinedButton(
-            onClick = { onChange(value + 1) },
-            enabled = value < max,
-        ) {
-            Text("+")
-        }
-    }
-}
-
-@Composable
-private fun PowerChoiceRow(
-    selected: NodePowerPolicy,
-    onSelect: (NodePowerPolicy) -> Unit,
-) {
-    val options = NodePowerPolicy.entries
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .height(40.dp),
-        horizontalArrangement = Arrangement.spacedBy((-1).dp),
-    ) {
-        options.forEachIndexed { index, option ->
-            val isSelected = selected == option
-            Surface(
-                onClick = { onSelect(option) },
-                modifier = Modifier
-                    .weight(1f)
-                    .fillMaxHeight(),
-                shape = SegmentedButtonDefaults.itemShape(index = index, count = options.size),
-                color = if (isSelected) {
-                    MaterialTheme.colorScheme.secondaryContainer
-                } else {
-                    MaterialTheme.colorScheme.surface
-                },
-                contentColor = if (isSelected) {
-                    MaterialTheme.colorScheme.onSecondaryContainer
-                } else {
-                    MaterialTheme.colorScheme.onSurface
-                },
-                border = BorderStroke(1.dp, MaterialTheme.colorScheme.outline),
-            ) {
-                Row(
-                    modifier = Modifier.padding(horizontal = 4.dp),
-                    verticalAlignment = Alignment.CenterVertically,
-                    horizontalArrangement = Arrangement.Center,
-                ) {
-                    if (isSelected) {
-                        Text("✓", style = MaterialTheme.typography.labelMedium)
-                        Spacer(Modifier.width(2.dp))
-                    }
-                    Text(
-                        option.shortLabel,
-                        maxLines = 1,
-                        softWrap = false,
-                        overflow = TextOverflow.Clip,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                }
-            }
-        }
-    }
-}
-
-@Composable
-internal fun <T> CompactChoiceRow(
-    options: List<T>,
-    selected: T,
-    label: (T) -> String,
-    onSelect: (T) -> Unit,
-) {
-    SingleChoiceSegmentedButtonRow(modifier = Modifier.fillMaxWidth()) {
-        options.forEachIndexed { index, option ->
-            SegmentedButton(
-                selected = selected == option,
-                onClick = { onSelect(option) },
-                shape = SegmentedButtonDefaults.itemShape(
-                    index = index,
-                    count = options.size,
-                ),
-                label = {
-                    Text(
-                        label(option),
-                        maxLines = 1,
-                        overflow = TextOverflow.Ellipsis,
-                        style = MaterialTheme.typography.labelMedium,
-                    )
-                },
-            )
-        }
-    }
-}
-
-@Composable
-private fun PolicyControls(
-    policies: NodePolicyState,
-    onPowerPolicy: (NodePowerPolicy) -> Unit,
-    onNetworkDataPolicy: (NetworkDataPolicy) -> Unit,
-    onScheduleEveryHours: (Int) -> Unit,
-    onScheduleOnMinutes: (Int) -> Unit,
-    scheduleWaiting: Boolean,
-    onConnectNow: () -> Unit,
-    startOnBoot: Boolean,
-    onStartOnBoot: (Boolean) -> Unit,
-) {
-    val context = LocalContext.current
-
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Text(stringResource(R.string.node_runs_when), style = MaterialTheme.typography.titleMedium)
-        PowerChoiceRow(
-            selected = policies.power,
-            onSelect = onPowerPolicy,
-        )
-        Text(
-            stringResource(R.string.node_runs_when_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (policies.power == NodePowerPolicy.Schedule) {
-            IntStepper(
-                label = stringResource(R.string.schedule_wait_label),
-                value = policies.scheduleEveryHours,
-                min = ConnectionSchedule.MinHours,
-                max = ConnectionSchedule.MaxHours,
-                valueLabel = hourLabel(policies.scheduleEveryHours),
-                onChange = onScheduleEveryHours,
-            )
-            IntStepper(
-                label = stringResource(R.string.schedule_on_label),
-                value = policies.scheduleOnMinutes,
-                min = ConnectionSchedule.MinMinutes,
-                max = ConnectionSchedule.MaxMinutes,
-                valueLabel = minuteLabel(policies.scheduleOnMinutes),
-                onChange = onScheduleOnMinutes,
-            )
-            Text(
-                stringResource(R.string.schedule_hint),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            if (scheduleWaiting) {
-                Button(
-                    onClick = onConnectNow,
-                    enabled = NodeBackend.isAvailable(),
-                    modifier = Modifier.fillMaxWidth(),
-                ) {
-                    Text(stringResource(R.string.schedule_connect_now))
-                }
-            }
-        }
-        Row(
-            modifier = Modifier
-                .fillMaxWidth()
-                .toggleable(
-                    value = startOnBoot,
-                    onValueChange = onStartOnBoot,
-                    role = Role.Checkbox,
-                ),
-            verticalAlignment = Alignment.CenterVertically,
-        ) {
-            Checkbox(checked = startOnBoot, onCheckedChange = null)
-            Text(
-                stringResource(R.string.start_on_boot),
-                modifier = Modifier.padding(start = 8.dp),
-            )
-        }
-        Text(
-            stringResource(R.string.start_on_boot_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        HorizontalDivider()
-        Text(stringResource(R.string.network_data), style = MaterialTheme.typography.titleMedium)
-        CompactChoiceRow(
-            options = NetworkDataPolicy.entries,
-            selected = policies.networkData,
-            label = { it.shortLabel },
-            onSelect = onNetworkDataPolicy,
-        )
-        Text(
-            stringResource(R.string.network_data_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-    }
-}
-
-@Composable
-internal fun SettingsCheckbox(
-    checked: Boolean,
-    label: String,
-    onCheckedChange: (Boolean) -> Unit,
-) {
-    Row(
-        modifier = Modifier
-            .fillMaxWidth()
-            .toggleable(
-                value = checked,
-                onValueChange = onCheckedChange,
-                role = Role.Checkbox,
-            ),
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Checkbox(checked = checked, onCheckedChange = null)
-        Text(
-            label,
-            modifier = Modifier.padding(start = 8.dp),
-        )
-    }
-}
-
-@Composable
-internal fun ConnectionLimitField(
-    value: Int,
-    label: String,
-    upperBound: Int,
-    rangeText: String,
-    onChange: (Int) -> Unit,
-    ceiling: Int = ConnectionLimits.Ceiling,
-) {
-    var text by remember { mutableStateOf(value.toString()) }
-    var focused by remember { mutableStateOf(false) }
-    val focusManager = LocalFocusManager.current
-    val cap = minOf(upperBound, ceiling)
-    LaunchedEffect(value) {
-        if (!focused) {
-            text = value.toString()
-        }
-    }
-
-    fun commit() {
-        val parsed = text.toIntOrNull()
-        val next = (parsed ?: value).coerceIn(ConnectionLimits.Floor, cap)
-        text = next.toString()
-        if (next != value) {
-            onChange(next)
-        }
-    }
-
-    OutlinedTextField(
-        value = text,
-        onValueChange = { incoming ->
-            val digits = incoming.filter { it.isDigit() }
-            if (digits.isEmpty()) {
-                text = ""
-                return@OutlinedTextField
-            }
-            val parsed = digits.toLongOrNull() ?: return@OutlinedTextField
-            if (parsed <= cap) {
-                text = digits
-                parsed.toInt().takeIf { it != value }?.let(onChange)
-            }
-        },
-        label = { Text(label) },
-        supportingText = { Text(rangeText) },
-        singleLine = true,
-        keyboardOptions = KeyboardOptions(
-            keyboardType = KeyboardType.Number,
-            imeAction = ImeAction.Done,
-        ),
-        keyboardActions = KeyboardActions(
-            onDone = {
-                commit()
-                focusManager.clearFocus()
-            },
-        ),
-        modifier = Modifier
-            .fillMaxWidth()
-            .onFocusChanged { focusState ->
-                val nowFocused = focusState.isFocused
-                if (focused && !nowFocused) {
-                    commit()
-                }
-                focused = nowFocused
-            },
-    )
-}
-
-@Composable
-private fun BackgroundLimitsPanel(
-    snapshot: RestrictionSnapshot,
-    onOpenSettings: () -> Unit,
-    onOpenGuide: () -> Unit,
-) {
-    val needsFix = snapshot.look == RestrictionLook.NeedsFix
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        Button(
-            onClick = onOpenSettings,
-            modifier = Modifier.fillMaxWidth(),
-            colors = if (needsFix) {
-                ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.errorContainer,
-                    contentColor = MaterialTheme.colorScheme.onErrorContainer,
-                )
-            } else {
-                ButtonDefaults.buttonColors(
-                    containerColor = MaterialTheme.colorScheme.secondaryContainer,
-                    contentColor = MaterialTheme.colorScheme.onSecondaryContainer,
-                )
-            },
-        ) {
-            Text(
-                stringResource(
-                    if (needsFix) R.string.battery_limits_on else R.string.battery_limits_off,
-                ),
-            )
-        }
-        Text(
-            stringResource(R.string.battery_limits_hint),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        Text(
-            stringResource(oemTipRes(snapshot.vendor)),
-            style = MaterialTheme.typography.bodySmall,
-        )
-        if (snapshot.xiaomiAutostart != XiaomiAutostartHint.NotXiaomi) {
-            Text(
-                stringResource(
-                    when (snapshot.xiaomiAutostart) {
-                        XiaomiAutostartHint.Enabled -> R.string.xiaomi_autostart_enabled
-                        XiaomiAutostartHint.Disabled -> R.string.xiaomi_autostart_disabled
-                        else -> R.string.xiaomi_autostart_unknown
-                    },
-                ),
-                style = MaterialTheme.typography.bodySmall,
-            )
-            Text(
-                stringResource(R.string.xiaomi_autostart_disclaimer),
-                style = MaterialTheme.typography.bodySmall,
-                color = MaterialTheme.colorScheme.onSurfaceVariant,
-            )
-        }
-        OutlinedButton(
-            onClick = onOpenGuide,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.oem_guide))
-        }
-    }
-}
-
-private fun oemTipRes(vendor: OemVendor): Int = when (vendor) {
-    OemVendor.Xiaomi -> R.string.oem_tip_xiaomi
-    OemVendor.Samsung -> R.string.oem_tip_samsung
-    OemVendor.Huawei, OemVendor.Honor -> R.string.oem_tip_huawei
-    OemVendor.Oppo, OemVendor.Realme -> R.string.oem_tip_oppo
-    OemVendor.Vivo -> R.string.oem_tip_vivo
-    OemVendor.OnePlus -> R.string.oem_tip_oneplus
-    OemVendor.Asus -> R.string.oem_tip_asus
-    OemVendor.Generic -> R.string.oem_tip_generic
-}
-
-internal fun formatRecentLogs(): String {
-    if (BuildConfig.PREBUILT_NODE) {
-        return PrebuiltNodeProcess.recentLogs(DIAGNOSTIC_LOG_ENTRIES)
-    }
-    val raw = NativeBridge.recentLogs(DIAGNOSTIC_LOG_ENTRIES).getOrElse { error ->
-        return error.message ?: "Could not read logs"
-    }
-    return runCatching {
-        val entries = JSONObject(raw).getJSONObject("data").getJSONArray("entries")
-        if (entries.length() == 0) return@runCatching "No log entries yet."
-        buildString {
-            for (index in 0 until entries.length()) {
-                val entry = entries.getJSONObject(index)
-                append(entry.optString("level"))
-                append("  ")
-                append(entry.optString("message"))
-                append('\n')
-            }
-        }.trimEnd()
-    }.getOrElse { raw }
-}
-
-internal fun diagnosticSnapshot(): String {
-    fun resultOrError(result: Result<String>): Any = result.fold(
-        onSuccess = { value ->
-            runCatching { JSONObject(value) }.fold(
-                onSuccess = { it },
-                onFailure = { value },
-            )
-        },
-        onFailure = { error -> JSONObject().put("error", error.message ?: "unknown JNI error") },
-    )
-
-    return JSONObject()
-        .put("capturedAtEpochMs", System.currentTimeMillis())
-        .put("nodeStatus", resultOrError(NodeBackend.status()))
-        .put("recentLogs", resultOrError(NativeBridge.recentLogs(DIAGNOSTIC_LOG_ENTRIES)))
-        .put("androidAdapter", resultOrError(NativeBridge.buildInfo()))
-        .put("freenetCore", resultOrError(NativeBridge.freenetBuildInfo()))
-        .toString(2)
-}
-
-internal fun copyToClipboard(context: Context, value: String) {
-    val clipboard = context.getSystemService(ClipboardManager::class.java)
-    clipboard.setPrimaryClip(ClipData.newPlainText("Freenet diagnostics", value))
-}
-
-internal fun writeTextToUri(context: Context, uri: Uri, text: String): String {
-    return runCatching {
-        context.contentResolver.openOutputStream(uri)?.use { output ->
-            output.write(text.toByteArray(Charsets.UTF_8))
-        } ?: return context.getString(R.string.export_logs_failed)
-        context.getString(R.string.export_logs_saved)
-    }.getOrElse { context.getString(R.string.export_logs_failed) }
-}
-
-private const val DIAGNOSTIC_LOG_ENTRIES = 128

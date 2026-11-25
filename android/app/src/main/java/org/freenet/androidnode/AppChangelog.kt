@@ -31,7 +31,7 @@ internal object AppChangelog {
     const val LAST_SEEN_VERSION = "last_seen_version"
 
     const val LINE =
-        "Node: the gateway list is refreshed on every start, falling back to the saved copy when the download fails, and the UDP port now defaults to a free port chosen by the node."
+        "Major reliability, security, and performance update: fixed external config editor and prebuilt diagnostics/reports/updates, removed local mode, hardened WebView and backups (with optional passphrase encryption for identity backups), fixed post-update auto-restart, and reduced background battery usage."
 
     fun pendingLine(context: Context): String? {
         val current = runCatching {

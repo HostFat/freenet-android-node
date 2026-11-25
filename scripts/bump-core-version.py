@@ -52,7 +52,7 @@ def main() -> None:
     )
     replace_once(
         repo / "README.md",
-        r"(git checkout )v\d+\.\d+\.\d+",
+        r"(git checkout )v\d+\.\d+\.\d+(?:\.\d+)?",
         rf"\g<1>{args.tag}",
     )
     replace_once(

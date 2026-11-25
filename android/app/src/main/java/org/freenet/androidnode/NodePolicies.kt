@@ -241,14 +241,21 @@ object NodePolicyRepository {
     private const val SCHEDULE_WINDOW_ENDED_KEY = "schedule_window_ended_ms"
     private const val SCHEDULE_CONNECTED_SINCE_KEY = "schedule_connected_since_ms"
 
+    private val lock = Any()
     private val mutableState = MutableStateFlow(NodePolicyState())
     val state: StateFlow<NodePolicyState> = mutableState.asStateFlow()
 
     @Volatile
     private var initialized = false
 
-    @Synchronized
     fun initialize(context: Context) {
+        if (initialized) return
+        synchronized(lock) {
+            initializeLocked(context)
+        }
+    }
+
+    private fun initializeLocked(context: Context) {
         if (initialized) return
         val preferences = context.applicationContext.getSharedPreferences(
             PREFERENCES_NAME,
@@ -294,41 +301,44 @@ object NodePolicyRepository {
         initialized = true
     }
 
+    private inline fun updateLocked(
+        context: Context,
+        transform: (NodePolicyState) -> NodePolicyState,
+    ) {
+        synchronized(lock) {
+            initializeLocked(context)
+            val current = mutableState.value
+            val next = transform(current)
+            if (next != current) {
+                persistLocked(context, next)
+            }
+        }
+    }
+
     fun setPower(context: Context, power: NodePowerPolicy) {
-        initialize(context)
-        val current = mutableState.value
-        val enteringSchedule = power == NodePowerPolicy.Schedule && current.power != power
-        persist(
-            context,
+        updateLocked(context) { current ->
+            val enteringSchedule = power == NodePowerPolicy.Schedule && current.power != power
             current.copy(
                 power = power,
                 suspendedByUser = false,
                 scheduleWindowStartedEpochMs = if (enteringSchedule) 0L else current.scheduleWindowStartedEpochMs,
                 scheduleWindowEndedEpochMs = if (enteringSchedule) 0L else current.scheduleWindowEndedEpochMs,
                 scheduleConnectedSinceEpochMs = if (enteringSchedule) 0L else current.scheduleConnectedSinceEpochMs,
-            ),
-        )
+            )
+        }
         if (power != NodePowerPolicy.Schedule) NodeScheduleAlarm.cancel(context)
     }
 
     fun setScheduleEveryHours(context: Context, hours: Int) {
-        initialize(context)
-        persist(
-            context,
-            mutableState.value.copy(scheduleEveryHours = ConnectionSchedule.coerceHours(hours)),
-        )
+        updateLocked(context) { it.copy(scheduleEveryHours = ConnectionSchedule.coerceHours(hours)) }
     }
 
     fun setScheduleOnMinutes(context: Context, minutes: Int) {
-        initialize(context)
-        persist(
-            context,
-            mutableState.value.copy(scheduleOnMinutes = ConnectionSchedule.coerceMinutes(minutes)),
-        )
+        updateLocked(context) { it.copy(scheduleOnMinutes = ConnectionSchedule.coerceMinutes(minutes)) }
     }
 
-    fun noteScheduleConnected(context: Context, nowMs: Long): Boolean {
-        initialize(context)
+    fun noteScheduleConnected(context: Context, nowMs: Long): Boolean = synchronized(lock) {
+        initializeLocked(context)
         val current = mutableState.value
         if (current.power != NodePowerPolicy.Schedule || current.suspendedByUser) return false
         if (current.scheduleWindowStartedEpochMs <= 0L) return false
@@ -339,126 +349,113 @@ object NodePolicyRepository {
             connectedSinceMs = 0L,
         )
         if (nowMs >= giveUpAt) return false
-        persist(context, current.copy(scheduleConnectedSinceEpochMs = nowMs))
-        return true
+        persistLocked(context, current.copy(scheduleConnectedSinceEpochMs = nowMs))
+        true
     }
 
     fun beginScheduleWindow(context: Context, nowMs: Long) {
-        initialize(context)
-        persist(
-            context,
-            mutableState.value.copy(
+        updateLocked(context) {
+            it.copy(
                 scheduleWindowStartedEpochMs = nowMs,
                 scheduleWindowEndedEpochMs = 0L,
                 scheduleConnectedSinceEpochMs = 0L,
-            ),
-        )
+            )
+        }
     }
 
     fun finishScheduleWindow(context: Context, plannedEndMs: Long) {
-        initialize(context)
-        persist(
-            context,
-            mutableState.value.copy(
+        updateLocked(context) {
+            it.copy(
                 scheduleWindowStartedEpochMs = 0L,
                 scheduleWindowEndedEpochMs = plannedEndMs,
                 scheduleConnectedSinceEpochMs = 0L,
-            ),
-        )
+            )
+        }
     }
 
     fun setNetworkData(context: Context, networkData: NetworkDataPolicy) {
-        initialize(context)
-        persist(context, mutableState.value.copy(networkData = networkData))
+        updateLocked(context) { it.copy(networkData = networkData) }
     }
 
     fun setMinConnections(context: Context, minConnections: Int) {
-        initialize(context)
-        val current = mutableState.value
-        val (min, max) = ConnectionLimits.clampMin(minConnections, current.maxConnections)
-        persist(context, current.copy(minConnections = min, maxConnections = max))
+        updateLocked(context) { current ->
+            val (min, max) = ConnectionLimits.clampMin(minConnections, current.maxConnections)
+            current.copy(minConnections = min, maxConnections = max)
+        }
     }
 
     fun setMaxConnections(context: Context, maxConnections: Int) {
-        initialize(context)
-        val current = mutableState.value
-        val (min, max) = ConnectionLimits.clampMax(current.minConnections, maxConnections)
-        persist(context, current.copy(minConnections = min, maxConnections = max))
+        updateLocked(context) { current ->
+            val (min, max) = ConnectionLimits.clampMax(current.minConnections, maxConnections)
+            current.copy(minConnections = min, maxConnections = max)
+        }
     }
 
     fun setConnectionLimits(context: Context, minConnections: Int, maxConnections: Int) {
-        initialize(context)
-        val (min, max) = ConnectionLimits.clampLoaded(minConnections, maxConnections)
-        persist(context, mutableState.value.copy(minConnections = min, maxConnections = max))
+        updateLocked(context) { current ->
+            val (min, max) = ConnectionLimits.clampLoaded(minConnections, maxConnections)
+            current.copy(minConnections = min, maxConnections = max)
+        }
     }
 
     fun setStartOnBoot(context: Context, enabled: Boolean) {
-        initialize(context)
-        persist(context, mutableState.value.copy(startOnBoot = enabled))
+        updateLocked(context) { it.copy(startOnBoot = enabled) }
     }
 
     fun setAutoRestartOnCrash(context: Context, enabled: Boolean) {
-        initialize(context)
-        persist(context, mutableState.value.copy(autoRestartOnCrash = enabled))
+        updateLocked(context) { it.copy(autoRestartOnCrash = enabled) }
     }
 
     fun setNotifyConnected(context: Context, enabled: Boolean) {
-        initialize(context)
-        persist(context, mutableState.value.copy(notifyConnected = enabled))
+        updateLocked(context) { it.copy(notifyConnected = enabled) }
     }
 
     fun setNotifyStopped(context: Context, enabled: Boolean) {
-        initialize(context)
-        persist(context, mutableState.value.copy(notifyStopped = enabled))
+        updateLocked(context) { it.copy(notifyStopped = enabled) }
     }
 
     fun setNotifyUdpBusy(context: Context, enabled: Boolean) {
-        initialize(context)
-        persist(context, mutableState.value.copy(notifyUdpBusy = enabled))
+        updateLocked(context) { it.copy(notifyUdpBusy = enabled) }
     }
 
     fun setNotifyUpdate(context: Context, enabled: Boolean) {
-        initialize(context)
-        persist(context, mutableState.value.copy(notifyUpdate = enabled))
+        updateLocked(context) { it.copy(notifyUpdate = enabled) }
     }
 
     fun recordNetworkUp(context: Context) {
-        initialize(context)
         val now = System.currentTimeMillis()
-        val current = mutableState.value
-        if (now - current.lastNetworkUpEpochMs < LAST_UP_WRITE_INTERVAL_MS) return
-        persist(context, current.copy(lastNetworkUpEpochMs = now))
+        synchronized(lock) {
+            initializeLocked(context)
+            val current = mutableState.value
+            if (now - current.lastNetworkUpEpochMs < LAST_UP_WRITE_INTERVAL_MS) return
+            persistLocked(context, current.copy(lastNetworkUpEpochMs = now))
+        }
     }
 
     fun setUdpPortSettings(context: Context, mode: UdpPortMode, port: Int) {
-        initialize(context)
-        persist(
-            context,
-            mutableState.value.copy(
+        updateLocked(context) {
+            it.copy(
                 udpPortMode = mode,
                 udpPort = UdpPorts.coerce(port),
-            ),
-        )
+            )
+        }
     }
 
     fun setSuspended(context: Context, suspended: Boolean) {
-        initialize(context)
-        persist(context, mutableState.value.copy(suspendedByUser = suspended))
+        updateLocked(context) { it.copy(suspendedByUser = suspended) }
     }
 
     fun stopAutomaticScheduling(context: Context) {
-        initialize(context)
-        persist(
-            context,
-            mutableState.value.copy(
+        updateLocked(context) {
+            it.copy(
                 power = NodePowerPolicy.Manual,
                 suspendedByUser = false,
-            ),
-        )
+            )
+        }
         NodeScheduleAlarm.cancel(context)
     }
 
-    private fun persist(context: Context, next: NodePolicyState) {
+    private fun persistLocked(context: Context, next: NodePolicyState) {
         context.applicationContext.getSharedPreferences(PREFERENCES_NAME, Context.MODE_PRIVATE)
             .edit()
             .putString(POWER_KEY, next.power.name)

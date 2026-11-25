@@ -5,6 +5,7 @@ import android.net.ConnectivityManager
 import android.net.LinkProperties
 import android.net.Network
 import android.net.NetworkCapabilities
+import android.os.Build
 import org.json.JSONObject
 
 internal data class ConnectivitySnapshot(
@@ -91,11 +92,14 @@ internal class AndroidConnectivityMonitor(
             capabilities.hasTransport(NetworkCapabilities.TRANSPORT_BLUETOOTH) -> "Bluetooth"
             else -> "Other"
         }
+        val unmetered = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED) ||
+            (Build.VERSION.SDK_INT >= Build.VERSION_CODES.R &&
+                capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_TEMPORARILY_NOT_METERED))
         return ConnectivitySnapshot(
             available = true,
             validated = capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_VALIDATED),
             wifi = wifi,
-            metered = !capabilities.hasCapability(NetworkCapabilities.NET_CAPABILITY_NOT_METERED),
+            metered = !unmetered,
             vpn = vpn,
             networkType = type,
             activeNetwork = active.toString(),
@@ -103,24 +107,28 @@ internal class AndroidConnectivityMonitor(
     }
 
     fun register() {
-        if (registered) return
-        manager.registerDefaultNetworkCallback(callback)
-        registered = true
+        synchronized(this) {
+            if (registered) return
+            manager.registerDefaultNetworkCallback(callback)
+            registered = true
+        }
         publishCurrent()
     }
 
     fun unregister() {
-        if (!registered) return
-        manager.unregisterNetworkCallback(callback)
-        registered = false
+        synchronized(this) {
+            if (!registered) return
+            runCatching { manager.unregisterNetworkCallback(callback) }
+            registered = false
+        }
     }
 
     private fun publishCurrent() {
-        val snapshot = currentSnapshot()
         synchronized(this) {
+            val snapshot = currentSnapshot()
             if (snapshot == lastPublished) return
             lastPublished = snapshot
+            onChanged(snapshot)
         }
-        onChanged(snapshot)
     }
 }

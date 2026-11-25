@@ -389,13 +389,30 @@ impl AndroidNodeConfig {
                 format!("Failed to read the persisted configuration: {error}"),
             )
         })?;
-        let migrated = original.replace(
-            "skip_load_from_network = true",
-            "skip_load_from_network = false",
-        );
-        if migrated == original {
+        let mut table: toml::Table = match toml::from_str(&original) {
+            Ok(table) => table,
+            Err(_) => return Ok(()),
+        };
+        let mut changed = false;
+        for key in ["skip_load_from_network", "skip-load-from-network"] {
+            if table
+                .get(key)
+                .and_then(toml::Value::as_bool)
+                .is_some_and(|v| v)
+            {
+                table.insert(key.to_owned(), toml::Value::Boolean(false));
+                changed = true;
+            }
+        }
+        if !changed {
             return Ok(());
         }
+        let migrated = toml::to_string(&table).map_err(|error| {
+            NodeError::new(
+                "CONFIG_MIGRATION_FAILED",
+                format!("Failed to serialize the migrated configuration: {error}"),
+            )
+        })?;
         write_private_config_atomically(&config_path, migrated.as_bytes())
     }
 
@@ -1288,6 +1305,7 @@ impl SharedRuntime {
         let mut inner = lock_recover(&self.inner);
         inner.command_tx = None;
         inner.status.state = NodeState::Stopped;
+        inner.status.mode = None;
         inner.status.detail = "The node stopped and released its runtime".to_owned();
         inner.status.websocket_port = None;
         inner.status.udp_port = None;
@@ -1308,10 +1326,14 @@ impl SharedRuntime {
         let mut inner = lock_recover(&self.inner);
         inner.command_tx = None;
         inner.status.state = NodeState::Failed;
+        inner.status.mode = None;
         inner.status.detail = message.clone();
         inner.status.websocket_port = None;
         inner.status.udp_port = None;
         inner.status.transition_time_ms = unix_time_ms();
+        inner.status.peer_count = 0;
+        inner.started_at_ms = None;
+        inner.last_observed_peer_count = 0;
         if inner.contract_proof.state.is_active() {
             inner.contract_proof.state = ContractProofState::Failed;
             inner.contract_proof.detail =
@@ -1393,7 +1415,12 @@ fn refresh_runtime_metrics(inner: &mut RuntimeInner) {
         .started_at_ms
         .map(|started| unix_time_ms().saturating_sub(started))
         .unwrap_or(0);
-    if inner.status.mode != Some(NodeMode::Network) {
+    if inner.status.mode != Some(NodeMode::Network)
+        || !matches!(
+            inner.status.state,
+            NodeState::Starting | NodeState::RunningNetwork | NodeState::Stopping
+        )
+    {
         return;
     }
 
@@ -1861,6 +1888,9 @@ fn ensure_udp_port_free(port: u16) -> Result<(), NodeError> {
 }
 
 fn config_toml_has_mode(text: &str) -> bool {
+    if let Ok(table) = toml::from_str::<toml::Table>(text) {
+        return table.contains_key("mode");
+    }
     text.lines().any(|line| {
         let trimmed = line.trim_start();
         if trimmed.starts_with('#') {
@@ -1873,15 +1903,24 @@ fn config_toml_has_mode(text: &str) -> bool {
 }
 
 fn parse_toml_u16(text: &str, key: &str) -> Option<u16> {
+    if let Ok(table) = toml::from_str::<toml::Table>(text)
+        && let Some(val) = table.get(key).and_then(toml::Value::as_integer)
+    {
+        return u16::try_from(val).ok();
+    }
     for line in text.lines() {
         let trimmed = line.trim_start();
+        if trimmed.starts_with('#') {
+            continue;
+        }
         let Some(rest) = trimmed.strip_prefix(key) else {
             continue;
         };
         let Some(value) = rest.trim_start().strip_prefix('=') else {
             continue;
         };
-        if let Ok(port) = value.trim().parse::<u16>() {
+        let without_comment = value.split('#').next().unwrap_or(value).trim();
+        if let Ok(port) = without_comment.parse::<u16>() {
             return Some(port);
         }
     }

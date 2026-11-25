@@ -6,6 +6,7 @@ import android.content.Intent
 import android.content.pm.PackageInstaller
 import android.content.pm.PackageManager
 import android.os.Build
+import android.os.SystemClock
 import java.io.File
 import java.net.HttpURLConnection
 import java.net.URL
@@ -20,11 +21,17 @@ internal object UpdateInstaller {
     data class Progress(val downloaded: Long, val total: Long)
 
     private const val RELEASES = "https://github.com/HostFat/freenet-android-node/releases/download"
+    private const val APK_FILENAME = "freenet-android-node-release.apk"
+    private const val MAX_CHECKSUM_CHARS = 32 * 1024
+    private const val PROGRESS_INTERVAL_MS = 100L
 
     fun download(context: Context, version: SemVer, onProgress: (Progress) -> Unit): File {
         val directory = File(context.cacheDir, "updates").apply { mkdirs() }
+        // Remove stale APKs and partial downloads before fetching the new release.
+        directory.listFiles()?.forEach { it.delete() }
+        val temp = File(directory, "freenet-android-node-$version.apk.tmp")
         val target = File(directory, "freenet-android-node-$version.apk")
-        val url = URL("$RELEASES/v$version/freenet-android-node-release.apk")
+        val url = URL("$RELEASES/v$version/$APK_FILENAME")
         val connection = (url.openConnection() as HttpURLConnection).apply {
             connectTimeout = 20_000
             readTimeout = 60_000
@@ -36,8 +43,9 @@ internal object UpdateInstaller {
                 "Download failed: HTTP ${connection.responseCode}"
             }
             val total = connection.contentLengthLong
+            var lastEmit = 0L
             connection.inputStream.use { input ->
-                target.outputStream().use { output ->
+                temp.outputStream().use { output ->
                     val buffer = ByteArray(64 * 1024)
                     var downloaded = 0L
                     while (true) {
@@ -45,19 +53,28 @@ internal object UpdateInstaller {
                         if (read < 0) break
                         output.write(buffer, 0, read)
                         downloaded += read
-                        onProgress(Progress(downloaded, total))
+                        val now = SystemClock.elapsedRealtime()
+                        if (now - lastEmit >= PROGRESS_INTERVAL_MS || (total > 0 && downloaded >= total)) {
+                            lastEmit = now
+                            onProgress(Progress(downloaded, total))
+                        }
                     }
                 }
             }
+            val expected = expectedSha256(version)
+            val actual = sha256(temp)
+            require(actual.equals(expected, ignoreCase = true)) {
+                "Downloaded APK failed the SHA256 check"
+            }
+            check(temp.renameTo(target)) { "Could not finalize downloaded APK" }
+            return target
+        } catch (error: Throwable) {
+            temp.delete()
+            target.delete()
+            throw error
         } finally {
             connection.disconnect()
         }
-        val expected = expectedSha256(version)
-        val actual = sha256(target)
-        require(actual.equals(expected, ignoreCase = true)) {
-            "Downloaded APK failed the SHA256 check"
-        }
-        return target
     }
 
     fun verifySignature(context: Context, apk: File): Boolean {
@@ -95,25 +112,49 @@ internal object UpdateInstaller {
             }
         }
         val sessionId = installer.createSession(params)
-        installer.openSession(sessionId).use { session ->
-            session.openWrite("base.apk", 0, apk.length()).use { output ->
-                apk.inputStream().use { it.copyTo(output) }
-                session.fsync(output)
-            }
-            val intent = Intent(context, UpdateStatusReceiver::class.java).apply {
-                setPackage(context.packageName)
-            }
-            // PackageInstaller writes the status into the PendingIntent, so it
-            // must be mutable from Android 12 on.
-            val flags = PendingIntent.FLAG_UPDATE_CURRENT or
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-                    PendingIntent.FLAG_MUTABLE
-                } else {
-                    0
+        var committed = false
+        try {
+            installer.openSession(sessionId).use { session ->
+                session.openWrite("base.apk", 0, apk.length()).use { output ->
+                    apk.inputStream().use { it.copyTo(output) }
+                    session.fsync(output)
                 }
-            val pending = PendingIntent.getBroadcast(context, 1001, intent, flags)
-            session.commit(pending.intentSender)
+                val intent = Intent(context, UpdateStatusReceiver::class.java).apply {
+                    setPackage(context.packageName)
+                }
+                // PackageInstaller writes the status into the PendingIntent, so it
+                // must be mutable from Android 12 on.
+                val flags = PendingIntent.FLAG_UPDATE_CURRENT or
+                    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                        PendingIntent.FLAG_MUTABLE
+                    } else {
+                        0
+                    }
+                val pending = PendingIntent.getBroadcast(context, 1001, intent, flags)
+                session.commit(pending.intentSender)
+                committed = true
+            }
+        } catch (error: Throwable) {
+            if (!committed) {
+                runCatching { installer.abandonSession(sessionId) }
+            }
+            throw error
         }
+    }
+
+    internal fun parseExpectedSha256(text: String): String {
+        val shaPattern = Regex("^[0-9a-fA-F]{64}$")
+        for (rawLine in text.lineSequence()) {
+            val parts = rawLine.trim().split(Regex("\\s+"))
+            if (parts.size < 2) continue
+            val hash = parts[0]
+            val name = parts[1].removePrefix("*")
+            val matchesApk = name == APK_FILENAME || name.endsWith("/$APK_FILENAME")
+            if (matchesApk && shaPattern.matches(hash)) {
+                return hash
+            }
+        }
+        error("SHA256SUMS does not list $APK_FILENAME")
     }
 
     private fun expectedSha256(version: SemVer): String {
@@ -128,11 +169,10 @@ internal object UpdateInstaller {
             require(connection.responseCode in 200..299) {
                 "Could not fetch SHA256SUMS: HTTP ${connection.responseCode}"
             }
-            val text = connection.inputStream.bufferedReader().use { it.readText() }
-            val line = text.lineSequence().firstOrNull {
-                it.trim().endsWith("freenet-android-node-release.apk")
-            } ?: error("SHA256SUMS does not list the APK")
-            return line.trim().split(Regex("\\s+")).first()
+            val text = connection.inputStream.bufferedReader().use {
+                readBoundedText(it, MAX_CHECKSUM_CHARS)
+            }
+            return parseExpectedSha256(text)
         } finally {
             connection.disconnect()
         }

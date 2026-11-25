@@ -23,11 +23,12 @@ import android.widget.PopupMenu
 import android.widget.TextView
 import androidx.activity.ComponentActivity
 import androidx.activity.addCallback
+import org.json.JSONArray
 import java.io.ByteArrayInputStream
 
 /**
- * Shows one Freenet contract in a WebView. A dedicated Activity mirrors the
- * working Freenet mobile app and keeps the WebView out of Compose interop.
+ * Shows one Freenet contract in a WebView. A dedicated Activity keeps the
+ * WebView out of Compose interop and restricts navigation to the local node.
  */
 class SiteActivity : ComponentActivity() {
     private lateinit var webView: WebView
@@ -46,6 +47,11 @@ class SiteActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         setContentView(R.layout.activity_site)
         val url = intent.getStringExtra(EXTRA_URL) ?: run {
+            finish()
+            return
+        }
+        val initialUri = runCatching { Uri.parse(url) }.getOrNull()
+        if (initialUri == null || !isAllowedLoopbackUri(initialUri)) {
             finish()
             return
         }
@@ -83,9 +89,9 @@ class SiteActivity : ComponentActivity() {
                 when (item.itemId) {
                     MENU_ADD -> addCurrentSite()
                     MENU_BROWSER -> {
-                        val url = webView.url ?: currentUrl
-                        runCatching {
-                            startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(url)))
+                        val target = runCatching { Uri.parse(webView.url ?: currentUrl) }.getOrNull()
+                        if (target != null && isHttpOrHttps(target)) {
+                            runCatching { startActivity(Intent(Intent.ACTION_VIEW, target)) }
                         }
                     }
                     MENU_CLOSE -> finish()
@@ -118,7 +124,7 @@ class SiteActivity : ComponentActivity() {
             allowContentAccess = false
             mixedContentMode = WebSettings.MIXED_CONTENT_NEVER_ALLOW
             setSupportMultipleWindows(true)
-            javaScriptCanOpenWindowsAutomatically = true
+            javaScriptCanOpenWindowsAutomatically = false
         }
         webView.webViewClient = object : WebViewClient() {
             override fun shouldOverrideUrlLoading(
@@ -127,10 +133,12 @@ class SiteActivity : ComponentActivity() {
             ): Boolean {
                 if (!request.isForMainFrame) return false
                 val uri = request.url
-                if (uri.scheme == "http" && uri.host == "127.0.0.1" && uri.port == 7509) {
+                if (isAllowedLoopbackUri(uri)) {
                     return false
                 }
-                runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                if (request.hasGesture() && isHttpOrHttps(uri)) {
+                    runCatching { startActivity(Intent(Intent.ACTION_VIEW, uri)) }
+                }
                 return true
             }
 
@@ -139,21 +147,12 @@ class SiteActivity : ComponentActivity() {
                 request: WebResourceRequest,
             ): WebResourceResponse? {
                 val uri = request.url
-                val network = uri.scheme == "http" || uri.scheme == "https"
-                val loopback = uri.scheme == "http" &&
-                    uri.host == "127.0.0.1" &&
-                    uri.port == 7509
-                return if (!network || loopback) {
+                val scheme = uri.scheme?.lowercase()
+                val network = scheme == "http" || scheme == "https"
+                return if (!network || isAllowedLoopbackUri(uri)) {
                     null
                 } else {
-                    WebResourceResponse(
-                        "text/plain",
-                        "UTF-8",
-                        403,
-                        "Blocked",
-                        emptyMap(),
-                        ByteArrayInputStream(ByteArray(0)),
-                    )
+                    blockedResponse()
                 }
             }
 
@@ -172,7 +171,7 @@ class SiteActivity : ComponentActivity() {
                 if (url != null) currentUrl = url
                 pageLoaded = true
                 view.evaluateJavascript("document.title") { raw ->
-                    val title = raw?.trim('"')
+                    val title = decodeJsStringResult(raw)
                     if (!title.isNullOrBlank()) {
                         pageTitle = title
                         titleView.text = title
@@ -206,21 +205,36 @@ class SiteActivity : ComponentActivity() {
                 isUserGesture: Boolean,
                 resultMsg: Message,
             ): Boolean {
-                val transport = resultMsg.obj as WebView.WebViewTransport
-                val popup = WebView(this@SiteActivity)
-                this@SiteActivity.popup = popup
-                popup.webViewClient = object : WebViewClient() {
+                if (!isUserGesture) return false
+                val transport = resultMsg.obj as? WebView.WebViewTransport ?: return false
+                this@SiteActivity.popup?.destroy()
+                val popupView = WebView(this@SiteActivity)
+                this@SiteActivity.popup = popupView
+                popupView.webViewClient = object : WebViewClient() {
                     override fun shouldOverrideUrlLoading(
-                        popupView: WebView,
+                        childView: WebView,
                         request: WebResourceRequest,
                     ): Boolean {
-                        view.loadUrl(request.url.toString())
-                        popup.destroy()
-                        this@SiteActivity.popup = null
+                        val uri = request.url
+                        when {
+                            isAllowedLoopbackUri(uri) -> view.loadUrl(uri.toString())
+                            isHttpOrHttps(uri) -> runCatching {
+                                startActivity(Intent(Intent.ACTION_VIEW, uri))
+                            }
+                        }
+                        popupView.destroy()
+                        if (this@SiteActivity.popup === popupView) {
+                            this@SiteActivity.popup = null
+                        }
                         return true
                     }
+
+                    override fun shouldInterceptRequest(
+                        childView: WebView,
+                        request: WebResourceRequest,
+                    ): WebResourceResponse? = blockedResponse()
                 }
-                transport.webView = popup
+                transport.webView = popupView
                 resultMsg.sendToTarget()
                 return true
             }
@@ -233,6 +247,15 @@ class SiteActivity : ComponentActivity() {
             }
         }
     }
+
+    private fun blockedResponse(): WebResourceResponse = WebResourceResponse(
+        "text/plain",
+        "UTF-8",
+        403,
+        "Blocked",
+        emptyMap(),
+        ByteArrayInputStream(ByteArray(0)),
+    )
 
     private fun updateSiteActions() {
         updateHistoryButtons()
@@ -297,6 +320,24 @@ class SiteActivity : ComponentActivity() {
         private val CONTRACT_ROOT = Regex(
             """^(http://127\.0\.0\.1:7509/v1/contract/web/[^/]+/)""",
         )
+
+        internal fun isAllowedLoopbackUri(uri: Uri): Boolean =
+            uri.scheme.equals("http", ignoreCase = true) &&
+                uri.host == "127.0.0.1" &&
+                uri.port == 7509
+
+        internal fun isHttpOrHttps(uri: Uri): Boolean {
+            val scheme = uri.scheme?.lowercase()
+            return scheme == "http" || scheme == "https"
+        }
+
+        internal fun decodeJsStringResult(raw: String?): String? {
+            if (raw.isNullOrBlank() || raw == "null" || raw == "undefined") return null
+            return runCatching {
+                val arr = JSONArray("[$raw]")
+                if (arr.isNull(0)) null else arr.optString(0)
+            }.getOrElse { raw.trim('"') }
+        }
 
         internal fun intent(context: Context, site: FreenetSite): Intent =
             Intent(context, SiteActivity::class.java)

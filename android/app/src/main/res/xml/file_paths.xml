@@ -3,4 +3,7 @@
     <files-path
         name="freenet_config"
         path="freenet/config/" />
+    <files-path
+        name="freenet_prebuilt_config"
+        path="freenet/prebuilt/config/" />
 </paths>

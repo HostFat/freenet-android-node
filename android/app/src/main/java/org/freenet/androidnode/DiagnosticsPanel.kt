@@ -1,5 +1,6 @@
 package org.freenet.androidnode
 
+import android.net.Uri
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
@@ -17,6 +18,8 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
@@ -41,10 +44,14 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
+import androidx.compose.ui.text.input.KeyboardType
+import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.unit.dp
-import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.compose.LocalLifecycleOwner
+import androidx.lifecycle.repeatOnLifecycle
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
@@ -73,34 +80,52 @@ internal fun DiagnosticsPanel(
     onSaveUdpPortSettings: (UdpPortMode, Int) -> Unit,
     onUseSavedUdp: () -> Unit,
     onUseRandomUdp: () -> Unit,
-    onStartLocal: () -> Unit,
     onReset: () -> Unit,
-    canStartLocal: Boolean,
+    canRestoreBackup: Boolean,
     autoRestartOnCrash: Boolean,
     onAutoRestartOnCrash: (Boolean) -> Unit,
     restoreMessage: String?,
     onRestoreBackup: () -> Unit,
 ) {
     val context = LocalContext.current
+    val lifecycleOwner = LocalLifecycleOwner.current
+    val panelScope = rememberCoroutineScope()
     var snapshot by remember { mutableStateOf("Collecting diagnostics…") }
     var logs by remember { mutableStateOf("Collecting logs…") }
     var showLogs by remember { mutableStateOf(false) }
     var identityMessage by remember { mutableStateOf<String?>(null) }
+    var pendingExportUri by remember { mutableStateOf<Uri?>(null) }
+    var pendingImportUri by remember { mutableStateOf<Uri?>(null) }
+    var passphraseInput by remember { mutableStateOf("") }
+
     val exportIdentity = rememberLauncherForActivityResult(
         ActivityResultContracts.CreateDocument("application/zip"),
     ) { uri ->
         if (uri != null) {
-            identityMessage = IdentityBackup.export(context, uri)
+            passphraseInput = ""
+            pendingExportUri = uri
         }
     }
     val importIdentity = rememberLauncherForActivityResult(
         ActivityResultContracts.OpenDocument(),
     ) { uri ->
         if (uri != null) {
-            val message = IdentityBackup.importFrom(context, uri)
-            identityMessage = message
-            if (identityRestoreSucceeded(message)) {
-                onIdentityRestored()
+            panelScope.launch {
+                val encrypted = withContext(Dispatchers.IO) {
+                    IdentityBackup.isEncryptedBackup(context, uri)
+                }
+                if (encrypted) {
+                    passphraseInput = ""
+                    pendingImportUri = uri
+                } else {
+                    val message = withContext(Dispatchers.IO) {
+                        IdentityBackup.importFrom(context, uri)
+                    }
+                    identityMessage = message
+                    if (identityRestoreSucceeded(message)) {
+                        onIdentityRestored()
+                    }
+                }
             }
         }
     }
@@ -109,21 +134,27 @@ internal fun DiagnosticsPanel(
         ActivityResultContracts.CreateDocument("text/plain"),
     ) { uri ->
         if (uri != null) {
-            logsExportMessage = writeTextToUri(context, uri, logs)
+            val content = logs
+            panelScope.launch {
+                logsExportMessage = withContext(Dispatchers.IO) {
+                    writeTextToUri(context, uri, content)
+                }
+            }
         }
     }
-    val reportScope = rememberCoroutineScope()
     var showReportDialog by remember { mutableStateOf(false) }
     var reportComment by remember { mutableStateOf("") }
     var reportSending by remember { mutableStateOf(false) }
     var reportCode by remember { mutableStateOf<String?>(null) }
     var reportError by remember { mutableStateOf<String?>(null) }
 
-    LaunchedEffect(Unit) {
-        while (true) {
-            snapshot = withContext(Dispatchers.Default) { diagnosticSnapshot() }
-            logs = withContext(Dispatchers.Default) { formatRecentLogs() }
-            delay(2_000)
+    LaunchedEffect(lifecycleOwner) {
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.STARTED) {
+            while (true) {
+                snapshot = withContext(Dispatchers.IO) { diagnosticSnapshot() }
+                logs = withContext(Dispatchers.IO) { formatRecentLogs() }
+                delay(2_000)
+            }
         }
     }
 
@@ -312,7 +343,7 @@ internal fun DiagnosticsPanel(
                                 reportSending = true
                                 reportError = null
                                 val comment = reportComment
-                                reportScope.launch {
+                                panelScope.launch {
                                     val result = withContext(Dispatchers.IO) {
                                         ServiceReport.upload(context, comment)
                                     }
@@ -417,14 +448,7 @@ internal fun DiagnosticsPanel(
             style = MaterialTheme.typography.bodySmall,
         )
         OutlinedButton(
-            enabled = NodeBackend.isAvailable() && canStartLocal,
-            onClick = onStartLocal,
-            modifier = Modifier.fillMaxWidth(),
-        ) {
-            Text(stringResource(R.string.start_local_node))
-        }
-        OutlinedButton(
-            enabled = NodeBackend.isAvailable() && canStartLocal,
+            enabled = NodeBackend.isAvailable() && canRestoreBackup,
             onClick = onRestoreBackup,
             modifier = Modifier.fillMaxWidth(),
         ) {
@@ -440,6 +464,117 @@ internal fun DiagnosticsPanel(
         ) {
             Text(stringResource(R.string.reset_node))
         }
+    }
+
+    pendingExportUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = {
+                pendingExportUri = null
+                passphraseInput = ""
+            },
+            title = { Text(stringResource(R.string.identity_passphrase_export_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.identity_passphrase_export_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = passphraseInput,
+                        onValueChange = { passphraseInput = it },
+                        label = { Text(stringResource(R.string.identity_passphrase_label)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    onClick = {
+                        val passphrase = passphraseInput
+                        pendingExportUri = null
+                        passphraseInput = ""
+                        panelScope.launch {
+                            identityMessage = withContext(Dispatchers.IO) {
+                                IdentityBackup.export(context, uri, passphrase)
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.identity_export_continue))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingExportUri = null
+                        passphraseInput = ""
+                    },
+                ) {
+                    Text(stringResource(R.string.external_guide_cancel))
+                }
+            },
+        )
+    }
+
+    pendingImportUri?.let { uri ->
+        AlertDialog(
+            onDismissRequest = {
+                pendingImportUri = null
+                passphraseInput = ""
+            },
+            title = { Text(stringResource(R.string.identity_passphrase_import_title)) },
+            text = {
+                Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                    Text(
+                        stringResource(R.string.identity_passphrase_import_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    OutlinedTextField(
+                        value = passphraseInput,
+                        onValueChange = { passphraseInput = it },
+                        label = { Text(stringResource(R.string.identity_passphrase_required_label)) },
+                        singleLine = true,
+                        visualTransformation = PasswordVisualTransformation(),
+                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Password),
+                        modifier = Modifier.fillMaxWidth(),
+                    )
+                }
+            },
+            confirmButton = {
+                Button(
+                    enabled = passphraseInput.isNotEmpty(),
+                    onClick = {
+                        val passphrase = passphraseInput
+                        pendingImportUri = null
+                        passphraseInput = ""
+                        panelScope.launch {
+                            val message = withContext(Dispatchers.IO) {
+                                IdentityBackup.importFrom(context, uri, passphrase)
+                            }
+                            identityMessage = message
+                            if (identityRestoreSucceeded(message)) {
+                                onIdentityRestored()
+                            }
+                        }
+                    },
+                ) {
+                    Text(stringResource(R.string.identity_import_continue))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = {
+                        pendingImportUri = null
+                        passphraseInput = ""
+                    },
+                ) {
+                    Text(stringResource(R.string.external_guide_cancel))
+                }
+            },
+        )
     }
 }
 

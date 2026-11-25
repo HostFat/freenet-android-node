@@ -4,8 +4,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 /**
- * The prebuilt node has no JNI status call. Its dashboard renders the live
- * counters in the page title and the peer table, so read those two values.
+ * Reads live counters and NAT status hints from the local Freenet dashboard
+ * in a single HTTP request.
  */
 internal object DashboardStatus {
     data class Counts(
@@ -15,9 +15,11 @@ internal object DashboardStatus {
         val bytesReceived: Long,
         val uploadKbps: Double,
         val downloadKbps: Double,
+        val natHint: String? = null,
     )
 
     private const val DASHBOARD = "http://127.0.0.1:7509/"
+    private const val MAX_HTML_CHARS = 512 * 1024
     private val titlePattern = Regex("""\((\d+)\)\s*Dashboard""")
     private val peerRowPattern = Regex("""class="peer-row"""")
     private val peerRows = Regex("""<tr class="peer-row".*?</tr>""", RegexOption.DOT_MATCHES_ALL)
@@ -29,48 +31,56 @@ internal object DashboardStatus {
         val connection = (URL(DASHBOARD).openConnection() as HttpURLConnection).apply {
             connectTimeout = 2_000
             readTimeout = 2_000
+            instanceFollowRedirects = false
             setRequestProperty("User-Agent", "freenet-android-node")
         }
         try {
             if (connection.responseCode !in 200..299) {
                 return@runCatching null
             }
-            val html = connection.inputStream.bufferedReader().use { it.readText() }
-            val connections = titlePattern.find(html)
-                ?.groupValues
-                ?.getOrNull(1)
-                ?.toIntOrNull()
-                ?: 0
-            val peers = peerRowPattern.findAll(html).count()
-            var sent = 0L
-            var received = 0L
-            peerRows.findAll(html).forEach { row ->
-                val numbers = numericSort.findAll(row.value)
-                    .mapNotNull { it.groupValues[1].toLongOrNull() }
-                    .toList()
-                if (numbers.size >= 3) {
-                    sent += numbers[numbers.size - 3]
-                    received += numbers[numbers.size - 2]
-                }
+            val html = connection.inputStream.bufferedReader().use { reader ->
+                readBoundedText(reader, MAX_HTML_CHARS)
             }
-            Counts(
-                connections = connections,
-                peers = peers,
-                bytesSent = sent,
-                bytesReceived = received,
-                uploadKbps = uploadPattern.find(html)
-                    ?.groupValues
-                    ?.getOrNull(1)
-                    ?.toDoubleOrNull()
-                    ?: 0.0,
-                downloadKbps = downloadPattern.find(html)
-                    ?.groupValues
-                    ?.getOrNull(1)
-                    ?.toDoubleOrNull()
-                    ?: 0.0,
-            )
+            parse(html)
         } finally {
             connection.disconnect()
         }
     }.getOrNull()
+
+    internal fun parse(html: String): Counts {
+        val connections = titlePattern.find(html)
+            ?.groupValues
+            ?.getOrNull(1)
+            ?.toIntOrNull()
+            ?: 0
+        val peers = peerRowPattern.findAll(html).count()
+        var sent = 0L
+        var received = 0L
+        peerRows.findAll(html).forEach { row ->
+            val numbers = numericSort.findAll(row.value)
+                .mapNotNull { it.groupValues[1].toLongOrNull() }
+                .toList()
+            if (numbers.size >= 3) {
+                sent += numbers[numbers.size - 3]
+                received += numbers[numbers.size - 2]
+            }
+        }
+        return Counts(
+            connections = connections,
+            peers = peers,
+            bytesSent = sent,
+            bytesReceived = received,
+            uploadKbps = uploadPattern.find(html)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toDoubleOrNull()
+                ?: 0.0,
+            downloadKbps = downloadPattern.find(html)
+                ?.groupValues
+                ?.getOrNull(1)
+                ?.toDoubleOrNull()
+                ?: 0.0,
+            natHint = natHintFromHtml(html),
+        )
+    }
 }

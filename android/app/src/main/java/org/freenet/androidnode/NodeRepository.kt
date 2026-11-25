@@ -19,7 +19,7 @@ data class NodeUiState(
     val detail: String = "The foreground service is not running",
     val completedStartCycles: Long = 0,
     val serviceActive: Boolean = false,
-    val mode: NodeMode = NodeMode.Local,
+    val mode: NodeMode = NodeMode.Network,
     val peers: Int = 0,
     val startedAtElapsedRealtimeMs: Long? = null,
     val lastLifecycleResponse: String = "No lifecycle action submitted",
@@ -52,26 +52,6 @@ object NodeRepository {
     val state: StateFlow<NodeUiState> = mutableState.asStateFlow()
     val policies: StateFlow<NodePolicyState> = NodePolicyRepository.state
 
-    fun startLocal(context: Context) {
-        val appContext = context.applicationContext
-        NodePolicyRepository.stopAutomaticScheduling(appContext)
-        mutableState.update {
-            it.copy(
-                state = NodePhase.Starting,
-                detail = "Submitting the foreground-service start request",
-                serviceActive = true,
-                mode = NodeMode.Local,
-                peers = 0,
-                startedAtElapsedRealtimeMs = SystemClock.elapsedRealtime(),
-                lastLifecycleResponse = "Starting local node through NodeService",
-                taskRemovedWhileRunning = false,
-                udpPortInUse = false,
-            )
-        }
-        runCatching { appContext.startForegroundService(NodeService.startLocalIntent(appContext)) }
-            .onFailure { error -> publishServiceStartBlocked(error) }
-    }
-
     fun startNetwork(context: Context) {
         val appContext = context.applicationContext
         NodePolicyRepository.initialize(appContext)
@@ -89,8 +69,23 @@ object NodeRepository {
                 udpPortInUse = false,
             )
         }
-        runCatching { appContext.startForegroundService(NodeService.startNetworkIntent(appContext)) }
-            .onFailure { error -> publishServiceStartBlocked(error) }
+        startNodeService(appContext, NodeService.startNetworkIntent(appContext), foreground = true)
+    }
+
+    private fun startNodeService(
+        appContext: Context,
+        intent: android.content.Intent,
+        foreground: Boolean,
+    ) {
+        runCatching {
+            if (foreground) {
+                appContext.startForegroundService(intent)
+            } else {
+                appContext.startService(intent)
+            }
+        }.onFailure { error ->
+            publishServiceStartBlocked(error)
+        }
     }
 
     private fun publishServiceStartBlocked(error: Throwable) {
@@ -110,21 +105,21 @@ object NodeRepository {
             NodePolicyRepository.stopAutomaticScheduling(appContext)
         }
         if (!mutableState.value.serviceActive) {
-            // The native status call is blocking. Keep it off the caller thread.
+            // The backend status call may block. Keep it off the caller thread.
             ioScope.launch {
-                val response = NativeBridge.nodeStatus().getOrElse {
-                    "JNI status error: ${it.message ?: "unknown error"}"
+                val response = NodeBackend.status().getOrElse {
+                    "Node status error: ${it.message ?: "unknown error"}"
                 }
                 val status = parseNodeStatus(response)
                 if (status.state == NodePhase.Stopped || status.state == NodePhase.Failed) {
                     publishStopped(status, response)
                     return@launch
                 }
-                appContext.startService(NodeService.stopIntent(appContext))
+                startNodeService(appContext, NodeService.stopIntent(appContext), foreground = false)
             }
             return
         }
-        context.applicationContext.startService(NodeService.stopIntent(context.applicationContext))
+        startNodeService(appContext, NodeService.stopIntent(appContext), foreground = false)
     }
 
     fun setPowerPolicy(context: Context, policy: NodePowerPolicy) {
@@ -132,10 +127,18 @@ object NodeRepository {
         NodePolicyRepository.setPower(appContext, policy)
         if (policy == NodePowerPolicy.Manual) {
             if (mutableState.value.serviceActive) {
-                appContext.startService(NodeService.reconcilePolicyIntent(appContext))
+                startNodeService(
+                    appContext,
+                    NodeService.reconcilePolicyIntent(appContext),
+                    foreground = false,
+                )
             }
         } else {
-            appContext.startForegroundService(NodeService.reconcilePolicyIntent(appContext))
+            startNodeService(
+                appContext,
+                NodeService.reconcilePolicyIntent(appContext),
+                foreground = true,
+            )
         }
     }
 
@@ -153,9 +156,17 @@ object NodeRepository {
 
     private fun reconcileAutomatic(appContext: Context) {
         if (NodeRepository.state.value.serviceActive) {
-            appContext.startService(NodeService.reconcilePolicyIntent(appContext))
+            startNodeService(
+                appContext,
+                NodeService.reconcilePolicyIntent(appContext),
+                foreground = false,
+            )
         } else if (NodePolicyRepository.state.value.automatic) {
-            appContext.startForegroundService(NodeService.reconcilePolicyIntent(appContext))
+            startNodeService(
+                appContext,
+                NodeService.reconcilePolicyIntent(appContext),
+                foreground = true,
+            )
         }
     }
 
@@ -163,9 +174,17 @@ object NodeRepository {
         val appContext = context.applicationContext
         NodePolicyRepository.setNetworkData(appContext, policy)
         if (mutableState.value.serviceActive) {
-            appContext.startService(NodeService.reconcilePolicyIntent(appContext))
+            startNodeService(
+                appContext,
+                NodeService.reconcilePolicyIntent(appContext),
+                foreground = false,
+            )
         } else if (NodePolicyRepository.state.value.automatic) {
-            appContext.startForegroundService(NodeService.reconcilePolicyIntent(appContext))
+            startNodeService(
+                appContext,
+                NodeService.reconcilePolicyIntent(appContext),
+                foreground = true,
+            )
         }
     }
 
@@ -192,7 +211,7 @@ object NodeRepository {
         mutableState.update {
             it.copy(
                 state = NodePhase.Starting,
-                detail = "Restarting the network node with the new connection limits",
+                detail = "Restarting the network node with the new settings",
                 serviceActive = true,
                 mode = NodeMode.Network,
                 lastLifecycleResponse = "Restarting network node through NodeService",
@@ -200,7 +219,7 @@ object NodeRepository {
                 udpPortInUse = false,
             )
         }
-        appContext.startForegroundService(NodeService.restartNetworkIntent(appContext))
+        startNodeService(appContext, NodeService.restartNetworkIntent(appContext), foreground = true)
     }
 
     fun reportNotificationPermissionRequired() {
@@ -240,8 +259,8 @@ object NodeRepository {
                 serviceActive,
                 startedAtElapsedRealtimeMs,
             )
-            // The process status has no peer count; keep the dashboard value.
-            if (BuildConfig.PREBUILT_NODE) {
+            // The process status has no peer count; keep the dashboard value while running.
+            if (BuildConfig.PREBUILT_NODE && parsed.state == NodePhase.RunningNetwork) {
                 next.copy(
                     peers = if (next.peers == 0) current.peers else next.peers,
                     bytesSent = if (next.bytesSent == 0L) current.bytesSent else next.bytesSent,

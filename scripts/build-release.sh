@@ -22,9 +22,11 @@ gradle_version_args+=("-PprebuiltNode=${PREBUILT_NODE:-false}")
 gradle_version_args+=("-PcoreVersion=${FREENET_PREBUILT_VERSION:-unknown}")
 
 if [[ "${PREBUILT_NODE:-false}" == "true" ]]; then
-  # Release runs the official binary; the JNI library is not built or shipped.
+  # Release runs the official binary; clean stale JNI libs so only libfreenet.so is packaged.
+  rm -rf "${repo_root}/android/app/src/main/jniLibs"
   "${repo_root}/scripts/fetch-prebuilt-node.sh"
 else
+  rm -rf "${repo_root}/android/app/src/main/jniLibs"
   "${repo_root}/scripts/build-native.sh"
 fi
 "${repo_root}/android/gradlew" \

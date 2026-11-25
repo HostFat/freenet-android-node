@@ -104,9 +104,7 @@ internal object UpdateCheckRepository {
     }
 
     private fun fetchDecision(context: Context, peerVersion: String?): UpdateDecision {
-        val installedCore = SemVer.parseFromCoreBuildInfo(
-            NativeBridge.freenetBuildInfo().getOrNull(),
-        )
+        val installedCore = SemVer.parse(NodeBackend.coreVersion())
         val installedApp = SemVer.parse(
             runCatching {
                 context.packageManager.getPackageInfo(context.packageName, 0).versionName
@@ -136,7 +134,8 @@ internal object UpdateCheckRepository {
             installedApp = installedApp,
             githubCore = coreRelease.version,
             githubApk = apkRelease.version,
-            githubApkReleaseUrl = apkRelease.htmlUrl ?: UpdateUrls.APK_RELEASES_PAGE,
+            githubApkReleaseUrl = apkRelease.htmlUrl?.ifBlank { null }
+                ?: UpdateUrls.APK_RELEASES_PAGE,
             peerSeen = SemVer.parse(peerVersion),
         )
     }
@@ -152,14 +151,16 @@ internal object UpdateCheckRepository {
         }
         try {
             if (connection.responseCode !in 200..299) return null
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val body = connection.inputStream.bufferedReader().use {
+                readBoundedText(it, MAX_FEED_CHARS)
+            }
             val root = org.json.JSONObject(body)
             val channel = if (includePrereleases) "beta" else "stable"
             val app = root.optJSONObject("app")?.optJSONObject(channel) ?: return null
             val core = root.optJSONObject("core")?.optJSONObject(channel) ?: return null
             fun release(value: org.json.JSONObject): GithubRelease? {
                 val version = SemVer.parse(value.optString("version")) ?: return null
-                return GithubRelease(version, value.optString("url"))
+                return GithubRelease(version, value.optString("url").ifBlank { null })
             }
             return WorkerReleases(
                 app = release(app) ?: return null,
@@ -180,13 +181,15 @@ internal object UpdateCheckRepository {
         }
         try {
             if (connection.responseCode !in 200..299) return null
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val body = connection.inputStream.bufferedReader().use {
+                readBoundedText(it, MAX_FEED_CHARS)
+            }
             val root = org.json.JSONObject(body)
             val app = root.optJSONObject("app") ?: return null
             val core = root.optJSONObject("core") ?: return null
             fun release(value: org.json.JSONObject): GithubRelease? {
                 val version = SemVer.parse(value.optString("version")) ?: return null
-                return GithubRelease(version, value.optString("url"))
+                return GithubRelease(version, value.optString("url").ifBlank { null })
             }
             return WorkerReleases(
                 app = release(app) ?: return null,
@@ -241,7 +244,9 @@ internal object UpdateCheckRepository {
             if (code !in 200..299) {
                 throw IOException("GitHub returned HTTP $code")
             }
-            val body = connection.inputStream.bufferedReader().use { it.readText() }
+            val body = connection.inputStream.bufferedReader().use {
+                readBoundedText(it, MAX_API_CHARS)
+            }
             val releases = org.json.JSONArray(body)
             var best: GithubRelease? = null
             for (index in 0 until releases.length()) {
@@ -253,7 +258,7 @@ internal object UpdateCheckRepository {
                 ) ?: continue
                 val current = best?.version
                 if (current == null || version > current) {
-                    best = GithubRelease(version, release.optString("html_url"))
+                    best = GithubRelease(version, release.optString("html_url").ifBlank { null })
                 }
             }
             return best ?: throw IOException("No release found")
@@ -343,4 +348,6 @@ internal object UpdateCheckRepository {
     private const val CHANNEL_ID = "freenet_apk_updates"
     private const val NOTIFICATION_ID = 7510
     private const val REQUEST_OPEN_RELEASE = 21
+    private const val MAX_FEED_CHARS = 128 * 1024
+    private const val MAX_API_CHARS = 1024 * 1024
 }

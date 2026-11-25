@@ -50,6 +50,9 @@ class NodeNotificationManager(private val context: Context) {
             PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
         )
 
+        val showChronometer = state.startedAtElapsedRealtimeMs != null &&
+            (state.state == NodePhase.Starting || state.state.isRunning)
+
         val builder = Notification.Builder(context, CHANNEL_ID)
             .setSmallIcon(R.drawable.ic_node_notification)
             .setContentTitle(notificationTitle(state))
@@ -58,7 +61,11 @@ class NodeNotificationManager(private val context: Context) {
             .setContentIntent(openApp)
             .setOngoing(true)
             .setOnlyAlertOnce(true)
-            .setShowWhen(false)
+            .setShowWhen(showChronometer)
+            .setUsesChronometer(showChronometer)
+        if (showChronometer) {
+            builder.setWhen(System.currentTimeMillis() - state.uptimeMs)
+        }
         builder.addAction(
             Notification.Action.Builder(
                 Icon.createWithResource(context, R.drawable.ic_node_notification),
@@ -84,17 +91,11 @@ class NodeNotificationManager(private val context: Context) {
         if (state.state == NodePhase.Waiting || state.state == NodePhase.Paused) {
             state.detail
         } else if (isGatewayOnlyHint(state.natHint)) {
-            context.getString(
-                R.string.node_notification_gateway_only,
-                state.mode.wire,
-                formatUptime(state.uptimeMs),
-            )
+            context.getString(R.string.node_notification_gateway_only)
         } else {
             context.getString(
                 R.string.node_notification_status,
-                state.mode.wire,
                 state.peers,
-                formatUptime(state.uptimeMs),
             )
         }
 
@@ -156,18 +157,6 @@ class NodeNotificationManager(private val context: Context) {
             .setContentIntent(openApp)
             .build()
         notificationManager.notify(id, notification)
-    }
-
-    private fun formatUptime(uptimeMs: Long): String {
-        val totalSeconds = uptimeMs / 1_000
-        val hours = totalSeconds / 3_600
-        val minutes = (totalSeconds % 3_600) / 60
-        val seconds = totalSeconds % 60
-        return if (hours > 0) {
-            "%d:%02d:%02d".format(hours, minutes, seconds)
-        } else {
-            "%02d:%02d".format(minutes, seconds)
-        }
     }
 
     companion object {

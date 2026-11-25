@@ -19,6 +19,8 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 @Composable
 internal fun UdpPortSettings(
@@ -34,10 +36,14 @@ internal fun UdpPortSettings(
     val context = LocalContext.current
     var draftMode by remember { mutableStateOf(policies.udpPortMode) }
     var draftPort by remember { mutableStateOf(policies.udpPort) }
+    var savedPort by remember { mutableStateOf<Int?>(null) }
     val focusManager = LocalFocusManager.current
     LaunchedEffect(policies.udpPortMode, policies.udpPort) {
         draftMode = policies.udpPortMode
         draftPort = policies.udpPort
+        savedPort = withContext(Dispatchers.IO) {
+            ConfigToml.parseInt(ConfigToml.read(context), ConfigToml.NETWORK_PORT_KEY)
+        }
     }
     val dirty = udpPortSettingsAreDirty(
         draftMode,
@@ -45,7 +51,6 @@ internal fun UdpPortSettings(
         policies.udpPortMode,
         policies.udpPort,
     )
-    val savedPort = ConfigToml.parseInt(ConfigToml.read(context), ConfigToml.NETWORK_PORT_KEY)
 
     Column(
         modifier = modifier,
@@ -68,9 +73,10 @@ internal fun UdpPortSettings(
             ),
             style = MaterialTheme.typography.bodySmall,
         )
-        if (draftMode == UdpPortMode.Saved && savedPort != null) {
+        val currentSavedPort = savedPort
+        if (draftMode == UdpPortMode.Saved && currentSavedPort != null) {
             Text(
-                stringResource(R.string.udp_port_current, savedPort),
+                stringResource(R.string.udp_port_current, currentSavedPort),
                 style = MaterialTheme.typography.bodySmall,
             )
         }

@@ -222,20 +222,35 @@ private const val DASHBOARD_SCROLL_LOCK_JS = """
   if (window.__freenetAndroidScrollLock) return;
   window.__freenetAndroidScrollLock = true;
   var y = window.scrollY || 0;
-  var fromUser = true;
+  var touching = false;
+  var lastUserInput = 0;
+  function markUser() { lastUserInput = Date.now(); y = window.scrollY || 0; }
+  window.addEventListener('touchstart', function() { touching = true; markUser(); }, {passive: true});
+  window.addEventListener('touchmove', markUser, {passive: true});
+  window.addEventListener('touchend', function() { touching = false; markUser(); }, {passive: true});
+  window.addEventListener('touchcancel', function() { touching = false; }, {passive: true});
+  window.addEventListener('wheel', markUser, {passive: true});
   window.addEventListener('scroll', function() {
-    if (fromUser) y = window.scrollY || 0;
+    var cur = window.scrollY || 0;
+    if (touching || Date.now() - lastUserInput < 400 || cur > 0) {
+      y = cur;
+    }
   }, {passive: true});
-  function pin() {
-    fromUser = false;
-    window.scrollTo(0, y);
-    requestAnimationFrame(function() {
+  var pending = false;
+  function restoreIfReset() {
+    pending = false;
+    if (touching || Date.now() - lastUserInput < 400) return;
+    if (y > 40 && (window.scrollY || 0) === 0) {
       window.scrollTo(0, y);
-      fromUser = true;
-    });
+    }
   }
   var root = document.querySelector('main') || document.documentElement;
-  new MutationObserver(function() { pin(); }).observe(root, {childList: true, subtree: true});
+  new MutationObserver(function() {
+    if (!pending && y > 40) {
+      pending = true;
+      requestAnimationFrame(restoreIfReset);
+    }
+  }).observe(root, {childList: true, subtree: true});
 })();
 """
 

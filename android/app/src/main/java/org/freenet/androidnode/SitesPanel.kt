@@ -70,13 +70,26 @@ internal fun SitesPanel(
     var newName by remember { mutableStateOf("") }
     var newUrl by remember { mutableStateOf("") }
     var newViewer by remember { mutableStateOf(SiteViewer.INHERIT) }
+    var openErrorUrl by remember { mutableStateOf<String?>(null) }
     val listState = rememberLazyListState()
 
     val openInApp: (FreenetSite) -> Unit = { site ->
+        openErrorUrl = null
         context.startActivity(SiteActivity.intent(context, site))
     }
     val openInBrowser: (FreenetSite) -> Unit = { site ->
-        context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(site.url)))
+        openErrorUrl = null
+        val uri = runCatching { Uri.parse(site.url.trim()) }.getOrNull()
+        val scheme = uri?.scheme?.lowercase()
+        if (uri == null || (scheme != "http" && scheme != "https")) {
+            openErrorUrl = site.url
+        } else {
+            runCatching {
+                context.startActivity(Intent(Intent.ACTION_VIEW, uri))
+            }.onFailure {
+                openErrorUrl = site.url
+            }
+        }
     }
     val handleOpen: (FreenetSite) -> Unit = { site ->
         if (!site.url.startsWith(LOOPBACK_PREFIX)) {
@@ -133,6 +146,13 @@ internal fun SitesPanel(
             OutlinedButton(onClick = onClose) {
                 Text(stringResource(R.string.close_dashboard))
             }
+        }
+        openErrorUrl?.let { failedUrl ->
+            Text(
+                stringResource(R.string.site_open_failed, failedUrl),
+                color = MaterialTheme.colorScheme.error,
+                style = MaterialTheme.typography.bodySmall,
+            )
         }
         Box(modifier = Modifier.fillMaxWidth()) {
             OutlinedButton(onClick = { showOpenWithMenu = true }) {

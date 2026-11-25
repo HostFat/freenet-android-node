@@ -4,6 +4,8 @@ import java.net.HttpURLConnection
 import java.net.URL
 
 internal object DashboardHints {
+    private const val MAX_HTML_CHARS = 512 * 1024
+
     fun natHint(): String? {
         return runCatching {
             val connection = URL("http://127.0.0.1:7509/").openConnection() as HttpURLConnection
@@ -12,7 +14,9 @@ internal object DashboardHints {
             connection.instanceFollowRedirects = false
             try {
                 if (connection.responseCode !in 200..299) return null
-                val html = connection.inputStream.bufferedReader().use { it.readText() }
+                val html = connection.inputStream.bufferedReader().use {
+                    readBoundedText(it, MAX_HTML_CHARS)
+                }
                 natHintFromHtml(html)
             } finally {
                 connection.disconnect()

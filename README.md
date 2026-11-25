@@ -35,7 +35,7 @@ build the same app yourself and read every line that goes into it:
 git clone https://github.com/HostFat/freenet-android-node.git
 git clone https://github.com/freenet/freenet-core.git
 cd freenet-android-node
-git checkout v0.2.165.5   # optional: this app release; the bundled core is v0.2.139
+git checkout v0.2.165   # optional: pin to a specific app release
 docker compose build dev
 docker compose run --rm dev scripts/build-debug.sh
 adb install -r artifacts/apk/freenet-android-node-debug.apk
@@ -58,11 +58,8 @@ you can also drag in from that tab. Once a node is running, the rest of the
 screen is Freenet core's own dashboard.
 
 **Starting the node**
-- **Start network node** — joins the real Freenet network, subject to the
+- **Start** — joins the real Freenet network, subject to the
   **Network data** policy below.
-- **Start local node** — starts the node without connecting to any peers.
-  Mainly useful for developers exercising the app without touching the
-  network.
 
 **Stopping the node**
 - **Pause node** — gracefully shuts the node down but remembers your **Node

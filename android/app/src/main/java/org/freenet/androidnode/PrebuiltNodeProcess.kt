@@ -4,13 +4,18 @@ import android.content.Context
 import android.os.SystemClock
 import android.util.Log
 import org.json.JSONObject
+import java.io.BufferedWriter
 import java.io.File
+import java.io.FileOutputStream
+import java.io.OutputStreamWriter
+import java.net.Inet4Address
+import java.net.InetAddress
 import java.util.concurrent.TimeUnit
 
 /**
- * Experimental backend: runs the official `freenet` binary, shipped as
- * `libfreenet.so` in jniLibs, as a child process. It speaks the same JSON
- * envelope as the JNI bridge so NodeService and NodeRepository stay unchanged.
+ * Runs the official `freenet` binary, shipped as `libfreenet.so` in jniLibs,
+ * as a child process in network mode. It speaks the same JSON envelope as the
+ * JNI bridge so NodeService and NodeRepository stay uniform.
  */
 internal object PrebuiltNodeProcess {
     private const val TAG = "PrebuiltNode"
@@ -19,15 +24,20 @@ internal object PrebuiltNodeProcess {
     private const val RECENT_LINES = 200
     private const val MAX_LOG_BYTES = 2L * 1024 * 1024
     private const val MAX_TAIL_BYTES = 64 * 1024
+    private const val MAX_HTTP_CHARS = 1024 * 1024
     private const val GATEWAYS_INDEX = "https://freenet.org/keys/gateways.toml"
     private val GATEWAY_KEY = Regex("""public[_-]key\s*=\s*"[^"]+"""")
 
     private val lock = Any()
+    private val logLock = Any()
     private var process: Process? = null
     private var logFile: File? = null
-    private var mode = NodeMode.Local
+    private var logWriter: BufferedWriter? = null
+    private var logBytesWritten: Long = 0L
     private var udpPort: Int? = null
     private var startedAtElapsed = 0L
+    private var completedStartCycles = 0L
+    private var cycleCountedForCurrent = false
     private var lastExitCode: Int? = null
     private var lastDetail = "Prebuilt Freenet process is not running"
     private var pidFile: File? = null
@@ -35,8 +45,8 @@ internal object PrebuiltNodeProcess {
     @Volatile
     private var stopRequested = false
 
-    fun start(context: Context, configJson: String, network: Boolean): Result<String> = runCatching {
-        appendInfoLog("start requested network=$network")
+    fun start(context: Context, configJson: String): Result<String> = runCatching {
+        appendInfoLog("start requested (network)")
         stop()
         val pidFile = File(context.filesDir, "freenet/prebuilt/node.pid")
         killOrphan(pidFile)
@@ -49,18 +59,19 @@ internal object PrebuiltNodeProcess {
         binary.setExecutable(true)
         appendInfoLog("binary=${binary.absolutePath} exists=${binary.isFile}")
 
-        // Use a directory owned by this backend so a config left by the JNI
-        // path cannot interfere, and create every path the node opens.
         val root = File(context.filesDir, "freenet/prebuilt").apply { mkdirs() }
         synchronized(lock) { this.pidFile = pidFile }
         val configDir = File(root, "config").apply { mkdirs() }
         val dataDir = File(root, "data").apply { mkdirs() }
         val logDir = File(root, "logs").apply { mkdirs() }
         val nodeLog = File(logDir, "node-process.log")
-        synchronized(lock) { logFile = nodeLog }
-        if (nodeLog.length() > MAX_LOG_BYTES * 2) {
-            // A previous build could leave a very large log.
-            nodeLog.delete()
+        synchronized(logLock) {
+            closeLogWriterLocked()
+            logFile = nodeLog
+            if (nodeLog.length() > MAX_LOG_BYTES * 2) {
+                nodeLog.delete()
+            }
+            logBytesWritten = if (nodeLog.isFile) nodeLog.length() else 0L
         }
         appendInfoLog(
             "dirs config=${configDir.isDirectory} data=${dataDir.isDirectory} " +
@@ -78,23 +89,17 @@ internal object PrebuiltNodeProcess {
             .find { it.name.equals(config.optString("udpPortMode"), ignoreCase = true) }
             ?: UdpPortMode.Random
         val customPort = udpPortMode == UdpPortMode.Custom
+        val coercedCustomPort = UdpPorts.coerce(config.optInt("udpPort", UdpPorts.Default))
 
-        // The node loads config.toml and does not create it. Write a complete
-        // file once; a partial file fails the required-field parser.
         val contractsDir = File(dataDir, "contracts").apply { mkdirs() }
         val delegatesDir = File(dataDir, "delegates").apply { mkdirs() }
-        val secretsDir = File(dataDir, if (network) "secrets" else "secrets_local").apply { mkdirs() }
+        val secretsDir = File(dataDir, "secrets").apply { mkdirs() }
         val dbDir = File(dataDir, "db").apply { mkdirs() }
         val eventLogDir = File(dataDir, "_EVENT_LOG").apply { mkdirs() }
         val wasmtimeDir = File(context.cacheDir, "wasmtime").apply { mkdirs() }
-        // The node keeps a per-mode store below these directories but does not
-        // create the mode folder itself.
         listOf(
-            File(contractsDir, "local"),
             File(contractsDir, "network"),
-            File(delegatesDir, "local"),
             File(delegatesDir, "network"),
-            File(dbDir, "local"),
             File(dbDir, "network"),
         ).forEach { it.mkdirs() }
         val minConnections = config.optInt("minConnections", ConnectionLimits.DefaultMin)
@@ -106,10 +111,8 @@ internal object PrebuiltNodeProcess {
         )
         val previousCore = runtimePrefs.getString(NodeBackup.CORE_VERSION_KEY, "").orEmpty()
         if (previousCore != BuildConfig.CORE_VERSION) {
-            // The new core may expect new required fields. Keep the archive
-            // made by NodeService and start from a fresh generated config.
             appendInfoLog(
-                "core changed from '${previousCore}' to '${BuildConfig.CORE_VERSION}'; " +
+                "core changed from '$previousCore' to '${BuildConfig.CORE_VERSION}'; " +
                     "regenerating config and gateways",
             )
             configFile.delete()
@@ -122,7 +125,6 @@ internal object PrebuiltNodeProcess {
         if (!configFile.isFile || !configFile.readText().contains("log_level")) {
             configFile.writeText(
                 completeConfig(
-                    network = network,
                     configDir = configDir,
                     dataDir = dataDir,
                     logDir = logDir,
@@ -133,49 +135,46 @@ internal object PrebuiltNodeProcess {
                     eventLogDir = eventLogDir,
                     wasmtimeDir = wasmtimeDir,
                     websocketPort = websocketPort,
-                    networkPort = if (customPort) {
-                        UdpPorts.coerce(config.optInt("udpPort", UdpPorts.Default))
-                    } else {
-                        null
-                    },
+                    networkPort = if (customPort) coercedCustomPort else null,
                     minConnections = minConnections,
                     maxConnections = maxConnections,
                 ),
             )
             appendInfoLog("config.toml written (${configFile.length()} bytes)")
         } else {
-            updateConnectionLimits(configFile, minConnections, maxConnections)
+            ensureNetworkConfigFields(configFile, secretsDir, minConnections, maxConnections)
             appendInfoLog(
                 "connection limits set min=$minConnections max=$maxConnections",
             )
         }
-        applyNetworkPortMode(configFile, udpPortMode, config.optInt("udpPort", UdpPorts.Default))
+        applyNetworkPortMode(configFile, udpPortMode, coercedCustomPort)
 
-        // The musl binary cannot use Android's DNS resolver, so it fails to
-        // fetch the gateway index. Download it with the app's TLS stack and
-        // hand the node a local file instead.
-        val gatewaysFile = File(configDir, "gateways.toml")
-        val gatewaysReady = java.util.concurrent.atomic.AtomicBoolean(false)
-        if (network) {
-            appendInfoLog("checking gateway files")
-            val downloader = Thread({
-                runCatching {
-                    gatewaysReady.set(ensureGateways(configDir, context.filesDir))
-                }.onFailure {
-                    appendInfoLog("gateway download failed: ${it.message}")
-                }
-            }, "gateways-download").apply {
-                isDaemon = true
-                start()
-            }
-            downloader.join(25_000)
-            if (downloader.isAlive) {
-                appendInfoLog("gateway download timed out")
-                downloader.interrupt()
-            }
+        val effectiveUdpPort = when (udpPortMode) {
+            UdpPortMode.Custom -> coercedCustomPort
+            UdpPortMode.Saved -> ConfigToml.parseInt(configFile.readText(), ConfigToml.NETWORK_PORT_KEY)
+            UdpPortMode.Random -> null
         }
-        val hasLocalGateways = network && gatewaysReady.get()
-        if (network && !hasLocalGateways) {
+
+        // The musl binary cannot use Android's DNS resolver, so download the
+        // gateway index with the app's TLS stack and resolve hostnames here.
+        val gatewaysReady = java.util.concurrent.atomic.AtomicBoolean(false)
+        appendInfoLog("checking gateway files")
+        val downloader = Thread({
+            runCatching {
+                gatewaysReady.set(ensureGateways(configDir, context.filesDir))
+            }.onFailure {
+                appendInfoLog("gateway download failed: ${it.message}")
+            }
+        }, "gateways-download").apply {
+            isDaemon = true
+            start()
+        }
+        downloader.join(25_000)
+        if (downloader.isAlive) {
+            appendInfoLog("gateway download timed out")
+            downloader.interrupt()
+        }
+        if (!gatewaysReady.get()) {
             appendInfoLog("gateways.toml is not ready; refusing to start the node")
             return Result.failure(
                 IllegalStateException("Gateway file is not ready; check the network and retry"),
@@ -190,23 +189,19 @@ internal object PrebuiltNodeProcess {
 
         val arguments = mutableListOf(
             binary.absolutePath,
-            if (network) "network" else "local",
+            "network",
             "--config-dir", configDir.absolutePath,
             "--data-dir", dataDir.absolutePath,
             "--log-dir", logDir.absolutePath,
             "--ws-api-address", "127.0.0.1",
             "--ws-api-port", websocketPort.toString(),
             "--disable-auto-update",
+            "--skip-load-from-network",
         )
-        if (network && customPort) {
-            arguments += listOf("--network-port", config.optInt("udpPort", UdpPorts.Default).toString())
-        }
-        if (hasLocalGateways) {
-            arguments += "--skip-load-from-network"
+        if (customPort) {
+            arguments += listOf("--network-port", coercedCustomPort.toString())
         }
 
-        // The shell records the pid before exec, so a leftover process can be
-        // terminated on the next start even after the app was killed.
         val command = mutableListOf(
             "/system/bin/sh",
             "-c",
@@ -230,14 +225,13 @@ internal object PrebuiltNodeProcess {
         val started = builder.start()
         synchronized(lock) {
             process = started
-            logFile = nodeLog
-            mode = if (network) NodeMode.Network else NodeMode.Local
-            udpPort = if (network) config.optInt("udpPort").takeIf { it > 0 } else null
+            udpPort = effectiveUdpPort
             startedAtElapsed = SystemClock.elapsedRealtime()
+            cycleCountedForCurrent = false
             lastExitCode = null
             lastDetail = "Prebuilt Freenet process started"
         }
-        readerThread(started, nodeLog)
+        readerThread(started)
         exitThread(started)
         appendInfoLog("process started")
         successEnvelope("Starting", "Prebuilt Freenet process started")
@@ -253,6 +247,7 @@ internal object PrebuiltNodeProcess {
                 lastDetail = "Prebuilt Freenet process is not running"
                 pidFile?.delete()
             }
+            synchronized(logLock) { flushLogWriterLocked() }
             return@runCatching successEnvelope("Stopped", "Prebuilt Freenet process was already stopped")
         }
         current.destroy()
@@ -261,28 +256,37 @@ internal object PrebuiltNodeProcess {
             current.waitFor(2, TimeUnit.SECONDS)
         }
         synchronized(lock) {
-            process = null
+            if (process === current) {
+                process = null
+            }
             lastExitCode = null
             lastDetail = "Prebuilt Freenet process stopped"
             pidFile?.delete()
         }
+        synchronized(logLock) { flushLogWriterLocked() }
         successEnvelope("Stopped", "Prebuilt Freenet process stopped")
     }
 
     fun status(): Result<String> = runCatching {
         val snapshot = synchronized(lock) {
+            val alive = process?.isAlive == true
+            val elapsed = SystemClock.elapsedRealtime() - startedAtElapsed
+            if (alive && elapsed >= STARTUP_GRACE_MS && !cycleCountedForCurrent) {
+                completedStartCycles += 1
+                cycleCountedForCurrent = true
+            }
             Snapshot(
-                alive = process?.isAlive == true,
+                alive = alive,
                 exitCode = lastExitCode,
                 startedAt = startedAtElapsed,
-                mode = mode,
                 udpPort = udpPort,
+                completedStartCycles = completedStartCycles,
                 detail = lastDetail,
             )
         }
         when {
             !snapshot.alive && stopRequested ->
-                successEnvelope("Stopped", "Prebuilt Freenet process stopped")
+                successEnvelope("Stopped", "Prebuilt Freenet process stopped", snapshot.completedStartCycles)
             !snapshot.alive && snapshot.exitCode != null ->
                 errorEnvelope("Prebuilt Freenet process exited with code ${snapshot.exitCode}")
             !snapshot.alive ->
@@ -290,21 +294,13 @@ internal object PrebuiltNodeProcess {
             else -> {
                 val elapsed = SystemClock.elapsedRealtime() - snapshot.startedAt
                 val starting = elapsed < STARTUP_GRACE_MS
-                val state = if (starting) {
-                    "Starting"
-                } else if (snapshot.mode == NodeMode.Network) {
-                    "RunningNetwork"
-                } else {
-                    "RunningLocal"
-                }
-                // Keep process output out of the status line: it carries ANSI
-                // codes and is only useful in Recent logs.
+                val state = if (starting) "Starting" else "RunningNetwork"
                 val detail = if (starting) {
                     "Prebuilt Freenet process is starting"
                 } else {
                     "Prebuilt Freenet process is running"
                 }
-                successEnvelope(state, detail, snapshot.mode, snapshot.udpPort)
+                successEnvelope(state, detail, snapshot.completedStartCycles, snapshot.udpPort)
             }
         }
     }
@@ -324,7 +320,10 @@ internal object PrebuiltNodeProcess {
         if (buffered.isNotEmpty()) {
             return buffered.takeLast(limit).joinToString("\n")
         }
-        val file = synchronized(lock) { logFile }
+        val file = synchronized(logLock) {
+            flushLogWriterLocked()
+            logFile
+        }
         if (file == null || !file.isFile) {
             return "No process output yet."
         }
@@ -345,15 +344,47 @@ internal object PrebuiltNodeProcess {
                 recentLines.removeFirst()
             }
         }
-        val file = synchronized(lock) { logFile } ?: return
-        runCatching { file.appendText("$detail\n") }
+        writeLogLine(detail, flush = true)
     }
 
-    /**
-     * Ensure gateways.toml and every key it references exist. The node resolves
-     * the relative key paths against its working directory, while the index is
-     * read from --config-dir, so write the keys under both roots.
-     */
+    private fun writeLogLine(line: String, flush: Boolean) {
+        synchronized(logLock) {
+            val file = logFile ?: return
+            runCatching {
+                val payload = "$line\n"
+                val payloadBytes = payload.toByteArray(Charsets.UTF_8).size.toLong()
+                if (logBytesWritten + payloadBytes > MAX_LOG_BYTES) {
+                    closeLogWriterLocked()
+                    val previous = File(file.parentFile, "node-process.log.1")
+                    previous.delete()
+                    file.renameTo(previous)
+                    logBytesWritten = 0L
+                }
+                val writer = logWriter ?: BufferedWriter(
+                    OutputStreamWriter(FileOutputStream(file, true), Charsets.UTF_8),
+                    16 * 1024,
+                ).also { logWriter = it }
+                writer.write(payload)
+                logBytesWritten += payloadBytes
+                if (flush) {
+                    writer.flush()
+                }
+            }.onFailure {
+                closeLogWriterLocked()
+            }
+        }
+    }
+
+    private fun flushLogWriterLocked() {
+        runCatching { logWriter?.flush() }
+    }
+
+    private fun closeLogWriterLocked() {
+        runCatching { logWriter?.flush() }
+        runCatching { logWriter?.close() }
+        logWriter = null
+    }
+
     private fun ensureGateways(configDir: File, workingDir: File): Boolean {
         configDir.mkdirs()
         val gatewaysFile = File(configDir, "gateways.toml")
@@ -371,17 +402,10 @@ internal object PrebuiltNodeProcess {
         val fetchedIndex = runCatching { httpGet(GATEWAYS_INDEX, 5_000) }
             .onFailure { appendInfoLog("gateway index download failed: ${it.message}") }
             .getOrDefault("")
-        // Keep the saved list only when this start could not fetch a usable
-        // index, so a moved or retired gateway is not used forever.
         val rawIndex = listOf(fetchedIndex, savedIndex)
             .firstOrNull { it.isNotBlank() && GATEWAY_KEY.containsMatchIn(it) }
         require(rawIndex != null) { "gateway index is unavailable and no saved copy exists" }
-        // The node's resolver reads /etc/resolv.conf, absent on Android, and
-        // fails before it can resolve a gateway hostname. Resolve here with the
-        // Android DNS stack and persist the IP in the file.
         val index = resolveGatewayHosts(rawIndex)
-        // readText() throws ENOENT when the file does not exist yet, which is
-        // the normal first-run case.
         val current = if (gatewaysFile.isFile) gatewaysFile.readText() else ""
         if (index != current) {
             writeGatewayFile(configDir, gatewaysFile, index)
@@ -432,13 +456,7 @@ internal object PrebuiltNodeProcess {
         }
     }
 
-    /**
-     * Mirrors the fields a released config.toml must carry. Secret paths are
-     * deliberately omitted: the node resolves them from secrets_dir and
-     * generates the key material there.
-     */
     private fun completeConfig(
-        network: Boolean,
         configDir: File,
         dataDir: File,
         logDir: File,
@@ -453,8 +471,8 @@ internal object PrebuiltNodeProcess {
         minConnections: Int,
         maxConnections: Int,
     ): String = buildString {
-        appendLine("mode = \"${if (network) "network" else "local"}\"")
-        appendLine("network-address = \"${if (network) "0.0.0.0" else "127.0.0.1"}\"")
+        appendLine("mode = \"network\"")
+        appendLine("network-address = \"0.0.0.0\"")
         if (networkPort != null) {
             appendLine("network-port = $networkPort")
         }
@@ -487,17 +505,32 @@ internal object PrebuiltNodeProcess {
         if (!pidFile.isFile) return
         val pid = runCatching { pidFile.readText().trim().toInt() }.getOrNull()
         pidFile.delete()
-        if (pid == null || pid <= 0) return
+        if (pid == null || pid <= 0 || pid == android.os.Process.myPid()) return
         val entry = File("/proc/$pid")
         if (!entry.exists()) return
+        val cmdline = runCatching {
+            File(entry, "cmdline").readBytes().toString(Charsets.UTF_8).replace('\u0000', ' ')
+        }.getOrDefault("")
+        if (!isFreenetProcessCmdline(cmdline)) {
+            appendInfoLog("ignoring stale pid=$pid (not freenet: ${cmdline.take(80)})")
+            return
+        }
         appendInfoLog("terminating orphan node pid=$pid")
         runCatching { android.os.Process.sendSignal(pid, 15) }
         Thread.sleep(2_000)
         if (entry.exists()) {
-            runCatching { android.os.Process.sendSignal(pid, 9) }
-            Thread.sleep(500)
+            val stillFreenet = runCatching {
+                File(entry, "cmdline").readBytes().toString(Charsets.UTF_8).replace('\u0000', ' ')
+            }.getOrDefault("")
+            if (isFreenetProcessCmdline(stillFreenet)) {
+                runCatching { android.os.Process.sendSignal(pid, 9) }
+                Thread.sleep(500)
+            }
         }
     }
+
+    internal fun isFreenetProcessCmdline(cmdline: String): Boolean =
+        cmdline.contains("libfreenet.so")
 
     private fun writeGatewayFile(configDir: File, gatewaysFile: File, index: String) {
         runCatching {
@@ -513,22 +546,27 @@ internal object PrebuiltNodeProcess {
         appendInfoLog("gateways.toml written (${index.length} bytes)")
     }
 
+    internal fun formatResolvedHostPort(ip: String, port: String): String =
+        if (ip.contains(':')) "[$ip]:$port" else "$ip:$port"
+
     private fun resolveGatewayHosts(toml: String): String =
         Regex("""hostname\s*=\s*"([^":]+):(\d+)"""").replace(toml) { match ->
             val host = match.groupValues[1]
             val port = match.groupValues[2]
             val ip = runCatching {
-                java.net.InetAddress.getByName(host).hostAddress
+                val addresses = InetAddress.getAllByName(host)
+                val preferred = addresses.firstOrNull { it is Inet4Address } ?: addresses.firstOrNull()
+                preferred?.hostAddress
             }.getOrNull()
             if (ip != null && ip != host) {
-                appendInfoLog("resolved $host -> $ip")
-                "hostname = \"$ip:$port\""
+                val formatted = formatResolvedHostPort(ip, port)
+                appendInfoLog("resolved $host -> $formatted")
+                "hostname = \"$formatted\""
             } else {
                 match.value
             }
         }
 
-    /** Random mode lets the node pick a free port; Custom pins the chosen one. */
     private fun applyNetworkPortMode(configFile: File, mode: UdpPortMode, port: Int) {
         if (!configFile.isFile) return
         val current = configFile.readText()
@@ -540,28 +578,25 @@ internal object PrebuiltNodeProcess {
     }
 
     /**
-     * The interface owns the connection limits, so rewrite only those two keys
-     * on every start. Other user edits in config.toml stay untouched.
+     * Ensures network-mode essentials and UI-owned connection limits stay valid
+     * (including healing configs left over from earlier builds that had local mode).
      */
-    private fun updateConnectionLimits(configFile: File, min: Int, max: Int) {
-        val lines = configFile.readLines().toMutableList()
-        var sawMin = false
-        var sawMax = false
-        for (index in lines.indices) {
-            when {
-                lines[index].startsWith("min-number-of-connections") -> {
-                    lines[index] = "min-number-of-connections = $min"
-                    sawMin = true
-                }
-                lines[index].startsWith("max-number-of-connections") -> {
-                    lines[index] = "max-number-of-connections = $max"
-                    sawMax = true
-                }
-            }
-        }
-        if (!sawMin) lines += "min-number-of-connections = $min"
-        if (!sawMax) lines += "max-number-of-connections = $max"
-        configFile.writeText(lines.joinToString("\n") + "\n")
+    private fun ensureNetworkConfigFields(
+        configFile: File,
+        secretsDir: File,
+        min: Int,
+        max: Int,
+    ) {
+        var text = configFile.readText()
+        text = ConfigToml.upsertInt(text, ConfigToml.MIN_KEY, min)
+        text = ConfigToml.upsertInt(text, ConfigToml.MAX_KEY, max)
+        text = Regex("""(?m)^[ \t]*mode[ \t]*=[ \t]*"local"[ \t]*$""")
+            .replace(text, "mode = \"network\"")
+        text = Regex("""(?m)^[ \t]*network-address[ \t]*=[ \t]*"127\.0\.0\.1"[ \t]*$""")
+            .replace(text, "network-address = \"0.0.0.0\"")
+        text = Regex("""(?m)^[ \t]*secrets_dir[ \t]*=[ \t]*"[^"]*secrets_local"[ \t]*$""")
+            .replace(text, "secrets_dir = \"${secretsDir.absolutePath}\"")
+        configFile.writeText(text)
     }
 
     private val ansiPattern = Regex("\u001B\\[[0-9;?]*[ -/]*[@-~]")
@@ -577,13 +612,18 @@ internal object PrebuiltNodeProcess {
             setRequestProperty("User-Agent", "freenet-android-node")
         }
         try {
-            return connection.inputStream.bufferedReader().use { it.readText() }
+            require(connection.responseCode in 200..299) {
+                "HTTP ${connection.responseCode} from $url"
+            }
+            return connection.inputStream.bufferedReader().use { reader ->
+                readBoundedText(reader, MAX_HTTP_CHARS)
+            }
         } finally {
             connection.disconnect()
         }
     }
 
-    private fun readerThread(started: Process, nodeLog: File) {
+    private fun readerThread(started: Process) {
         Thread({
             runCatching {
                 started.inputStream.bufferedReader().useLines { lines ->
@@ -598,21 +638,15 @@ internal object PrebuiltNodeProcess {
                                 }
                             }
                         }
-                        runCatching {
-                            if (nodeLog.length() > MAX_LOG_BYTES) {
-                                val previous = File(nodeLog.parentFile, "node-process.log.1")
-                                previous.delete()
-                                nodeLog.renameTo(previous)
-                            }
-                            nodeLog.appendText("$line\n")
-                        }
                         written += 1
+                        writeLogLine(line, flush = written % 20 == 0)
                         if (written % 500 == 0) {
                             Log.i(TAG, line)
                         }
                     }
                 }
             }
+            synchronized(logLock) { flushLogWriterLocked() }
         }, "freenet-process-log").apply {
             isDaemon = true
             start()
@@ -623,6 +657,9 @@ internal object PrebuiltNodeProcess {
         Thread({
             val code = runCatching { started.waitFor() }.getOrDefault(-1)
             synchronized(lock) {
+                if (process !== started) {
+                    return@Thread
+                }
                 if (stopRequested) {
                     lastExitCode = null
                     lastDetail = "Prebuilt Freenet process stopped"
@@ -649,14 +686,14 @@ internal object PrebuiltNodeProcess {
     private fun successEnvelope(
         state: String,
         detail: String,
-        nodeMode: NodeMode = mode,
+        cycles: Long = 0L,
         port: Int? = null,
     ): String {
         val data = JSONObject()
             .put("state", state)
             .put("detail", detail)
-            .put("completedStartCycles", 1)
-            .put("mode", nodeMode.name)
+            .put("completedStartCycles", cycles)
+            .put("mode", NodeMode.Network.name)
             .put("peerCount", 0)
             .put("connectionAttempts", 0)
             .put("successfulConnections", 0)
@@ -698,8 +735,8 @@ internal object PrebuiltNodeProcess {
         val alive: Boolean,
         val exitCode: Int?,
         val startedAt: Long,
-        val mode: NodeMode,
         val udpPort: Int?,
+        val completedStartCycles: Long,
         val detail: String,
     )
 }

@@ -30,14 +30,13 @@ if [[ ! "${raw_version}" =~ ^v[0-9]+\.[0-9]+\.[0-9]+$ ]]; then
 fi
 
 app_version_name="${raw_version#v}"
-# versionCode is "<minor><patch>" with no dot (0.2.120 -> 2120), matching the
-# convention the last real release (v0.2.120, versionCode 2120) was built
-# with. Must stay monotonically increasing across releases for in-place
-# updates to install; this breaks if the minor version ever changes.
+# Monotonic numeric versionCode (major*1_000_000 + minor*10_000 + patch).
+# Override with APP_VERSION_CODE if aligning with a CI run_number sequence.
+major_ver="${app_version_name%%.*}"
 rest="${app_version_name#*.}"
 minor_ver="${rest%%.*}"
 patch_ver="${rest#*.}"
-app_version_code="${minor_ver}${patch_ver}"
+app_version_code="${APP_VERSION_CODE:-$((10#${major_ver} * 1000000 + 10#${minor_ver} * 10000 + 10#${patch_ver}))}"
 release_tag="v${app_version_name}"
 
 echo "== freenet-core -> ${raw_version} (checkout: ${freenet_core_dir})"
@@ -187,7 +186,7 @@ echo "== Publishing GitHub release ${release_tag} =="
 gh release create "${release_tag}" \
   "${apk_path}" \
   "${sha_path}" \
-  --repo manikmakki/freenet-android-node \
+  --repo "${GITHUB_REPO:-HostFat/freenet-android-node}" \
   --title "${release_tag}" \
   --target "$(git -C "${repo_root}" rev-parse HEAD)" \
   --notes "App version: ${app_version_name}
