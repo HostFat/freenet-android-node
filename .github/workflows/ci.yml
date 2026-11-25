@@ -98,6 +98,12 @@ jobs:
         id: result
         run: |
           set -euo pipefail
+          if [[ "${{ github.event_name }}" == "workflow_dispatch" && "${{ github.event.inputs.prebuilt_node }}" == "true" ]]; then
+            echo "native=false" >> "$GITHUB_OUTPUT"
+            echo "android=true" >> "$GITHUB_OUTPUT"
+            echo "Prebuilt release dispatch: skip Docker/NDK and run Android checks + build natively"
+            exit 0
+          fi
           if [[ "${{ github.event_name }}" != "pull_request" ]]; then
             echo "native=true" >> "$GITHUB_OUTPUT"
             echo "android=true" >> "$GITHUB_OUTPUT"
@@ -130,12 +136,11 @@ jobs:
       contents: read
       packages: write
     outputs:
-      lock: ${{ steps.hash.outputs.lock }}
       cargo_lock: ${{ steps.hash.outputs.cargo_lock }}
       gradle_lock: ${{ steps.hash.outputs.gradle_lock }}
       freenet_core_version: ${{ steps.resolve-version.outputs.value }}
       image: ${{ steps.image.outputs.value }}
-      image_digest: ${{ steps.build.outputs.digest }}
+      image_digest: ${{ steps.docker-cache.outputs.hit == 'true' && steps.docker-cache.outputs.digest || steps.build.outputs.digest }}
 
     steps:
       - name: Checkout freenet-android-node
@@ -153,14 +158,38 @@ jobs:
         id: resolve-version
         run: echo "value=${{ github.event.inputs.freenet_core_version || env.FREENET_CORE_VERSION }}" >> "$GITHUB_OUTPUT"
 
-      - name: Checkout freenet-core
-        uses: actions/checkout@v4
+      - name: Compute dependency and Dockerfile hashes
+        id: hash
+        run: |
+          set -euo pipefail
+          echo "dockerfile=$(sha256sum freenet-android-node/Dockerfile | cut -d' ' -f1 | cut -c1-16)" >> "$GITHUB_OUTPUT"
+          echo "cargo_lock=$(sha256sum freenet-android-node/native/Cargo.lock | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+          echo "gradle_lock=$(find freenet-android-node/android -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name 'gradle-wrapper.properties' -o -name 'gradle.properties' \) -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
+
+      - name: Log in to GHCR
+        uses: docker/login-action@v3
         with:
-          repository: freenet/freenet-core
-          ref: ${{ steps.resolve-version.outputs.value }}
-          path: freenet-core
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Check for existing Docker image for this Dockerfile
+        id: docker-cache
+        run: |
+          set -euo pipefail
+          image="${{ steps.image.outputs.value }}"
+          tag="df-${{ steps.hash.outputs.dockerfile }}"
+          if digest="$(docker manifest inspect --verbose "${image}:${tag}" 2>/dev/null | jq -r 'if type == "array" then .[0].Descriptor.digest else .Descriptor.digest end')" && [[ "${digest}" == sha256:* ]]; then
+            echo "hit=true" >> "$GITHUB_OUTPUT"
+            echo "digest=${digest}" >> "$GITHUB_OUTPUT"
+            echo "Reusing existing Docker image ${image}:${tag} (${digest})"
+          else
+            echo "hit=false" >> "$GITHUB_OUTPUT"
+            echo "No cached Docker image for ${image}:${tag}; building."
+          fi
 
       - name: Free disk space on runner
+        if: steps.docker-cache.outputs.hit != 'true'
         run: |
           docker system prune -af --volumes
           sudo rm -rf \
@@ -172,31 +201,21 @@ jobs:
           df -h /
 
       - name: Set up Docker Buildx
+        if: steps.docker-cache.outputs.hit != 'true'
         uses: docker/setup-buildx-action@v3
 
-      - name: Log in to GHCR
-        uses: docker/login-action@v3
-        with:
-          registry: ghcr.io
-          username: ${{ github.actor }}
-          password: ${{ secrets.GITHUB_TOKEN }}
-
       - name: Build and publish Docker image
+        if: steps.docker-cache.outputs.hit != 'true'
         id: build
         uses: docker/build-push-action@v5
         with:
           context: freenet-android-node
           push: true
-          tags: ${{ steps.image.outputs.value }}:${{ github.sha }}
+          tags: |
+            ${{ steps.image.outputs.value }}:df-${{ steps.hash.outputs.dockerfile }}
+            ${{ steps.image.outputs.value }}:${{ github.sha }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
-
-      - name: Compute dependency lock hash
-        id: hash
-        run: |
-          echo "lock=${{ hashFiles('**/Cargo.lock', '**/*.gradle*', '**/gradle-wrapper.properties', '**/Dockerfile') }}" >> "$GITHUB_OUTPUT"
-          echo "cargo_lock=$(sha256sum freenet-android-node/native/Cargo.lock | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
-          echo "gradle_lock=$(find freenet-android-node/android -type f \( -name '*.gradle' -o -name '*.gradle.kts' -o -name 'gradle-wrapper.properties' -o -name 'gradle.properties' \) -print0 | sort -z | xargs -0 sha256sum | sha256sum | cut -d' ' -f1)" >> "$GITHUB_OUTPUT"
 
   lint:
     name: Lint & Test Rust
@@ -530,19 +549,12 @@ jobs:
       - name: Install Android platform
         run: sdkmanager "platforms;android-36" "build-tools;36.0.0"
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-unit-${{ hashFiles('android/**/*.gradle*', 'android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-unit-
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
 
       - name: Gradle unit tests
         working-directory: android
-        run: ./gradlew --no-daemon :app:testDebugUnitTest
+        run: ./gradlew --no-daemon :app:testDebugUnitTest :app:lintDebug
 
   pr-gate:
     name: PR checks
@@ -801,13 +813,9 @@ jobs:
   release-prebuilt:
     name: Build & Publish Prebuilt APK
     runs-on: ubuntu-latest
-    needs: [setup, lint, android-unit]
+    needs: [changes]
     if: >
-      always() &&
-      !cancelled() &&
-      (needs.android-unit.result == 'success' || needs.android-unit.result == 'skipped') &&
       github.event_name == 'workflow_dispatch' &&
-      (needs.lint.result == 'success' || needs.lint.result == 'skipped') &&
       github.event.inputs.prebuilt_node == 'true'
     timeout-minutes: 30
     permissions:
@@ -831,15 +839,17 @@ jobs:
         with:
           packages: platform-tools
 
-      - name: Cache Gradle
-        uses: actions/cache@v4
-        with:
-          path: |
-            ~/.gradle/caches
-            ~/.gradle/wrapper
-          key: ${{ runner.os }}-gradle-prebuilt-${{ hashFiles('freenet-android-node/android/**/*.gradle*', 'freenet-android-node/android/gradle/wrapper/gradle-wrapper.properties') }}
-          restore-keys: |
-            ${{ runner.os }}-gradle-prebuilt-
+      - name: Set up Gradle
+        uses: gradle/actions/setup-gradle@v4
+
+      - name: Run prebuilt prechecks (shellcheck, unit tests, lint)
+        if: github.event.inputs.skip_prechecks != 'true'
+        run: |
+          set -euo pipefail
+          cd freenet-android-node
+          shellcheck scripts/*.sh
+          python3 scripts/apk_covers_core.py --self-test
+          ./android/gradlew -p android :app:testDebugUnitTest :app:lintDebug
 
       - name: Decode release keystore
         run: |
@@ -857,6 +867,7 @@ jobs:
           set -euo pipefail
           cd freenet-android-node
           export PREBUILT_NODE=true
+          export GRADLE_USE_DAEMON=true
           export FREENET_PREBUILT_VERSION="${{ github.event.inputs.freenet_core_version }}"
           export APP_VERSION_CODE="${{ github.run_number }}"
           export APP_VERSION_NAME="${{ github.event.inputs.release_version }}"

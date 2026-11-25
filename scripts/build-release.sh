@@ -29,9 +29,12 @@ else
   rm -rf "${repo_root}/android/app/src/main/jniLibs"
   "${repo_root}/scripts/build-native.sh"
 fi
+gradle_args=("-p" "${repo_root}/android")
+if [[ "${GRADLE_USE_DAEMON:-false}" != "true" ]]; then
+  gradle_args+=("--no-daemon")
+fi
 "${repo_root}/android/gradlew" \
-  -p "${repo_root}/android" \
-  --no-daemon \
+  "${gradle_args[@]}" \
   "${gradle_version_args[@]}" \
   :app:assembleRelease
 

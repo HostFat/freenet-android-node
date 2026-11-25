@@ -20,7 +20,11 @@ jobs:
   bump:
     name: Detect core release and dispatch APK build
     runs-on: ubuntu-latest
-    timeout-minutes: 20
+    timeout-minutes: 10
+    outputs:
+      should_bump: ${{ steps.skip.outputs.already != 'true' && 'true' || 'false' }}
+      tag: ${{ steps.core.outputs.tag }}
+      version: ${{ steps.core.outputs.version }}
     env:
       GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
     steps:
@@ -42,7 +46,7 @@ jobs:
           echo "version=${tag#v}" >> "$GITHUB_OUTPUT"
           echo "Latest freenet-core release: ${tag}"
 
-      - name: Skip if this APK version is already published
+      - name: Skip if this APK version is already published or assets are not ready
         id: skip
         working-directory: freenet-android-node
         run: |
@@ -62,34 +66,87 @@ jobs:
             exit 0
           fi
 
+          assets="$(gh api "repos/freenet/freenet-core/releases/tags/${tag}" --jq '.assets[].name')"
+          if ! grep -qx "SHA256SUMS.txt" <<< "${assets}" || ! grep -qx "freenet-aarch64-unknown-linux-musl.tar.gz" <<< "${assets}"; then
+            echo "already=true" >> "$GITHUB_OUTPUT"
+            echo "Prebuilt assets for ${tag} are not uploaded yet; will retry on the next run."
+            exit 0
+          fi
+
           echo "already=false" >> "$GITHUB_OUTPUT"
-          echo "No ${tag} or ${tag}.* APK release yet; will bump and build."
+          echo "No ${tag} or ${tag}.* APK release yet and prebuilt assets are ready; dispatching build."
+
+      - name: Dispatch signed APK release immediately
+        if: steps.skip.outputs.already != 'true'
+        working-directory: freenet-android-node
+        run: |
+          # Prebuilt releases run native shellcheck + Android unit tests + lint
+          # in the same warm runner (no Docker/NDK), so keep prechecks enabled.
+          gh workflow run ci.yml \
+            --ref main \
+            -f freenet_core_version="${{ steps.core.outputs.tag }}" \
+            -f release_version="${{ steps.core.outputs.version }}" \
+            -f prebuilt_node=true \
+            -f publish_release=true
+          echo "Dispatched CI release for ${{ steps.core.outputs.tag }}"
+
+      - name: Open an issue if detection or dispatch failed
+        if: failure()
+        working-directory: freenet-android-node
+        run: |
+          set -euo pipefail
+          title="Auto-bump failed for ${{ steps.core.outputs.tag || 'unknown core' }}"
+          existing="$(gh issue list --state open --search "in:title ${title}" --json number --jq '.[0].number' || true)"
+          body="$(cat <<EOF
+          The scheduled auto-bump detection/dispatch for Freenet core failed.
+
+          - Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          - Target core: ${{ steps.core.outputs.tag || 'could not resolve' }}
+
+          The APK was **not** dispatched.
+          EOF
+          )"
+          if [[ -n "${existing}" ]]; then
+            gh issue comment "${existing}" --body "${body}"
+          else
+            gh issue create --title "${title}" --body "${body}" --assignee HostFat
+          fi
+
+  sync-pins:
+    name: Sync version pins and native Cargo.lock
+    needs: [bump]
+    if: needs.bump.outputs.should_bump == 'true'
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    env:
+      GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+    steps:
+      - name: Checkout this repository
+        uses: actions/checkout@v4
+        with:
+          path: freenet-android-node
 
       - name: Checkout matching freenet-core
-        if: steps.skip.outputs.already != 'true'
         uses: actions/checkout@v4
         with:
           repository: freenet/freenet-core
-          ref: ${{ steps.core.outputs.tag }}
+          ref: ${{ needs.bump.outputs.tag }}
           path: freenet-core
 
       - name: Record core commit
-        if: steps.skip.outputs.already != 'true'
         id: pin
         run: |
           set -euo pipefail
           commit="$(git -C freenet-core rev-parse HEAD)"
           echo "commit=${commit}" >> "$GITHUB_OUTPUT"
-          echo "freenet-core ${{ steps.core.outputs.tag }} is ${commit}"
+          echo "freenet-core ${{ needs.bump.outputs.tag }} is ${commit}"
 
       - name: Install Rust (lockfile refresh only)
-        if: steps.skip.outputs.already != 'true'
         uses: dtolnay/rust-toolchain@master
         with:
           toolchain: "1.94.0"
 
       - name: Align freenet-stdlib with the core workspace
-        if: steps.skip.outputs.already != 'true'
         working-directory: freenet-android-node
         run: |
           set -euo pipefail
@@ -116,30 +173,27 @@ jobs:
           PY
 
       - name: Refresh native Cargo.lock against the new core
-        if: steps.skip.outputs.already != 'true'
         working-directory: freenet-android-node/native
         run: cargo update
 
       - name: Rewrite version pins
-        if: steps.skip.outputs.already != 'true'
         working-directory: freenet-android-node
         run: |
           python3 scripts/bump-core-version.py \
-            "${{ steps.core.outputs.tag }}" \
+            "${{ needs.bump.outputs.tag }}" \
             "${{ steps.pin.outputs.commit }}"
 
       - name: Commit and push pin updates
-        if: steps.skip.outputs.already != 'true'
         working-directory: freenet-android-node
         run: |
           set -euo pipefail
           git config user.name "github-actions[bot]"
           git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
           commit_msg="$(cat <<EOF
-          chore: bump freenet-core to ${{ steps.core.outputs.tag }} [skip ci]
+          chore: bump freenet-core to ${{ needs.bump.outputs.tag }} [skip ci]
 
-          Automatic pin + lockfile refresh so the next APK build can compile
-          against the new core without a stale Cargo.lock.
+          Automatic pin + lockfile refresh so the next JNI/native build can
+          compile against the new core without a stale Cargo.lock.
           EOF
           )"
           # Never stage workflow files. GITHUB_TOKEN cannot push them, and CI
@@ -152,40 +206,27 @@ jobs:
             native/Cargo.toml \
             native/Cargo.lock
           if git diff --cached --quiet; then
-            echo "Pins already matched ${{ steps.core.outputs.tag }}; dispatching build anyway."
+            echo "Pins already matched ${{ needs.bump.outputs.tag }}."
           else
             git commit -m "${commit_msg}"
             git push origin HEAD:main
           fi
 
-      - name: Dispatch signed APK release
-        if: steps.skip.outputs.already != 'true'
-        working-directory: freenet-android-node
-        run: |
-          gh workflow run ci.yml \
-            --ref main \
-            -f freenet_core_version="${{ steps.core.outputs.tag }}" \
-            -f release_version="${{ steps.core.outputs.version }}" \
-            -f skip_prechecks=true \
-            -f prebuilt_node=true \
-            -f publish_release=true
-          echo "Dispatched CI release for ${{ steps.core.outputs.tag }}"
-
-      - name: Open an issue if the bump failed
+      - name: Open an issue if pin sync failed
         if: failure()
         working-directory: freenet-android-node
         run: |
           set -euo pipefail
-          title="Auto-bump failed for ${{ steps.core.outputs.tag || 'unknown core' }}"
+          title="Auto-bump pin sync failed for ${{ needs.bump.outputs.tag || 'unknown core' }}"
           existing="$(gh issue list --state open --search "in:title ${title}" --json number --jq '.[0].number' || true)"
           body="$(cat <<EOF
-          The scheduled auto-bump for Freenet core failed.
+          The prebuilt APK release for ${{ needs.bump.outputs.tag }} was dispatched,
+          but syncing the version pins / native Cargo.lock failed.
 
           - Workflow run: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
-          - Target core: ${{ steps.core.outputs.tag || 'could not resolve' }}
+          - Target core: ${{ needs.bump.outputs.tag || 'could not resolve' }}
 
-          This usually means the lockfile could not be refreshed, git could not
-          push, or workflow dispatch failed. The APK was **not** published.
+          This usually means native/Cargo.lock could not be refreshed or git could not push.
           EOF
           )"
           if [[ -n "${existing}" ]]; then
