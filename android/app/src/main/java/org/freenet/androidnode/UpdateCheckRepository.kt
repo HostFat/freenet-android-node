@@ -74,7 +74,7 @@ internal object UpdateCheckRepository {
             }
             mutableState.value = mutableState.value.copy(checking = true, lastError = null)
             val result = withContext(Dispatchers.IO) {
-                runCatching { fetchDecision(context, peerVersion) }
+                runCatching { fetchDecision(context, peerVersion, force) }
             }
             result.fold(
                 onSuccess = { decision ->
@@ -103,7 +103,7 @@ internal object UpdateCheckRepository {
         }
     }
 
-    private fun fetchDecision(context: Context, peerVersion: String?): UpdateDecision {
+    private fun fetchDecision(context: Context, peerVersion: String?, force: Boolean): UpdateDecision {
         val installedCore = SemVer.parse(NodeBackend.coreVersion())
         val installedApp = SemVer.parse(
             runCatching {
@@ -111,30 +111,18 @@ internal object UpdateCheckRepository {
             }.getOrNull(),
         )
         val includePrereleases = mutableIncludePrereleases.value
-        // Static feed first, then the cached worker, then GitHub.
-        val static = runCatching { fetchStaticReleases(includePrereleases) }.getOrNull()
-        val worker = if (static == null) {
-            runCatching { fetchWorkerReleases(includePrereleases) }.getOrNull()
-        } else {
-            null
-        }
-        val releases = static ?: worker
-        val coreRelease = releases?.core ?: if (includePrereleases) {
-            fetchNewestRelease(CORE_RELEASES_API)
-        } else {
-            fetchLatestRelease(UpdateUrls.CORE_RELEASES_PAGE)
-        }
-        val apkRelease = releases?.app ?: if (includePrereleases) {
-            fetchNewestRelease(APK_RELEASES_API)
-        } else {
-            fetchLatestRelease(UpdateUrls.APK_RELEASES_PAGE)
-        }
+        val releases = resolveReleases(
+            force = force,
+            fetchStatic = { fetchStaticReleases(includePrereleases) },
+            fetchWorker = { fetchWorkerReleases(includePrereleases) },
+            fetchGitHub = { fetchGithubReleases(includePrereleases) },
+        )
         return decideUpdate(
             installedCore = installedCore,
             installedApp = installedApp,
-            githubCore = coreRelease.version,
-            githubApk = apkRelease.version,
-            githubApkReleaseUrl = apkRelease.htmlUrl?.ifBlank { null }
+            githubCore = releases.core.version,
+            githubApk = releases.app.version,
+            githubApkReleaseUrl = releases.app.htmlUrl?.ifBlank { null }
                 ?: UpdateUrls.APK_RELEASES_PAGE,
             peerSeen = SemVer.parse(peerVersion),
         )
@@ -142,11 +130,26 @@ internal object UpdateCheckRepository {
 
     private data class WorkerReleases(val app: GithubRelease, val core: GithubRelease)
 
+    private fun fetchGithubReleases(includePrereleases: Boolean): WorkerReleases {
+        val core = if (includePrereleases) {
+            fetchNewestRelease(CORE_RELEASES_API, includePrereleases)
+        } else {
+            fetchLatestRelease(UpdateUrls.CORE_RELEASES_PAGE)
+        }
+        val app = if (includePrereleases) {
+            fetchNewestRelease(APK_RELEASES_API, includePrereleases)
+        } else {
+            fetchLatestRelease(UpdateUrls.APK_RELEASES_PAGE)
+        }
+        return WorkerReleases(app = app, core = core)
+    }
+
     private fun fetchStaticReleases(includePrereleases: Boolean): WorkerReleases? {
-        val connection = (URL(staticReleasesUrl(System.currentTimeMillis())).openConnection()
+        val connection = (URL(UpdateUrls.STATIC_RELEASES).openConnection()
             as HttpURLConnection).apply {
             connectTimeout = 8_000
             readTimeout = 8_000
+            useCaches = false
             setRequestProperty("User-Agent", USER_AGENT)
         }
         try {
@@ -204,6 +207,7 @@ internal object UpdateCheckRepository {
         val connection = (URL(latestUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 15_000
+            useCaches = false
             instanceFollowRedirects = false
             setRequestProperty("User-Agent", USER_AGENT)
             setRequestProperty("Accept", "text/html")
@@ -229,10 +233,11 @@ internal object UpdateCheckRepository {
         }
     }
 
-    private fun fetchNewestRelease(apiUrl: String): GithubRelease {
+    private fun fetchNewestRelease(apiUrl: String, includePrereleases: Boolean): GithubRelease {
         val connection = (URL(apiUrl).openConnection() as HttpURLConnection).apply {
             connectTimeout = 15_000
             readTimeout = 15_000
+            useCaches = false
             setRequestProperty("User-Agent", USER_AGENT)
             setRequestProperty("Accept", "application/vnd.github+json")
         }
@@ -252,7 +257,7 @@ internal object UpdateCheckRepository {
             for (index in 0 until releases.length()) {
                 val release = releases.getJSONObject(index)
                 if (release.optBoolean("draft")) continue
-                if (release.optBoolean("prerelease") && !mutableIncludePrereleases.value) continue
+                if (release.optBoolean("prerelease") && !includePrereleases) continue
                 val version = SemVer.parse(
                     release.optString("tag_name").removePrefix("v"),
                 ) ?: continue

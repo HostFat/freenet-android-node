@@ -1,5 +1,7 @@
 package org.freenet.androidnode
 
+import java.io.IOException
+
 internal data class SemVer(
     val major: Int,
     val minor: Int,
@@ -54,17 +56,55 @@ internal object UpdateUrls {
         "https://github.com/HostFat/freenet-android-node/releases/latest"
     const val WORKER_RELEASES =
         "https://freenet-android-crash-inbox.hostfat.workers.dev/v1/releases"
+    // Cached ~5 minutes by Fastly (query strings do not bypass its cache key).
+    // Automatic background checks read this first; manual checks query GitHub first.
     const val STATIC_RELEASES =
         "https://raw.githubusercontent.com/HostFat/freenet-android-node/updates/releases.json"
 }
 
+internal enum class UpdateSource {
+    StaticFeed,
+    Worker,
+    GitHub,
+}
+
 /**
- * raw.githubusercontent.com caches releases.json for five minutes and has
- * held an older copy longer. A minute bucket gives each check a distinct URL,
- * so a release published now is not hidden by the CDN.
+ * Automatic background checks prioritize CDN-cached feeds to avoid hitting GitHub
+ * rate limits across many devices. Manual "Check for updates" taps prioritize
+ * GitHub directly so newly published releases appear immediately without waiting
+ * for Fastly (5m) or Cloudflare Worker (10m) caches to expire, still falling back
+ * to the cached feeds if GitHub is rate-limited or unreachable.
  */
-internal fun staticReleasesUrl(nowMs: Long): String =
-    "${UpdateUrls.STATIC_RELEASES}?t=${nowMs / 60_000L}"
+internal fun updateSourceOrder(force: Boolean): List<UpdateSource> =
+    if (force) {
+        listOf(UpdateSource.GitHub, UpdateSource.StaticFeed, UpdateSource.Worker)
+    } else {
+        listOf(UpdateSource.StaticFeed, UpdateSource.Worker, UpdateSource.GitHub)
+    }
+
+internal fun <T> resolveReleases(
+    force: Boolean,
+    fetchStatic: () -> T?,
+    fetchWorker: () -> T?,
+    fetchGitHub: () -> T,
+): T {
+    var lastError: Throwable? = null
+    for (source in updateSourceOrder(force)) {
+        val result = runCatching {
+            when (source) {
+                UpdateSource.StaticFeed -> fetchStatic()
+                UpdateSource.Worker -> fetchWorker()
+                UpdateSource.GitHub -> fetchGitHub()
+            }
+        }
+        val value = result.getOrNull()
+        if (value != null) {
+            return value
+        }
+        result.exceptionOrNull()?.let { lastError = it }
+    }
+    throw lastError ?: IOException("Could not fetch release information")
+}
 
 internal fun versionFromReleaseLocation(location: String): SemVer? {
     val path = location.substringBefore('?').substringBefore('#').trimEnd('/')

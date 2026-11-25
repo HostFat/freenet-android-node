@@ -1,7 +1,9 @@
 package org.freenet.androidnode
 
+import java.io.IOException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNull
+import org.junit.Assert.assertTrue
 import org.junit.Test
 
 class UpdateCheckTest {
@@ -30,11 +32,94 @@ class UpdateCheckTest {
     }
 
     @Test
-    fun staticFeedUrlChangesEveryMinuteToBypassTheCdn() {
+    fun automaticChecksPreferStaticFeedThenWorkerThenGithub() {
         assertEquals(
-            "https://raw.githubusercontent.com/HostFat/freenet-android-node/updates/releases.json?t=1234",
-            staticReleasesUrl(1234L * 60_000L + 59_000L),
+            listOf(UpdateSource.StaticFeed, UpdateSource.Worker, UpdateSource.GitHub),
+            updateSourceOrder(force = false),
         )
+        val called = mutableListOf<UpdateSource>()
+        val result = resolveReleases(
+            force = false,
+            fetchStatic = {
+                called += UpdateSource.StaticFeed
+                "from-static"
+            },
+            fetchWorker = {
+                called += UpdateSource.Worker
+                "from-worker"
+            },
+            fetchGitHub = {
+                called += UpdateSource.GitHub
+                "from-github"
+            },
+        )
+        assertEquals("from-static", result)
+        assertEquals(listOf(UpdateSource.StaticFeed), called)
+    }
+
+    @Test
+    fun manualChecksPreferGithubAndFallbackToCachedFeedsOnRateLimit() {
+        assertEquals(
+            listOf(UpdateSource.GitHub, UpdateSource.StaticFeed, UpdateSource.Worker),
+            updateSourceOrder(force = true),
+        )
+        val directCalled = mutableListOf<UpdateSource>()
+        val directResult = resolveReleases(
+            force = true,
+            fetchStatic = {
+                directCalled += UpdateSource.StaticFeed
+                "from-static"
+            },
+            fetchWorker = {
+                directCalled += UpdateSource.Worker
+                "from-worker"
+            },
+            fetchGitHub = {
+                directCalled += UpdateSource.GitHub
+                "from-github"
+            },
+        )
+        assertEquals("from-github", directResult)
+        assertEquals(listOf(UpdateSource.GitHub), directCalled)
+
+        val fallbackCalled = mutableListOf<UpdateSource>()
+        val fallbackResult = resolveReleases(
+            force = true,
+            fetchStatic = {
+                fallbackCalled += UpdateSource.StaticFeed
+                null
+            },
+            fetchWorker = {
+                fallbackCalled += UpdateSource.Worker
+                "from-worker"
+            },
+            fetchGitHub = {
+                fallbackCalled += UpdateSource.GitHub
+                throw IOException("GitHub rate limit (HTTP 403); try again later")
+            },
+        )
+        assertEquals("from-worker", fallbackResult)
+        assertEquals(
+            listOf(UpdateSource.GitHub, UpdateSource.StaticFeed, UpdateSource.Worker),
+            fallbackCalled,
+        )
+    }
+
+    @Test
+    fun resolveReleasesRethrowsLastErrorWhenAllSourcesFail() {
+        var thrown: Throwable? = null
+        try {
+            resolveReleases<String>(
+                force = true,
+                fetchStatic = { null },
+                fetchWorker = { null },
+                fetchGitHub = { throw IOException("GitHub rate limit (HTTP 403); try again later") },
+            )
+        } catch (error: Throwable) {
+            thrown = error
+        }
+        assertTrue(thrown is IOException)
+        assertTrue(thrown?.message?.contains("403") == true)
     }
 
     @Test
