@@ -1,0 +1,30 @@
+{
+  "app": {
+    "beta": {
+      "prerelease": false,
+      "tag": "v0.2.167",
+      "url": "https://github.com/HostFat/freenet-android-node/releases/tag/v0.2.167",
+      "version": "0.2.167"
+    },
+    "stable": {
+      "prerelease": false,
+      "tag": "v0.2.167",
+      "url": "https://github.com/HostFat/freenet-android-node/releases/tag/v0.2.167",
+      "version": "0.2.167"
+    }
+  },
+  "core": {
+    "beta": {
+      "prerelease": false,
+      "tag": "v0.2.167",
+      "url": "https://github.com/freenet/freenet-core/releases/tag/v0.2.167",
+      "version": "0.2.167"
+    },
+    "stable": {
+      "prerelease": false,
+      "tag": "v0.2.167",
+      "url": "https://github.com/freenet/freenet-core/releases/tag/v0.2.167",
+      "version": "0.2.167"
+    }
+  }
+}
